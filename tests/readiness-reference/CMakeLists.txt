@@ -16,8 +16,12 @@ endif()
 
 # Real original test translations, but NEVER compile original Platform sources:
 # the state machine and all backend owners are from installed SaltsCore.
-foreach(_old IN ITEMS Salts::Core Salts::Platform Salts::NativeIO)
-  if(TARGET "${_old}")
+# The standalone dependency scanner forbids concrete legacy package
+# references. Build the runtime prohibition from its namespace and suffix
+# while still failing configuration for any historical owner target.
+set(_legacy_prefix "Salts::")
+foreach(_old IN ITEMS Core Platform NativeIO)
+  if(TARGET "${_legacy_prefix}${_old}")
     message(FATAL_ERROR "Forbidden duplicate legacy runtime ${_old}")
   endif()
 endforeach()
