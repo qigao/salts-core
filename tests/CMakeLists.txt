@@ -147,3 +147,31 @@ if(TARGET SaltsCore::CNet)
     COMMAND saltscore_cnet_tls_ca_san_test)
   set_tests_properties(saltscore.cnet_tls_ca_san PROPERTIES TIMEOUT 65)
 endif()
+
+# Independent OpenSSL 3 peer, not GmSSL loopback: opt in only for provider
+# qualification runners with an explicit external openssl executable.
+option(SALTSCORE_ENABLE_OPENSSL_INTEROP
+  "Run live independent OpenSSL 3 TLS peer conformance against CNet" OFF)
+if(SALTSCORE_ENABLE_OPENSSL_INTEROP)
+  if(NOT TARGET SaltsCore::CNet)
+    message(FATAL_ERROR "External OpenSSL3 conformance needs a real provider-backed SaltsCore::CNet")
+  endif()
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  find_program(SALTSCORE_OPENSSL3_EXECUTABLE NAMES openssl REQUIRED)
+  add_executable(saltscore_cnet_openssl_client test_cnet_openssl_client.c)
+  target_compile_features(saltscore_cnet_openssl_client PRIVATE c_std_11)
+  set_target_properties(saltscore_cnet_openssl_client PROPERTIES
+    C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  target_link_libraries(saltscore_cnet_openssl_client PRIVATE SaltsCore::CNet)
+  if(MSVC)
+    target_compile_options(saltscore_cnet_openssl_client PRIVATE
+      $<$<COMPILE_LANGUAGE:C>:-experimental:c11atomics>)
+  endif()
+  add_test(NAME saltscore.cnet_openssl_interop
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/interop/verify_openssl_server.py"
+      --openssl "${SALTSCORE_OPENSSL3_EXECUTABLE}"
+      --client "$<TARGET_FILE:saltscore_cnet_openssl_client>"
+      --fixtures "${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+  set_tests_properties(saltscore.cnet_openssl_interop PROPERTIES TIMEOUT 120)
+endif()

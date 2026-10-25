@@ -36,7 +36,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ninja-build pkg-config nasm re2c autoconf automake libtool \
-            curl zip unzip tar
+            curl zip unzip tar openssl
       - name: Bootstrap canonical vcpkg scripts (no NuGet, no Mono)
         shell: bash
         run: |
@@ -70,9 +70,13 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=x64-linux -DVCPKG_MANIFEST_FEATURES=cnet \
             -DSALTSCORE_BUILD_URI=ON -DSALTSCORE_BUILD_CNET=ON \
+            -DSALTSCORE_ENABLE_OPENSSL_INTEROP=ON \
             "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/saltscore-sdk"
           cmake --build build-cnet --parallel 2
           ctest --test-dir build-cnet --output-on-failure -C Release --no-tests=error
+          # Independent OpenSSL 3 executable provides a distinct TLS implementation.
+          ctest --test-dir build-cnet --output-on-failure -C Release \
+            -R '^saltscore[.]cnet_openssl_interop$' --no-tests=error
           # A provider link alone is not network conformance: execute real TCP.
           ctest --test-dir build-cnet --output-on-failure -C Release \
             -R '^saltscore[.]cnet_tcp_loopback$' --no-tests=error
