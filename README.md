@@ -6,14 +6,16 @@ SaltsCore is an independently built **C11 foundation SDK**. It does not depend
 on the historical `qigao/salts`, `qigao/salts-utils`, CMeta, CFlow, or CSTL
 packages. Development is tracked by [migration epic #1](https://github.com/qigao/salts-core/issues/1).
 
-The M0 bootstrap implements an **owned-by-caller, non-owning counted byte view**
+The original M0 bootstrap implements an **owned-by-caller, non-owning counted byte view**
 in `SaltsCore::Core`. The stacked M1/M2 migration candidate adds
 `SaltsCore::Platform` (clock, OS CSPRNG, thread/synchronization) and
 `SaltsCore::Concurrency` (SPSC, bounded deadline queue, RCU, Disruptor,
 ThreadPool and Leader/Followers). The next stacked candidate adds
 `SaltsCore::Coroutine` (the original minicoro-backed lifecycle, pool and
 bounded sharded executor). These are imported from exact Salts sources and
-have no CMeta/CFlow dependencies. A further stacked candidate moves the
+have no CMeta/CFlow dependencies. The next Core foundation slice extracts
+`mem_buffer_t`, `mem_slice_t` and the bounded slab allocator from old
+`salts/utils`, with only the independent Platform synchronization API. A further stacked candidate moves the
 original NativeIO backend and Sharded/IPC ownership to
 `SaltsCore::NativeIO` (IOCP, epoll, io_uring, kqueue); the ACE completion-token
 adapter remains in Salts and is not installed by Core. They require exact-head Linux/Windows/macOS
