@@ -107,3 +107,19 @@ first entry is an actual dependency. The parser previously skipped that first
 dependency for executables and falsely reported missing CNet. Regression tests
 now distinguish the two formats. This change does **not** relax exported-owner
 uniqueness, required imports, or failure on missing tools/artifacts.
+
+## M4.10 — scoped Linux ASan/UBSan and TSan provider gate
+
+The independent `.github/workflows/cnet-sanitizers.yml` builds the **real**
+GmSSL-backed CNet using the canonical pinned vcpkg scripts and the files-only
+provider cache. The scoped PR/dispatch matrix runs instrumented runtime code
+in two mutually exclusive configurations: AddressSanitizer+UndefinedBehavior-
+Sanitizer (with leak detection), and ThreadSanitizer (with fail-on-report).
+It repeats the real TCP, buffer/NativeIO, and two-plugin cross-thread release
+CTest group three times. It does **not** install Mono/NuGet or switch TLS
+providers, and is deliberately not triggered by unrelated documentation PRs.
+
+Sanitizer evidence must reference the exact branch commit; adding this job
+does not constitute a passing TSan/ASan claim until both jobs succeed. The
+original Salts module transition and multi-provider TLS interoperability
+remain separate gates.
