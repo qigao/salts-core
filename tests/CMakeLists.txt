@@ -1,3 +1,31 @@
+if(UNIX)
+  add_executable(saltscore_readiness_race_test test_readiness_race.c)
+  target_compile_features(saltscore_readiness_race_test PRIVATE c_std_11)
+  target_link_libraries(saltscore_readiness_race_test PRIVATE SaltsCore::Platform)
+  set_target_properties(saltscore_readiness_race_test PROPERTIES
+    C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  add_test(NAME saltscore.readiness_close_race COMMAND saltscore_readiness_race_test)
+  set_tests_properties(saltscore.readiness_close_race PROPERTIES TIMEOUT 35)
+endif()
+
+# Real copied readiness state machine with test-only injection of native
+# backend hook failures: register, arm, unarm, close, shutdown, stale events.
+add_executable(saltscore_readiness_faults_test test_readiness_faults.c)
+target_compile_features(saltscore_readiness_faults_test PRIVATE c_std_11)
+target_link_libraries(saltscore_readiness_faults_test PRIVATE SaltsCore::Platform)
+set_target_properties(saltscore_readiness_faults_test PROPERTIES
+  C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME saltscore.readiness_faults COMMAND saltscore_readiness_faults_test)
+set_tests_properties(saltscore.readiness_faults PROPERTIES TIMEOUT 20)
+
+add_executable(saltscore_readiness_test test_readiness.c)
+target_compile_features(saltscore_readiness_test PRIVATE c_std_11)
+target_link_libraries(saltscore_readiness_test PRIVATE SaltsCore::Platform)
+set_target_properties(saltscore_readiness_test PROPERTIES
+  C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME saltscore.readiness_owner COMMAND saltscore_readiness_test)
+set_tests_properties(saltscore.readiness_owner PROPERTIES TIMEOUT 15)
+
 add_executable(saltscore_utf8_test test_utf8.c)
 target_link_libraries(saltscore_utf8_test PRIVATE SaltsCore::Core)
 target_compile_features(saltscore_utf8_test PRIVATE c_std_11)

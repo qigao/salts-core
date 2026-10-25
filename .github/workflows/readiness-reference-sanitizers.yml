@@ -1,0 +1,83 @@
+name: Original Readiness Source Sanitizer Parity
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/readiness-reference-sanitizers.yml"
+      - "tests/readiness-reference/**"
+      - "src/platform/readiness*"
+      - "include/salts/readiness.h"
+      - "CMakeLists.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kind: asan-ubsan
+            flags: "-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1"
+          - kind: tsan
+            flags: "-fsanitize=thread -fno-omit-frame-pointer -g -O1"
+    name: Original Readiness ${{ matrix.kind }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: df4c697d2f1facb6b54a3568520dd743c628aa81
+          path: salts-readiness-reference
+          persist-credentials: false
+      - name: Build pinned instrumented native Core shared owner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C salts-readiness-reference rev-parse HEAD)" = df4c697d2f1facb6b54a3568520dd743c628aa81
+          prefix="$RUNNER_TEMP/readiness-source-${{ matrix.kind }}"
+          cmake -S . -B build-readiness-owner-${{ matrix.kind }} -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_TESTING=OFF \
+            -DSALTSCORE_ENABLE_EPOLL_READINESS=ON \
+            "-DCMAKE_C_FLAGS=${{ matrix.flags }}" \
+            "-DCMAKE_INSTALL_PREFIX=$prefix"
+          cmake --build build-readiness-owner-${{ matrix.kind }} --parallel 2
+          cmake --install build-readiness-owner-${{ matrix.kind }} --config RelWithDebInfo
+      - name: Build original fault/state/poll/epoll tests, not old Runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="$RUNNER_TEMP/readiness-source-${{ matrix.kind }}"
+          cmake -S tests/readiness-reference -B build-readiness-tests-${{ matrix.kind }} -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DSALTSCORE_ENABLE_EPOLL_READINESS=ON \
+            "-DCMAKE_C_FLAGS=${{ matrix.flags }}" \
+            "-DSALTS_REFERENCE_SOURCE_ROOT=$GITHUB_WORKSPACE/salts-readiness-reference" \
+            "-DCMAKE_PREFIX_PATH=$prefix"
+          cmake --build build-readiness-tests-${{ matrix.kind }} --parallel 2
+      - name: Repeat original source conformance with fail-on-report sanitizers
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="$RUNNER_TEMP/readiness-source-${{ matrix.kind }}"
+          export LD_LIBRARY_PATH="$prefix/lib:${LD_LIBRARY_PATH:-}"
+          if [[ '${{ matrix.kind }}' == 'asan-ubsan' ]]; then
+            export ASAN_OPTIONS='detect_leaks=1:halt_on_error=1:abort_on_error=1'
+            export UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1'
+          else
+            export TSAN_OPTIONS='halt_on_error=1:exitcode=66'
+          fi
+          ctest --test-dir build-readiness-tests-${{ matrix.kind }} \
+            -C RelWithDebInfo --output-on-failure --no-tests=error \
+            --timeout 120 --repeat until-fail:3 \
+            -R '^saltscore[.]original_readiness[.](state_model|fake_contract|poll|epoll)$'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: original-readiness-${{ matrix.kind }}-source-log
+          path: build-readiness-tests-${{ matrix.kind }}/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
