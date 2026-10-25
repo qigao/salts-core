@@ -47,3 +47,15 @@ target_link_libraries(saltscore_ring_test PRIVATE SaltsCore::Core)
 set_target_properties(saltscore_ring_test PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.ring COMMAND saltscore_ring_test)
+
+# Parser-only C11 gate with no TLS, CNet, re2c, CMeta or CFlow provider.
+if(TARGET saltscore_wsparser)
+  add_executable(saltscore_wsparser_test test_wsparser.c)
+  target_compile_features(saltscore_wsparser_test PRIVATE c_std_11)
+  set_target_properties(saltscore_wsparser_test PROPERTIES
+    C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  target_include_directories(saltscore_wsparser_test PRIVATE
+    "${PROJECT_SOURCE_DIR}/src/cnet/wsparser")
+  target_link_libraries(saltscore_wsparser_test PRIVATE saltscore_wsparser)
+  add_test(NAME saltscore.wsparser COMMAND saltscore_wsparser_test)
+endif()
