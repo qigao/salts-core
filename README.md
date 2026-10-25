@@ -14,8 +14,8 @@ ThreadPool and Leader/Followers). The next stacked candidate adds
 `SaltsCore::Coroutine` (the original minicoro-backed lifecycle, pool and
 bounded sharded executor). These are imported from exact Salts sources and
 have no CMeta/CFlow dependencies. The next Core foundation slice extracts
-`mem_buffer_t`, `mem_slice_t` and the bounded slab allocator from old
-`salts/utils`, with only the independent Platform synchronization API. A further stacked candidate moves the
+`mem_buffer_t`, `mem_slice_t` and the bounded slab allocator and the original single-owner bipartite `ring_buffer`
+from old `salts/utils`, with only the independent Platform synchronization API. A further stacked candidate moves the
 original NativeIO backend and Sharded/IPC ownership to
 `SaltsCore::NativeIO` (IOCP, epoll, io_uring, kqueue); the ACE completion-token
 adapter remains in Salts and is not installed by Core. They require exact-head Linux/Windows/macOS

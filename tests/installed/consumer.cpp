@@ -1,3 +1,4 @@
+#include <ring_buffer.h>
 #include <cmeta_buffer.h>
 #include <salts_core/bytes.h>
 #include <salts/native_io.h>
@@ -31,5 +32,9 @@ int main() {
   if (!buffer || mem_buffer_capacity(buffer) < 3u) return 7;
   mem_buffer_release(buffer);
   mem_destroy(&pool);
+  unsigned char area[4]{};
+  ring_data_type ring{};
+  ring_init(&ring, area, sizeof(area));
+  if (ring_write_acquire(&ring, 1u) == nullptr) return 8;
   return 0;
 }
