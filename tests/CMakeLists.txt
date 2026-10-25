@@ -107,6 +107,30 @@ if(TARGET SaltsCore::CNet)
   add_test(NAME saltscore.cnet_tcp_loopback
     COMMAND saltscore_cnet_tcp_loopback_test)
   set_tests_properties(saltscore.cnet_tcp_loopback PROPERTIES TIMEOUT 20)
+
+  # Load two independent CNet consumers through the native dynamic loader.
+  # No CNet library is linked into the executable itself.
+  foreach(_plugin IN ITEMS a b)
+    add_library(saltscore_runtime_plugin_${_plugin} MODULE runtime_loaded_plugin.c)
+    target_compile_features(saltscore_runtime_plugin_${_plugin} PRIVATE c_std_11)
+    set_target_properties(saltscore_runtime_plugin_${_plugin} PROPERTIES
+      C_STANDARD_REQUIRED ON C_EXTENSIONS OFF WINDOWS_EXPORT_ALL_SYMBOLS ON)
+    target_link_libraries(saltscore_runtime_plugin_${_plugin} PRIVATE
+      SaltsCore::CNet)
+  endforeach()
+  add_executable(saltscore_two_plugins_test test_runtime_plugins.c)
+  target_compile_features(saltscore_two_plugins_test PRIVATE c_std_11)
+  set_target_properties(saltscore_two_plugins_test PROPERTIES
+    C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  target_link_libraries(saltscore_two_plugins_test PRIVATE
+    SaltsCore::Core SaltsCore::Platform ${CMAKE_DL_LIBS})
+  add_dependencies(saltscore_two_plugins_test
+    saltscore_runtime_plugin_a saltscore_runtime_plugin_b)
+  add_test(NAME saltscore.two_cnet_plugins
+    COMMAND saltscore_two_plugins_test
+      "$<TARGET_FILE:saltscore_runtime_plugin_a>"
+      "$<TARGET_FILE:saltscore_runtime_plugin_b>")
+  set_tests_properties(saltscore.two_cnet_plugins PROPERTIES TIMEOUT 30)
 endif()
 
 if(TARGET SaltsCore::CNet)

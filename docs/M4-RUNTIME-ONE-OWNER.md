@@ -36,6 +36,11 @@ consumer cutover and symbol ownership audit remain mandatory before release.
   `cmeta_thread_current_token()` identity and global pool pointer equality,
   and transfers retained slices both directions. It releases a slice after
   CNet teardown.
+- A CNet-free host dynamically loads two independent shared consumer plugins,
+  both explicitly calling CNet; after unloading plugin A, plugin B releases a
+  retained slice allocated by A. Eight unload/reload cycles compare the same
+  shared pool/TLS identity; no duplicate CNet copy or fallback is linked into
+  the executable. Exact-head CI must qualify this new test on all three OSes.
 - CNet's existing real TCP/TLS CA/SAN, GmSSL/ShangMi and SDK tests remain
   enabled on Linux, macOS and Windows. The minimal SDK workflow also runs
   installed C11/C++17 consumers after adding the shared-runtime loader path.
@@ -48,8 +53,8 @@ observed before/after failure.
 
 ## Still unqualified
 
-Final symbol/loaded-image audits on ELF/Mach-O/PE, two concurrently loaded
-CNet plugins, dynamic unload and retained-buffer races, ASan/UBSan/TSan,
+Final symbol/loaded-image audits on ELF/Mach-O/PE, threaded unload/retain races across concurrently loaded
+CNet plugins, ASan/UBSan/TSan,
 independent TLS peer interoperability, Android/iOS ABI, old Salts/ACE cutover,
 and a documented stable new ABI epoch are all **separate gates**. Green on
 one or more desktop CI jobs does not waive these.
