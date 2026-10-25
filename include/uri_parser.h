@@ -3,6 +3,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Host types
 typedef enum {
   URI_HOST_UNKNOWN = 0,
@@ -58,5 +62,9 @@ int uri_parse(const char *url_string, uri_t *result);
  * @param dest_size Size of destination buffer
  */
 void uri_copy_substring(const char *src, int start, int len, char *dest, int dest_size);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // SALTS_URI_PARSER_H
