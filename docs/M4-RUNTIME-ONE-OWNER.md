@@ -58,3 +58,30 @@ CNet plugins, ASan/UBSan/TSan,
 independent TLS peer interoperability, Android/iOS ABI, old Salts/ACE cutover,
 and a documented stable new ABI epoch are all **separate gates**. Green on
 one or more desktop CI jobs does not waive these.
+
+## M4.8 — independent installed binary ownership audit (candidate)
+
+The provider workflow now validates **installed**, not build-tree, Core,
+Platform, Concurrency, Coroutine, NativeIO and CNet shared images via
+`tools/audit_runtime_owner.py`. It checks:
+
+- Exactly one installed real image per owner (versioned symlinks resolve to
+  the same binary), including each binary's SHA-256 in a portable JSON report.
+- Unique exported definitions of `mem_global`, `mem_buffer_release`,
+  `mem_slice_release`, `cmeta_thread_current_token`,
+  `cmeta_deadline_queue_init`, `coro_executor_current`,
+  `native_io_backend_init` and `cnet_client_init`. Duplicate public
+  symbols across the six libraries fail closed; private ThreadPool TLS is
+  explicitly forbidden as a public export.
+- Clean-prefix installed executable and independently built shared probe
+  must not **define** global-owner functions. Binary link dependencies are
+  checked using ELF readelf, Mach-O otool, or PE dumpbin: the executable
+  must import Core/Platform/CNet; the independent module Core/Platform,
+  and CNet Core/NativeIO.
+- No silent success when a binary/tool is absent, symbols are missing, or
+  imports are wrong. Reports from each platform are uploaded by CI.
+
+This distinguishes symbol ownership from the already-passed live pointer
+identity and basic plugin unload tests. The audit does not yet prove an
+old-Salts binary can coexist, threaded unload under TSan, or a final new
+ABI/SONAME epoch; these gates remain **open**.
