@@ -22,3 +22,15 @@ single installed SaltsCore Platform owner.
 
 This is a Draft qualification path, not final coexistence with legacy
 Salts 2.3 symbols, production switch, or release acceptance.
+
+## Instrumented source parity
+
+The separate Linux `readiness-reference-sanitizers.yml` compiles the
+actual standalone Core shared Platform and all original pinned Salts
+Readiness test translation units using identical ASan/UBSan or TSan
+instrumentation. Explicit epoll and poll are both exercised. Each
+original state, fault-backend, poll and epoll test is repeated three
+times with LeakSanitizer or ThreadSanitizer enabled and fail-on-report.
+
+The SDK workflow statically validates this workflow's anchored,
+shell-quoted `ctest -R` selection, preventing build-only false greens.

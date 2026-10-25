@@ -17,6 +17,7 @@ jobs:
         shell: bash
         run: |
           python3 tools/check_ci_ctest_regex.py .github/workflows/cnet-sanitizers.yml
+          python3 tools/check_ci_ctest_regex.py .github/workflows/readiness-reference-sanitizers.yml
           python3 tools/check_dependency_boundaries.py
           python3 -m unittest discover -s tests -p 'test_dependency_boundaries.py'
       - name: Configure, compile, test, and install
