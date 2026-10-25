@@ -3,3 +3,15 @@ target_link_libraries(saltscore_bytes_test PRIVATE SaltsCore::Core)
 set_target_properties(saltscore_bytes_test PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.bytes COMMAND saltscore_bytes_test)
+
+add_executable(saltscore_platform_test test_platform.c)
+target_link_libraries(saltscore_platform_test PRIVATE SaltsCore::Platform)
+set_target_properties(saltscore_platform_test PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME saltscore.platform COMMAND saltscore_platform_test)
+
+add_executable(saltscore_concurrency_test test_concurrency.c)
+target_link_libraries(saltscore_concurrency_test PRIVATE SaltsCore::Concurrency)
+set_target_properties(saltscore_concurrency_test PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME saltscore.concurrency COMMAND saltscore_concurrency_test)
