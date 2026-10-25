@@ -16,6 +16,12 @@ set_target_properties(saltscore_core PROPERTIES
 target_include_directories(saltscore_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+# Public mem_pool_t and mem_buffer_t contain C11 atomic fields on MSVC.
+# Consumers including cmeta_buffer.h require the same C compiler setting.
+if(MSVC)
+  target_compile_options(saltscore_core PUBLIC
+    $<$<COMPILE_LANG_AND_ID:C,MSVC>:-experimental:c11atomics>)
+endif()
 
 # Platform extraction from Salts: OS-owned time, CSPRNG, and synchronization.
 # Historical cmeta_ symbol names remain until a separately qualified ABI epoch.
