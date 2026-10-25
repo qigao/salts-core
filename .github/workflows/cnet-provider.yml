@@ -12,6 +12,8 @@ on:
       - "tests/installed/cnet_consumer.*"
       - "tests/test_gmssl_*.c"
       - "tests/test_cnet_tcp_loopback.c"
+      - "tests/test_cnet_tls_ca_san.c"
+      - "tests/fixtures/**"
       - "tests/CMakeLists.txt"
   workflow_dispatch:
 permissions:
@@ -73,6 +75,9 @@ jobs:
           # A provider link alone is not network conformance: execute real TCP.
           ctest --test-dir build-cnet --output-on-failure -C Release \
             -R '^saltscore[.]cnet_tcp_loopback$' --no-tests=error
+          # Actual TCP TLS peer verification: CA + hostname must be enforced.
+          ctest --test-dir build-cnet --output-on-failure -C Release \
+            -R '^saltscore[.]cnet_tls_ca_san$' --no-tests=error
           # Exact required pinned-provider gates, in addition to all CTests.
           ctest --test-dir build-cnet --output-on-failure -C Release \
             -R '^saltscore[.]gmssl_(tls_io_abi|shangmi_provider)$' --no-tests=error

@@ -117,3 +117,33 @@ if(TARGET SaltsCore::CNet)
   add_test(NAME saltscore.gmssl_shangmi_provider
     COMMAND saltscore_gmssl_shangmi_provider_test)
 endif()
+
+if(TARGET SaltsCore::CNet)
+  # Real TLS over NativeIO TCP: trusted issuer + correct SAN must connect;
+  # wrong root and wrong DNS identity must fail without authenticated callback.
+  add_executable(saltscore_cnet_tls_ca_san_test test_cnet_tls_ca_san.c)
+  target_compile_features(saltscore_cnet_tls_ca_san_test PRIVATE c_std_11)
+  set_target_properties(saltscore_cnet_tls_ca_san_test PROPERTIES
+    C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  target_link_libraries(saltscore_cnet_tls_ca_san_test PRIVATE SaltsCore::CNet)
+  if(MSVC)
+    target_compile_options(saltscore_cnet_tls_ca_san_test PRIVATE
+      $<$<COMPILE_LANGUAGE:C>:-experimental:c11atomics>)
+  endif()
+  file(TO_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/p384-test-root-cert.pem"
+       _cnet_test_root_ca)
+  file(TO_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/p384-test-wrong-root-cert.pem"
+       _cnet_test_wrong_ca)
+  file(TO_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/p384-test-server-cert.pem"
+       _cnet_test_cert)
+  file(TO_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/p384-test-server-key.pem"
+       _cnet_test_key)
+  target_compile_definitions(saltscore_cnet_tls_ca_san_test PRIVATE
+    "CORE_TLS_TEST_P384_CA=\"${_cnet_test_root_ca}\""
+    "CORE_TLS_TEST_P384_WRONG_CA=\"${_cnet_test_wrong_ca}\""
+    "CORE_TLS_TEST_P384_LEAF=\"${_cnet_test_cert}\""
+    "CORE_TLS_TEST_P384_KEY=\"${_cnet_test_key}\"")
+  add_test(NAME saltscore.cnet_tls_ca_san
+    COMMAND saltscore_cnet_tls_ca_san_test)
+  set_tests_properties(saltscore.cnet_tls_ca_san PROPERTIES TIMEOUT 65)
+endif()
