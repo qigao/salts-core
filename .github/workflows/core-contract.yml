@@ -22,7 +22,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S . -B build -DBUILD_TESTING=ON "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/saltscore-sdk"
+          cmake -S . -B build -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/saltscore-sdk"
           cmake --build build --config Release --parallel 2
           ctest --test-dir build --output-on-failure -C Release
           cmake --install build --config Release
@@ -30,6 +30,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S tests/installed -B build-installed "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/saltscore-sdk"
+          cmake -S tests/installed -B build-installed -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/saltscore-sdk"
           cmake --build build-installed --config Release --parallel 2
           ctest --test-dir build-installed --output-on-failure -C Release
