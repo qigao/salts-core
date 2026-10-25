@@ -226,7 +226,7 @@ jobs:
           $cache = $cache.Replace('\', '/')
           $env:VCPKG_BINARY_SOURCES = "clear;files,$cache,readwrite"
           $toolchain = Join-Path $env:VCPKG_ROOT 'scripts/buildsystems/vcpkg.cmake'
-          $cmakeArgs = @('-S', '.', '-B', 'build-cnet', '-G', 'Visual Studio 17 2022',
+          $cmakeArgs = @('-S', '.', '-B', 'build-cnet', '-G', 'Visual Studio 18 2026',
                     '-A', 'x64', '-DBUILD_TESTING=ON',
                     "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
                     '-DVCPKG_TARGET_TRIPLET=x64-windows',
@@ -257,7 +257,7 @@ jobs:
           $vcpkgBin = Join-Path $env:GITHUB_WORKSPACE 'vcpkg_installed/x64-windows/bin'
           $env:PATH = "$prefix/bin;$vcpkgBin;$env:PATH"
           $cmakeArgs = @('-S', 'tests/installed', '-B', 'build-installed-cnet',
-                         '-G', 'Visual Studio 17 2022', '-A', 'x64',
+                         '-G', 'Visual Studio 18 2026', '-A', 'x64',
                          "-DCMAKE_PREFIX_PATH=$prefix")
           & cmake @cmakeArgs
           if ($LASTEXITCODE -ne 0) { throw "installed CNet consumer configure failed" }
