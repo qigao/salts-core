@@ -13,7 +13,10 @@ in `SaltsCore::Core`. The stacked M1/M2 migration candidate adds
 ThreadPool and Leader/Followers). The next stacked candidate adds
 `SaltsCore::Coroutine` (the original minicoro-backed lifecycle, pool and
 bounded sharded executor). These are imported from exact Salts sources and
-have no CMeta/CFlow dependencies. They require exact-head Linux/Windows/macOS
+have no CMeta/CFlow dependencies. A further stacked candidate moves the
+original NativeIO backend and Sharded/IPC ownership to
+`SaltsCore::NativeIO` (IOCP, epoll, io_uring, kqueue); the ACE completion-token
+adapter remains in Salts and is not installed by Core. They require exact-head Linux/Windows/macOS
 CI and installed C11/C++17 qualification before this candidate is accepted. It is not yet a replacement for any
 published `Salts::Core` binary, and no old APIs or CMake aliases have been
 cut over.
@@ -22,7 +25,7 @@ cut over.
 
 | Mandatory | Optional on supported platforms |
 |---|---|
-| Core byte views, Platform, Concurrency, Coroutine | NativeIO, CNet, Crypto, FS, Process, Unicode, IDNA, Serial, USB, Capture, Playback |
+| Core byte views, Platform, Concurrency, Coroutine, NativeIO | CNet, Crypto, FS, Process, Unicode, IDNA, Serial, USB, Capture, Playback |
 
 Unicode stays pinned to Unicode 17.0.0 with re2c as a **build-time** tool only;
 IDNA depends only on the new Unicode module. FS and Process are native system
