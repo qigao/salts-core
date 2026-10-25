@@ -1,4 +1,6 @@
 #include <salts_core/bytes.h>
+#include <coro.h>
+#include <coro_executor.h>
 #include <salts/deadline_queue.h>
 #include <salts/spsc_ring.h>
 #include <salts/thread.h>
@@ -17,5 +19,6 @@ int main() {
       cmeta_spsc_ring_write_available(&ring) != 7u) return 2;
   if (cmeta_deadline_queue_init(&queue, 2u) != SALTS_OK ||
       cmeta_deadline_queue_destroy(&queue) != SALTS_OK) return 3;
+  if (coro_executor_current() != nullptr || coro_state(nullptr) != coro_DEAD) return 4;
   return 0;
 }

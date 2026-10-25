@@ -71,7 +71,29 @@ elseif(UNIX)
     _DEFAULT_SOURCE=1 _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700)
 endif()
 
-install(TARGETS saltscore_core saltscore_platform saltscore_concurrency
+# Portable coroutine engine (minicoro remains private, no CMeta facade).
+add_library(saltscore_coroutine STATIC
+  src/coroutine/coro.c
+  src/coroutine/coro_pool.c
+  src/coroutine/coro_executor.c)
+add_library(SaltsCore::Coroutine ALIAS saltscore_coroutine)
+set_target_properties(saltscore_coroutine PROPERTIES
+  EXPORT_NAME Coroutine C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+  C_VISIBILITY_PRESET hidden)
+target_compile_features(saltscore_coroutine PUBLIC c_std_11)
+target_include_directories(saltscore_coroutine
+  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/vendor/minicoro)
+target_link_libraries(saltscore_coroutine PUBLIC SaltsCore::Concurrency)
+if(APPLE)
+  target_compile_definitions(saltscore_coroutine PRIVATE _DARWIN_C_SOURCE=1)
+elseif(UNIX)
+  target_compile_definitions(saltscore_coroutine PRIVATE
+    _DEFAULT_SOURCE=1 _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700)
+endif()
+
+install(TARGETS saltscore_core saltscore_platform saltscore_concurrency saltscore_coroutine
   EXPORT SaltsCoreTargets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -79,6 +101,11 @@ install(TARGETS saltscore_core saltscore_platform saltscore_concurrency
 install(DIRECTORY include/salts_core include/salts
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.h")
+
+install(FILES include/coro.h include/coro_pool.h include/coro_executor.h
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES vendor/minicoro/LICENSE
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/minicoro)
 
 set(_saltscore_package_dir "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsCore")
 configure_package_config_file(
