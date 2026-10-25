@@ -27,7 +27,7 @@ cut over.
 
 | Mandatory | Optional on supported platforms |
 |---|---|
-| Core byte views, Platform, Concurrency, Coroutine, NativeIO | CNet, Crypto, FS, Process, Unicode, IDNA, Serial, USB, Capture, Playback |
+| Core byte views, Platform, Concurrency, Coroutine, NativeIO | URI (re2c build-time), CNet, Crypto, FS, Process, Unicode, IDNA, Serial, USB, Capture, Playback |
 
 Unicode stays pinned to Unicode 17.0.0 with re2c as a **build-time** tool only;
 IDNA depends only on the new Unicode module. FS and Process are native system
