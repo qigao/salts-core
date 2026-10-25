@@ -67,6 +67,22 @@ jobs:
             "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/saltscore-sdk"
           cmake --build build-cnet --parallel 2
           ctest --test-dir build-cnet --output-on-failure -C Release --no-tests=error
+          # Explicitly prove the provider ABI/KAT gates actually ran.
+          ctest --test-dir build-cnet --output-on-failure -C Release \
+            -R '^saltscore[.]gmssl_(tls_io_abi|shangmi_provider)
+          cmake --install build-cnet --config Release
+      - name: Real installed CNet C11/C++17 consumer
+        shell: bash
+        run: |
+          set -euo pipefail
+          export LD_LIBRARY_PATH="$RUNNER_TEMP/saltscore-sdk/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:${LD_LIBRARY_PATH:-}"
+          cmake -S tests/installed -B build-installed-cnet -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/saltscore-sdk"
+          cmake --build build-installed-cnet --parallel 2
+          ctest --test-dir build-installed-cnet --output-on-failure -C Release --no-tests=error
+          test -f "$RUNNER_TEMP/saltscore-sdk/include/cnet/cnet.h"
+          grep -Fq 'SaltsCore::CNet' "$RUNNER_TEMP/saltscore-sdk/lib/cmake/SaltsCore/SaltsCoreTargets.cmake"
+ --no-tests=error
           cmake --install build-cnet --config Release
       - name: Real installed CNet C11/C++17 consumer
         shell: bash

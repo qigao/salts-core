@@ -78,3 +78,23 @@ if(MSVC)
     $<$<COMPILE_LANGUAGE:C>:-experimental:c11atomics>)
 endif()
 add_test(NAME saltscore.cnet_policy COMMAND saltscore_cnet_policy_test)
+
+# Run real pinned-provider ABI and ShangMi KATs only when the optional
+# transport provider graph was actually configured. No fake TLS fallback.
+if(TARGET SaltsCore::CNet)
+  add_executable(saltscore_gmssl_tls_io_abi_test test_gmssl_tls_io_abi.c)
+  target_compile_features(saltscore_gmssl_tls_io_abi_test PRIVATE c_std_11)
+  set_target_properties(saltscore_gmssl_tls_io_abi_test PROPERTIES
+    C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  target_link_libraries(saltscore_gmssl_tls_io_abi_test PRIVATE GmSSL::GmSSL)
+  add_test(NAME saltscore.gmssl_tls_io_abi COMMAND saltscore_gmssl_tls_io_abi_test)
+
+  add_executable(saltscore_gmssl_shangmi_provider_test
+    test_gmssl_shangmi_provider.c)
+  target_compile_features(saltscore_gmssl_shangmi_provider_test PRIVATE c_std_11)
+  set_target_properties(saltscore_gmssl_shangmi_provider_test PROPERTIES
+    C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  target_link_libraries(saltscore_gmssl_shangmi_provider_test PRIVATE GmSSL::GmSSL)
+  add_test(NAME saltscore.gmssl_shangmi_provider
+    COMMAND saltscore_gmssl_shangmi_provider_test)
+endif()

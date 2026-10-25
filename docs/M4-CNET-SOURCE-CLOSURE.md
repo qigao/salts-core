@@ -98,3 +98,22 @@ installs a real CNet DSO plus C11/C++17 CNet consumers. It must be **observed
 and fully successful**, with exact-head package/link evidence, before CNet can
 be called provider-qualified. Linux-only success still does not certify
 Windows/macOS provider closure or TLS peer interop.
+
+## Pinned GmSSL ABI and ShangMi provider-only test gate
+
+The CNet provider-enabled build now includes two independent C11 tests,
+linked directly against the actual pinned `GmSSL::GmSSL` implementation:
+
+- `saltscore.gmssl_tls_io_abi`: ensures the runtime and public header agree
+  on `TLS_CTX` and `TLS_CONNECT` sizes, and that external I/O callbacks
+  propagate retry signals rather than inventing a synchronous completion.
+- `saltscore.gmssl_shangmi_provider`: migrates Salts' existing standalone
+  RFC 8998/TLCP provider-side SM2/SM3/SM4 KAT, AEAD, HKDF/HMAC and strict
+  cipher/protocol profile test. Only a no-CNet dependency comment changed.
+
+The Linux CNet workflow asserts **both named tests are present and actually
+run**, beyond the generic CTest. These tests do *not* exercise an actual TLS
+handshake or certificate chain, and do not establish Windows/macOS provider
+ABI, runtime conformance, or independent network interoperability. The
+preexisting GmSSL port warning about unmatched ALPN patch replacements is
+not a pass/fail result and merits separate verification.
