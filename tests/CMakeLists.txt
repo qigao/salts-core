@@ -1,3 +1,10 @@
+add_executable(saltscore_runtime_abi_test test_runtime_abi.c)
+target_compile_features(saltscore_runtime_abi_test PRIVATE c_std_11)
+target_link_libraries(saltscore_runtime_abi_test PRIVATE SaltsCore::Core)
+set_target_properties(saltscore_runtime_abi_test PROPERTIES
+  C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME saltscore.runtime_abi_0_1 COMMAND saltscore_runtime_abi_test)
+
 add_executable(saltscore_bytes_test test_bytes.c)
 target_link_libraries(saltscore_bytes_test PRIVATE SaltsCore::Core)
 set_target_properties(saltscore_bytes_test PROPERTIES
