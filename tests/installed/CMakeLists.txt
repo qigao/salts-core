@@ -26,3 +26,17 @@ if(TARGET SaltsCore::URI)
   target_link_libraries(uri_consumer_cpp PRIVATE SaltsCore::URI)
   add_test(NAME sdk.uri_consumer_cpp COMMAND uri_consumer_cpp)
 endif()
+
+# Only present when an exact CNet provider SDK was actually configured and
+# installed. The baseline Core installation must work with CNet disabled.
+if(TARGET SaltsCore::CNet)
+  add_executable(cnet_consumer_c cnet_consumer.c)
+  target_compile_features(cnet_consumer_c PRIVATE c_std_11)
+  target_link_libraries(cnet_consumer_c PRIVATE SaltsCore::CNet)
+  add_test(NAME sdk.cnet_consumer_c COMMAND cnet_consumer_c)
+
+  add_executable(cnet_consumer_cpp cnet_consumer.cpp)
+  target_compile_features(cnet_consumer_cpp PRIVATE cxx_std_17)
+  target_link_libraries(cnet_consumer_cpp PRIVATE SaltsCore::CNet)
+  add_test(NAME sdk.cnet_consumer_cpp COMMAND cnet_consumer_cpp)
+endif()

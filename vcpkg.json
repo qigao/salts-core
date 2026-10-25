@@ -1,0 +1,17 @@
+{
+  "name": "salts-core",
+  "version-semver": "0.1.0",
+  "builtin-baseline": "b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01",
+  "features": {
+    "cnet": {
+      "description": "Explicit provider-backed C11 CNet transport, not part of base Core",
+      "dependencies": [
+        { "name": "pkgconf", "host": true },
+        "simde",
+        "c-ares",
+        "kcp",
+        "gmssl"
+      ]
+    }
+  }
+}
