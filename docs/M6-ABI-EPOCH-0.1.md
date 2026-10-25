@@ -20,3 +20,13 @@ both old and new owners. Full CMeta/CFlow/ServiceHost/ACE binary
 handoff remains a separate unmerged migration. The isolated original
 CMeta/Configurator downstream proof is in Salts Draft PR #1304.
 Tracking: salts-core#20, salts-core#3, salts#1287.
+
+## Bidirectional version compatibility proof
+
+CI mutates the **real installed** SaltsCoreConfigVersion.cmake output
+while retaining its compatibility logic. A 0.1.0 consumer must accept
+0.1.0 and 0.1.9, but reject a future 0.2.0 provider. Conversely,
+0.1.0 must reject a 0.2.0 consumer request. This detects an accidental
+SameMajorVersion regression, which would otherwise admit 0.2.0 to
+a consumer built against the incompatible 0.1 ABI. No native 0.2
+binary is built or considered qualified.

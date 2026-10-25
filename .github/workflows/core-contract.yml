@@ -52,3 +52,9 @@ jobs:
             exit 1
           fi
           echo "Expected rejection: 0.2 consumer cannot resolve 0.1 ABI"
+      - name: Verify future 0.2 cannot satisfy older 0.1 ABI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/test_abi_minor_compat.py \
+            --version-file "$RUNNER_TEMP/saltscore-sdk/lib/cmake/SaltsCore/SaltsCoreConfigVersion.cmake"
