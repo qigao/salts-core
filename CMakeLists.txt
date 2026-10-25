@@ -1,18 +1,25 @@
 cmake_minimum_required(VERSION 3.20)
 project(SaltsCore VERSION 0.1.0 LANGUAGES C)
 
+# All test executables and runtime DLLs share a directory on multi-config Windows.
+# This is DLL discovery, not a copy of the runtime or a static fallback.
+if(WIN32)
+  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin")
+endif()
+
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(CTest)
 find_package(Threads REQUIRED)
 
 # Keep the minimal foundation target usable without platform/transport providers.
-add_library(saltscore_core STATIC src/bytes.c)
+add_library(saltscore_core SHARED src/bytes.c)
 add_library(SaltsCore::Core ALIAS saltscore_core)
 target_compile_features(saltscore_core PUBLIC c_std_11)
 set_target_properties(saltscore_core PROPERTIES
   EXPORT_NAME Core C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
-  C_VISIBILITY_PRESET hidden)
+  C_VISIBILITY_PRESET default WINDOWS_EXPORT_ALL_SYMBOLS ON
+  VERSION "${PROJECT_VERSION}" SOVERSION "${PROJECT_VERSION_MAJOR}")
 target_include_directories(saltscore_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
@@ -32,11 +39,12 @@ if(WIN32)
 else()
   list(APPEND _saltscore_platform_sources src/platform/thread_posix.c)
 endif()
-add_library(saltscore_platform STATIC ${_saltscore_platform_sources})
+add_library(saltscore_platform SHARED ${_saltscore_platform_sources})
 add_library(SaltsCore::Platform ALIAS saltscore_platform)
 set_target_properties(saltscore_platform PROPERTIES
   EXPORT_NAME Platform C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
-  C_VISIBILITY_PRESET hidden)
+  C_VISIBILITY_PRESET default WINDOWS_EXPORT_ALL_SYMBOLS ON
+  VERSION "${PROJECT_VERSION}" SOVERSION "${PROJECT_VERSION_MAJOR}")
 target_compile_features(saltscore_platform PUBLIC c_std_11)
 target_include_directories(saltscore_platform PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -59,14 +67,15 @@ target_link_libraries(saltscore_core PUBLIC SaltsCore::Platform)
 
 # The original bounded primitives have no Reflection/CFlow dependency.
 # Keep all six original source units together for full API surface coverage.
-add_library(saltscore_concurrency STATIC
+add_library(saltscore_concurrency SHARED
   src/concurrency/deadline_queue.c src/concurrency/disruptor.c
   src/concurrency/rcu.c src/concurrency/spsc_ring.c
   src/concurrency/thread_pool.c src/concurrency/thread_pool_lf.c)
 add_library(SaltsCore::Concurrency ALIAS saltscore_concurrency)
 set_target_properties(saltscore_concurrency PROPERTIES
   EXPORT_NAME Concurrency C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
-  C_VISIBILITY_PRESET hidden)
+  C_VISIBILITY_PRESET default WINDOWS_EXPORT_ALL_SYMBOLS ON
+  VERSION "${PROJECT_VERSION}" SOVERSION "${PROJECT_VERSION_MAJOR}")
 target_compile_features(saltscore_concurrency PUBLIC c_std_11)
 target_include_directories(saltscore_concurrency PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -84,14 +93,15 @@ elseif(UNIX)
 endif()
 
 # Portable coroutine engine (minicoro remains private, no CMeta facade).
-add_library(saltscore_coroutine STATIC
+add_library(saltscore_coroutine SHARED
   src/coroutine/coro.c
   src/coroutine/coro_pool.c
   src/coroutine/coro_executor.c)
 add_library(SaltsCore::Coroutine ALIAS saltscore_coroutine)
 set_target_properties(saltscore_coroutine PROPERTIES
   EXPORT_NAME Coroutine C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
-  C_VISIBILITY_PRESET hidden)
+  C_VISIBILITY_PRESET default WINDOWS_EXPORT_ALL_SYMBOLS ON
+  VERSION "${PROJECT_VERSION}" SOVERSION "${PROJECT_VERSION_MAJOR}")
 target_compile_features(saltscore_coroutine PUBLIC c_std_11)
 target_include_directories(saltscore_coroutine
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -106,7 +116,7 @@ elseif(UNIX)
 endif()
 
 # Platform native completion/readiness ownership (no CFlow or CMeta).
-add_library(saltscore_native_io STATIC
+add_library(saltscore_native_io SHARED
   src/native-io/native_io.c
   src/native-io/native_io_accept_escrow.c
   src/native-io/native_io_sharded.c
@@ -138,7 +148,8 @@ else()
 endif()
 set_target_properties(saltscore_native_io PROPERTIES
   EXPORT_NAME NativeIO C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
-  C_VISIBILITY_PRESET hidden)
+  C_VISIBILITY_PRESET default WINDOWS_EXPORT_ALL_SYMBOLS ON
+  VERSION "${PROJECT_VERSION}" SOVERSION "${PROJECT_VERSION_MAJOR}")
 target_compile_features(saltscore_native_io PUBLIC c_std_11)
 target_include_directories(saltscore_native_io PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

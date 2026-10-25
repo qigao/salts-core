@@ -11,11 +11,17 @@ if(NOT TARGET c-ares::cares OR NOT TARGET kcp::kcp OR NOT TARGET GmSSL::GmSSL)
   message(FATAL_ERROR "CNet requires c-ares::cares, kcp::kcp and GmSSL::GmSSL")
 endif()
 
-# Core archives linked into a shared CNet image must be PIC on ELF platforms.
-foreach(_dep IN ITEMS saltscore_core saltscore_platform saltscore_concurrency
-                      saltscore_coroutine saltscore_native_io saltscore_uri)
-  set_target_properties(${_dep} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# Never fold a second copy of any stateful runtime into CNet. Core/Platform/
+# Concurrency/Coroutine/NativeIO are one installed shared owner each.
+foreach(_owner IN ITEMS saltscore_core saltscore_platform saltscore_concurrency
+                        saltscore_coroutine saltscore_native_io)
+  get_target_property(_owner_kind ${_owner} TYPE)
+  if(NOT _owner_kind STREQUAL "SHARED_LIBRARY")
+    message(FATAL_ERROR "CNet requires shared foundation owner: ${_owner}")
+  endif()
 endforeach()
+# The stateless URI parser may remain an independent PIC archive.
+set_target_properties(saltscore_uri PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # Single CNet-private Monocypher namespace avoids duplicate crypto_argon2 and
 # other generic symbols in programs containing more than one consumer DSO.

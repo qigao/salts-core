@@ -6,6 +6,13 @@ on:
       - "include/cnet/**"
       - "vendor/cnet/**"
       - "cmake/SaltsCoreCNet.cmake"
+      - "CMakeLists.txt"
+      - "tools/audit_runtime_owner.py"
+      - "tests/test_audit_runtime_owner.py"
+      - "tests/installed/abi_owner_consumer.c"
+      - "tests/installed/CMakeLists.txt"
+      - "tests/runtime_loaded_plugin.c"
+      - "tests/test_runtime_plugins.c"
       - "vcpkg.json"
       - "vcpkg-configuration.json"
       - "cmake/ci/github-packages.py"
@@ -94,6 +101,42 @@ jobs:
           ctest --test-dir build-installed-cnet --output-on-failure -C Release --no-tests=error
           test -f "$RUNNER_TEMP/saltscore-sdk/include/cnet/cnet.h"
           grep -Fq 'SaltsCore::CNet' "$RUNNER_TEMP/saltscore-sdk/lib/cmake/SaltsCore/SaltsCoreTargets.cmake"
+      - name: Audit installed ELF exports and consumer DT_NEEDED
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest tests.test_audit_runtime_owner
+          python3 tools/audit_runtime_owner.py \
+            --prefix "$RUNNER_TEMP/saltscore-sdk" \
+            --build-dir build-installed-cnet \
+            --report build/abi-audit-linux.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: saltscore-abi-audit-linux
+          path: build/abi-audit-linux.json
+          if-no-files-found: ignore
+      - name: Relocate installed Linux SDK and repeat C11/C++17 and ABI audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          relocated="$RUNNER_TEMP/saltscore-sdk-relocated"
+          test ! -e "$relocated"
+          mv "$RUNNER_TEMP/saltscore-sdk" "$relocated"
+          test ! -e "$RUNNER_TEMP/saltscore-sdk"
+          export LD_LIBRARY_PATH="$relocated/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:${LD_LIBRARY_PATH:-}"
+          cmake -S tests/installed -B build-relocated-cnet -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$relocated"
+          cmake --build build-relocated-cnet --parallel 2
+          ctest --test-dir build-relocated-cnet -C Release --output-on-failure --no-tests=error
+          python3 tools/audit_runtime_owner.py --prefix "$relocated" \
+            --build-dir build-relocated-cnet --report build/abi-relocation-linux.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: saltscore-abi-relocation-linux
+          path: build/abi-relocation-linux.json
+          if-no-files-found: ignore
 
   macos-cnet:
     name: macOS pinned CNet provider + live TLS
@@ -170,6 +213,42 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/saltscore-sdk"
           cmake --build build-installed-cnet --parallel 2
           ctest --test-dir build-installed-cnet -C Release --output-on-failure --no-tests=error
+      - name: Audit installed Mach-O exports and linked consumers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest tests.test_audit_runtime_owner
+          python3 tools/audit_runtime_owner.py \
+            --prefix "$RUNNER_TEMP/saltscore-sdk" \
+            --build-dir build-installed-cnet \
+            --report build/abi-audit-macos.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: saltscore-abi-audit-macos
+          path: build/abi-audit-macos.json
+          if-no-files-found: ignore
+      - name: Relocate installed macOS SDK and repeat C11/C++17 and ABI audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          relocated="$RUNNER_TEMP/saltscore-sdk-relocated"
+          test ! -e "$relocated"
+          mv "$RUNNER_TEMP/saltscore-sdk" "$relocated"
+          test ! -e "$RUNNER_TEMP/saltscore-sdk"
+          export DYLD_LIBRARY_PATH="$relocated/lib:$GITHUB_WORKSPACE/vcpkg_installed/$VCPKG_TARGET_TRIPLET/lib:${DYLD_LIBRARY_PATH:-}"
+          cmake -S tests/installed -B build-relocated-cnet -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$relocated"
+          cmake --build build-relocated-cnet --parallel 2
+          ctest --test-dir build-relocated-cnet -C Release --output-on-failure --no-tests=error
+          python3 tools/audit_runtime_owner.py --prefix "$relocated" \
+            --build-dir build-relocated-cnet --report build/abi-relocation-macos.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: saltscore-abi-relocation-macos
+          path: build/abi-relocation-macos.json
+          if-no-files-found: ignore
 
   windows-cnet:
     name: Windows MSVC pinned CNet provider + IOCP TLS
@@ -239,7 +318,7 @@ jobs:
           cmake --build build-cnet --config Release --parallel 2
           if ($LASTEXITCODE -ne 0) { throw "Windows CNet compilation failed" }
           $vcpkgBin = Join-Path $env:GITHUB_WORKSPACE 'vcpkg_installed/x64-windows/bin'
-          $buildBin = Join-Path $env:GITHUB_WORKSPACE 'build-cnet/Release'
+          $buildBin = Join-Path $env:GITHUB_WORKSPACE 'build-cnet/bin/Release'
           $env:PATH = "$vcpkgBin;$buildBin;$env:PATH"
           ctest --test-dir build-cnet -C Release --output-on-failure --timeout 65 --no-tests=error
           if ($LASTEXITCODE -ne 0) { throw "Windows CNet native CTest failed" }
@@ -273,3 +352,46 @@ jobs:
           if (-not (Select-String -Path "$prefix/lib/cmake/SaltsCore/SaltsCoreTargets.cmake" -SimpleMatch 'SaltsCore::CNet' -Quiet)) {
             throw "missing installed CNet CMake target"
           }
+
+      - name: Audit installed PE DLL exports and consumer imports
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m unittest tests.test_audit_runtime_owner
+          if ($LASTEXITCODE -ne 0) { throw 'ABI audit parser self-tests failed' }
+          python tools/audit_runtime_owner.py --prefix "$env:RUNNER_TEMP/saltscore-sdk" --build-dir build-installed-cnet --report build/abi-audit-windows.json
+          if ($LASTEXITCODE -ne 0) { throw 'installed PE single-owner ABI audit failed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: saltscore-abi-audit-windows
+          path: build/abi-audit-windows.json
+          if-no-files-found: ignore
+      - name: Relocate installed Windows SDK and repeat C11/C++17 and ABI audit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $old = Join-Path $env:RUNNER_TEMP 'saltscore-sdk'
+          $relocated = Join-Path $env:RUNNER_TEMP 'saltscore-sdk-relocated'
+          if (Test-Path $relocated) { throw 'relocated SDK prefix already exists' }
+          Move-Item -Path $old -Destination $relocated
+          if (Test-Path $old) { throw 'original SDK prefix must be absent' }
+          $providerBin = Join-Path $env:GITHUB_WORKSPACE 'vcpkg_installed/x64-windows/bin'
+          $env:PATH = "$relocated/bin;$providerBin;$env:PATH"
+          $args = @('-S', 'tests/installed', '-B', 'build-relocated-cnet',
+                    '-G', 'Visual Studio 18 2026', '-A', 'x64',
+                    "-DCMAKE_PREFIX_PATH=$relocated")
+          & cmake @args
+          if ($LASTEXITCODE -ne 0) { throw 'relocated SDK CMake configure failed' }
+          cmake --build build-relocated-cnet --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'relocated SDK compilation failed' }
+          ctest --test-dir build-relocated-cnet -C Release --output-on-failure --no-tests=error
+          if ($LASTEXITCODE -ne 0) { throw 'relocated SDK CTest failed' }
+          python tools/audit_runtime_owner.py --prefix $relocated --build-dir build-relocated-cnet --report build/abi-relocation-windows.json
+          if ($LASTEXITCODE -ne 0) { throw 'relocated PE owner audit failed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: saltscore-abi-relocation-windows
+          path: build/abi-relocation-windows.json
+          if-no-files-found: ignore

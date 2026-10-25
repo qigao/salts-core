@@ -39,4 +39,18 @@ if(TARGET SaltsCore::CNet)
   target_compile_features(cnet_consumer_cpp PRIVATE cxx_std_17)
   target_link_libraries(cnet_consumer_cpp PRIVATE SaltsCore::CNet)
   add_test(NAME sdk.cnet_consumer_cpp COMMAND cnet_consumer_cpp)
+
+  # Independent installed SDK build: EXE and plugin both import one Core/Platform
+  # runtime while CNet is simultaneously loaded. No source-build references.
+  add_library(owner_probe_installed SHARED ../runtime_owner_module.c)
+  target_compile_features(owner_probe_installed PRIVATE c_std_11)
+  set_target_properties(owner_probe_installed PROPERTIES
+    C_STANDARD_REQUIRED ON C_EXTENSIONS OFF WINDOWS_EXPORT_ALL_SYMBOLS ON)
+  target_link_libraries(owner_probe_installed PRIVATE
+    SaltsCore::Core SaltsCore::Platform)
+  add_executable(abi_owner_consumer abi_owner_consumer.c)
+  target_compile_features(abi_owner_consumer PRIVATE c_std_11)
+  target_link_libraries(abi_owner_consumer PRIVATE
+    SaltsCore::CNet SaltsCore::Core SaltsCore::Platform owner_probe_installed)
+  add_test(NAME sdk.abi_owner_consumer COMMAND abi_owner_consumer)
 endif()
