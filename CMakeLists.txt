@@ -93,7 +93,52 @@ elseif(UNIX)
     _DEFAULT_SOURCE=1 _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700)
 endif()
 
-install(TARGETS saltscore_core saltscore_platform saltscore_concurrency saltscore_coroutine
+# Platform native completion/readiness ownership (no CFlow or CMeta).
+add_library(saltscore_native_io STATIC
+  src/native-io/native_io.c
+  src/native-io/native_io_accept_escrow.c
+  src/native-io/native_io_sharded.c
+  src/native-io/native_ipc.c)
+add_library(SaltsCore::NativeIO ALIAS saltscore_native_io)
+if(WIN32)
+  target_sources(saltscore_native_io PRIVATE
+    src/native-io/native_io_iocp.c src/native-io/native_ipc_windows.c)
+  target_compile_definitions(saltscore_native_io PRIVATE
+    WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0600)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_sources(saltscore_native_io PRIVATE
+    src/native-io/native_io_linux.c src/native-io/native_io_epoll.c
+    src/native-io/native_io_io_uring.c src/native-io/native_io_readiness.c
+    src/native-io/native_ipc_posix.c)
+  target_compile_definitions(saltscore_native_io PRIVATE
+    _DEFAULT_SOURCE=1 _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700)
+elseif((APPLE OR CMAKE_SYSTEM_NAME MATCHES "^(FreeBSD|OpenBSD|NetBSD|DragonFly)$")
+       AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+  target_sources(saltscore_native_io PRIVATE
+    src/native-io/native_io_bsd.c src/native-io/native_io_kqueue.c
+    src/native-io/native_io_readiness.c src/native-io/native_ipc_posix.c)
+  if(APPLE)
+    target_compile_definitions(saltscore_native_io PRIVATE _DARWIN_C_SOURCE=1)
+  endif()
+else()
+  target_sources(saltscore_native_io PRIVATE
+    src/native-io/native_io_unsupported.c src/native-io/native_ipc_posix.c)
+endif()
+set_target_properties(saltscore_native_io PROPERTIES
+  EXPORT_NAME NativeIO C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+  C_VISIBILITY_PRESET hidden)
+target_compile_features(saltscore_native_io PUBLIC c_std_11)
+target_include_directories(saltscore_native_io PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+target_link_libraries(saltscore_native_io
+  PUBLIC SaltsCore::Platform
+  PRIVATE SaltsCore::Coroutine)
+if(WIN32)
+  target_link_libraries(saltscore_native_io PRIVATE ws2_32)
+endif()
+
+install(TARGETS saltscore_core saltscore_platform saltscore_concurrency saltscore_coroutine saltscore_native_io
   EXPORT SaltsCoreTargets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}

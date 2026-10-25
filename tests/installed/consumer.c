@@ -1,4 +1,5 @@
 #include <salts_core/bytes.h>
+#include <salts/native_io.h>
 #include <coro_executor.h>
 #include <salts/clock.h>
 #include <salts/deadline_queue.h>
@@ -26,5 +27,6 @@ int main(void) {
       event.id != id || event.token != 42u ||
       cmeta_deadline_queue_destroy(&q) != SALTS_OK) return 3;
   if (coro_executor_current() != NULL || coro_executor_yield() != SALTS_EINVAL) return 4;
+  if (native_io_endpoint_valid((native_io_endpoint){0})) return 5;
   return 0;
 }
