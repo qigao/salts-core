@@ -64,7 +64,7 @@ endif()
 # Salts Core buffer/pool primitive, no reflection. Static Core consumes
 # only the OS synchronization provided by Platform.
 target_sources(saltscore_core PRIVATE
-  src/core/cmeta_buffer.c src/core/ring_buffer.c src/runtime_abi.c)
+  src/core/cmeta_buffer.c src/core/ring_buffer.c src/runtime_abi.c src/utf8.c)
 target_link_libraries(saltscore_core PUBLIC SaltsCore::Platform)
 
 # The original bounded primitives have no Reflection/CFlow dependency.
