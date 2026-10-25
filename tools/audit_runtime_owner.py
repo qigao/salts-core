@@ -98,16 +98,24 @@ def image_exports(path: Path, system: str, dumpbin: str | None) -> set[str]:
     return exports_from_output(command(["nm", "-D", "--defined-only", str(path)]), system)
 
 
+def parse_dependencies(output: str, system: str, is_dylib: bool = False) -> set[str]:
+    if system == "darwin":
+        # otool begins with a filename header. For a dylib *only*, the next
+        # line is its install-name/self-ID; for an executable the next line
+        # is its first imported library and must never be skipped.
+        lines = output.splitlines()
+        output = "\n".join(lines[2 if is_dylib else 1:])
+    return set(re.findall(r"(?:lib)?saltscore_(core|platform|concurrency|coroutine|native_io|cnet)(?=[.\s/\\-])", output, re.I))
+
+
 def binary_dependencies(path: Path, system: str, dumpbin: str | None) -> set[str]:
     if system == "windows":
         output = command([str(dumpbin), "/nologo", "/dependents", str(path)])
     elif system == "darwin":
         output = command(["otool", "-L", str(path)])
-        # dylib self-ID appears first, not an imported dependency.
-        output = "\n".join(output.splitlines()[2:])
     else:
         output = command(["readelf", "-d", str(path)])
-    return set(re.findall(r"(?:lib)?saltscore_(core|platform|concurrency|coroutine|native_io|cnet)(?=[.\s/\\-])", output, re.I))
+    return parse_dependencies(output, system, path.suffix == ".dylib")
 
 
 def is_library(name: str, part: str, system: str) -> bool:

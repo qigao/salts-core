@@ -98,3 +98,12 @@ Failure cleanup also joins all admitted workers before any module teardown.
 This is a bounded quiescent-unload/parallel-release contract, **not** a license
 to `dlclose` a library while any of its code is executing. TSan/ASan and
 real adversarial close/cancel races remain qualification gates.
+
+### macOS audit parser correction
+
+The first installed Mach-O audit surfaced a tooling bug: `otool -L`
+includes a dylib's own install-name as the first entry, but an executable's
+first entry is an actual dependency. The parser previously skipped that first
+dependency for executables and falsely reported missing CNet. Regression tests
+now distinguish the two formats. This change does **not** relax exported-owner
+uniqueness, required imports, or failure on missing tools/artifacts.

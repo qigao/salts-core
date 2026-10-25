@@ -2,7 +2,7 @@
 import unittest
 
 from tools.audit_runtime_owner import (
-    binary_dependencies, exports_from_output, is_library,
+    exports_from_output, is_library, parse_dependencies,
 )
 
 
@@ -32,6 +32,27 @@ class AbiOwnerAuditTest(unittest.TestCase):
             "windows",
         )
         self.assertEqual(values, {"mem_global", "cmeta_thread_current_token"})
+
+    def test_macho_executable_first_import_is_not_dropped(self):
+        data = (
+            "/tmp/build/abi_owner_consumer:\n"
+            "\t@rpath/libsaltscore_cnet.0.dylib (compatibility version 0.0.0)\n"
+            "\t@rpath/libsaltscore_core.0.dylib (compatibility version 0.0.0)\n"
+            "\t@rpath/libsaltscore_platform.0.dylib (compatibility version 0.0.0)\n"
+        )
+        self.assertEqual(
+            parse_dependencies(data, "darwin", is_dylib=False),
+            {"cnet", "core", "platform"},
+        )
+        dylib = (
+            "/tmp/libsaltscore_cnet.dylib:\n"
+            "\t@rpath/libsaltscore_cnet.0.dylib (compatibility version 0.0.0)\n"
+            "\t@rpath/libsaltscore_native_io.0.dylib (compatibility version 0.0.0)\n"
+        )
+        self.assertEqual(
+            parse_dependencies(dylib, "darwin", is_dylib=True),
+            {"native_io"},
+        )
 
     def test_platform_specific_installed_images(self):
         self.assertTrue(is_library("libsaltscore_core.so.0.1.0", "core", "linux"))
