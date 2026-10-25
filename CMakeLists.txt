@@ -10,6 +10,10 @@ find_package(Threads REQUIRED)
 add_library(saltscore_core STATIC src/bytes.c)
 add_library(SaltsCore::Core ALIAS saltscore_core)
 target_compile_features(saltscore_core PUBLIC c_std_11)
+if(MSVC)
+  target_compile_options(saltscore_core PUBLIC
+    $<$<COMPILE_LANGUAGE:C>:-experimental:c11atomics>)
+endif()
 set_target_properties(saltscore_core PROPERTIES
   EXPORT_NAME Core C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   C_VISIBILITY_PRESET hidden)
