@@ -5,11 +5,12 @@ Canonical decision: [qigao/salts-core#1](https://github.com/qigao/salts-core/iss
 ## Directional dependency graph
 
 ```text
-Salts (CMeta / CFlow / CSTL / Component / CNet)  ─┐
+Salts (CMeta / CFlow / CSTL / Component / ACE)  ─┐
 SaltsUtils (Jinja / DataBind / Parsers)           ─┼─> SaltsCore SDK
 TurboScript / TurboAgent / TurboMedia            ─┘
 
-SaltsCore::Core [OS platform + C11 byte views, thread, clock, errors]
+SaltsCore::Core [C11 base byte views / future buffer/error]
+  ├── Platform (clock/thread/CSPRNG) ──> Concurrency ──> Coroutine ──> NativeIO ──> CNet
   ├── FS, Process [native OS; independent bounded queues / native pipes]
   ├── Unicode 17 ──> IDNA UTS #46
   ├── Serial [POSIX / Win32, SPSC]
@@ -27,6 +28,12 @@ reflection. Source/API renaming is not itself a reason to discard ABI tests.
 
 - `qigao/salts/utils` + select `platform`: minimum Core, sync FS/Process,
   byte views, clock, log/error and crypto algorithms (split into targets).
+- `qigao/salts/concurrency`: all six direct C11 primitives; names `cmeta_*`
+  remain only for existing binary/API shape, with no Reflection dependency.
+- `qigao/salts/coroutine` and `native-io`: independent native executors and
+  OS completion/readiness mechanisms (future qualification).
+- `qigao/salts/cnet` plus `uri` and WebSocket parser: native transport stack
+  moves to Core after NativeIO; CMeta/ACE interface tests stay in Salts.
 - `qigao/salts/unicode` and `idna`: all generated Unicode 17.0.0 source tables,
   re2c tool/data hash gates, NFC, Bidi, casefold and IDNA tests. Existing
   `vstr` is `CMETA_STRUCT`-defined: replace reflection-based declaration with
@@ -63,7 +70,7 @@ reflection. Source/API renaming is not itself a reason to discard ABI tests.
    linkage and RFC vectors, with no hidden provider fallback.
 4. **Unicode/IDNA**: re2c >=4.6 is a host **build** requirement only; data
    remains Unicode 17.0.0 SHA-pinned; run official normalization and UTS #46
-   conformance; DNS/TLS/SNI A-label parity is tested in downstream CNet.
+   conformance; DNS/TLS/SNI A-label parity is tested in the optional Core CNet target.
 5. **ABI and release**: no published `Salts::Core` replacement before
    source/protocol tests, installed C11/C++17 consumers, Linux/Windows/macOS
    execution, Android/iOS SDK cross-build, symbol audit and exact-head CI.
@@ -71,7 +78,10 @@ reflection. Source/API renaming is not itself a reason to discard ABI tests.
 
 ## Current status
 
-**M0 bootstrap only:** `SaltsCore::Core` is a small standalone C11 static
-library with counted byte view helpers. No production code has been removed
-from Salts or SaltsUtils and no OS module, Unicode/IDNA or crypto has been
-claimed as migrated. The above are target contracts, not completed features.
+**M0 completed, M1/M2 stacked candidate under qualification:** Core has a
+counted byte view, while standalone Platform and Concurrency expose source-
+compatible clock, secure random, synchronization, deadline queue, RCU, SPSC,
+Disruptor and ThreadPool. The migration branch is not a binary replacement,
+no old source was removed, and NativeIO/CNet, Unicode/IDNA, FS/Process and
+Crypto remain pending. Cross-platform exact-head CI is required.
+
