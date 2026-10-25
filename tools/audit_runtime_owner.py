@@ -125,10 +125,35 @@ def binary_dependencies(path: Path, system: str, dumpbin: str | None) -> set[str
 
 def is_library(name: str, part: str, system: str) -> bool:
     if system == "windows":
-        return name.lower() == f"saltscore_{part}.dll"
+        return name.lower() == f"saltscore_{part}-0.1.dll"
     if system == "darwin":
         return re.fullmatch(rf"libsaltscore_{part}(?:\.[0-9]+)*\.dylib", name) is not None
     return re.fullmatch(rf"libsaltscore_{part}\.so(?:\.[0-9]+)*", name) is not None
+
+
+def parse_native_abi_identity(output: str, part: str, system: str) -> str:
+    """Require the actual linked install identity, not only a versioned file."""
+    if system == "darwin":
+        # otool -D prints an image path header followed by its install-name.
+        pattern = rf"(?m)^\s*(\S*libsaltscore_{re.escape(part)}\.0\.1\.dylib)\s*$"
+    elif system == "linux":
+        pattern = rf"\(SONAME\)[^\n]*?\[(libsaltscore_{re.escape(part)}\.so\.0\.1)\]"
+    else:
+        raise ValueError(f"unsupported binary identity parser: {system}")
+    match = re.search(pattern, output)
+    require(match is not None, f"{part}: missing exact 0.1 native ABI identity")
+    return match.group(1)
+
+
+def native_abi_identity(path: Path, part: str, system: str) -> str:
+    if system == "windows":
+        expected = f"saltscore_{part}-0.1.dll"
+        require(path.name.lower() == expected,
+                f"{part}: Windows DLL must have 0.1 name: {path.name}")
+        return path.name
+    if system == "darwin":
+        return parse_native_abi_identity(command(["otool", "-D", str(path)]), part, system)
+    return parse_native_abi_identity(command(["readelf", "-d", str(path)]), part, system)
 
 
 def find_library(prefix: Path, part: str, system: str) -> Path:
@@ -165,6 +190,10 @@ def inspect(prefix: Path, build: Path, system: str, dumpbin: str | None) -> dict
     require(prefix.is_dir(), f"installed SDK missing: {prefix}")
     require(build.is_dir(), f"installed consumer build missing: {build}")
     runtime = {part: find_library(prefix, part, system) for part in PARTS}
+    abi_identities = {
+        part: native_abi_identity(path, part, system)
+        for part, path in runtime.items()
+    }
     consumer = find_build_image(build, "abi_owner_consumer", system, True)
     probe = find_build_image(build, "owner_probe_installed", system, False)
     symbols = {part: image_exports(path, system, dumpbin) for part, path in runtime.items()}
@@ -220,6 +249,7 @@ def inspect(prefix: Path, build: Path, system: str, dumpbin: str | None) -> dict
                 "path": str(path),
                 "sha256": sha256(path),
                 "imports": sorted(deps[name]),
+                "native_abi_identity": abi_identities.get(name),
             } for name, path in artifacts.items()
         },
         "owned_symbols": {key: owner for key, owner in OWNERS.items()},

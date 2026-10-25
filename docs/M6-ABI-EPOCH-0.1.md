@@ -30,3 +30,15 @@ while retaining its compatibility logic. A 0.1.0 consumer must accept
 SameMajorVersion regression, which would otherwise admit 0.2.0 to
 a consumer built against the incompatible 0.1 ABI. No native 0.2
 binary is built or considered qualified.
+
+## Physical binary name enforcement
+
+Linux requires exact ELF DT_SONAME `libsaltscore_<component>.so.0.1`.
+macOS requires an `otool -D` install ID ending
+`libsaltscore_<component>.0.1.dylib`.
+Windows PE/COFF has no SONAME concept: **both DLL and import-library
+filenames** are therefore versioned with `-0.1`, not just CMake target
+properties. The installed binary auditor rejects an unversioned Windows
+runtime DLL or an incorrect ELF/Mach-O ABI ID, even when link/run smoke
+passes. The imported CMake target names remain stable `SaltsCore::Core`,
+etc., but never create unversioned binary aliases.

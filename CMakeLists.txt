@@ -224,6 +224,16 @@ if(SALTSCORE_BUILD_CNET)
   include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsCoreCNet.cmake")
 endif()
 
+# PE/COFF does not honor ELF/Mach-O SOVERSION. Encode the pre-stable 0.1 ABI
+# epoch in each Windows DLL and its import library, without a filename alias.
+# A future 0.2 DLL must not replace an older consumer's 0.1 dependency.
+if(WIN32)
+  foreach(_runtime IN ITEMS core platform concurrency coroutine native_io)
+    set_target_properties(saltscore_${_runtime} PROPERTIES
+      OUTPUT_NAME "saltscore_${_runtime}-${SALTSCORE_NATIVE_SOVERSION}")
+  endforeach()
+endif()
+
 install(TARGETS saltscore_core saltscore_platform saltscore_concurrency saltscore_coroutine saltscore_native_io
   EXPORT SaltsCoreTargets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}

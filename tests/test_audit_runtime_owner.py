@@ -3,6 +3,7 @@ import unittest
 
 from tools.audit_runtime_owner import (
     exports_from_output, is_library, parse_dependencies,
+    parse_native_abi_identity,
 )
 
 
@@ -54,10 +55,31 @@ class AbiOwnerAuditTest(unittest.TestCase):
             {"native_io"},
         )
 
+    def test_native_abi_loader_id(self):
+        self.assertEqual(
+            parse_native_abi_identity(
+                " 0x000000000000000e (SONAME) Library soname: [libsaltscore_core.so.0.1]\n",
+                "core", "linux"),
+            "libsaltscore_core.so.0.1",
+        )
+        self.assertEqual(
+            parse_native_abi_identity(
+                "/prefix/lib/libsaltscore_platform.0.1.0.dylib:\n"
+                "@rpath/libsaltscore_platform.0.1.dylib\n",
+                "platform", "darwin"),
+            "@rpath/libsaltscore_platform.0.1.dylib",
+        )
+        with self.assertRaises(ValueError):
+            parse_native_abi_identity(
+                " 0x0 (SONAME) Library soname: [libsaltscore_core.so.0]\n",
+                "core", "linux",
+            )
+
     def test_platform_specific_installed_images(self):
         self.assertTrue(is_library("libsaltscore_core.so.0.1.0", "core", "linux"))
         self.assertTrue(is_library("libsaltscore_core.0.1.0.dylib", "core", "darwin"))
-        self.assertTrue(is_library("saltscore_native_io.dll", "native_io", "windows"))
+        self.assertTrue(is_library("saltscore_native_io-0.1.dll", "native_io", "windows"))
+        self.assertFalse(is_library("saltscore_native_io.dll", "native_io", "windows"))
         self.assertFalse(is_library("libsaltscore_core_copy.so", "core", "linux"))
         self.assertFalse(is_library("saltscore_core.lib", "core", "windows"))
 
