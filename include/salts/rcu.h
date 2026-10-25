@@ -44,7 +44,7 @@ int cmeta_rcu_close(cmeta_rcu *domain);
 int cmeta_rcu_destroy(cmeta_rcu *domain, void **out_current);
 
 /*
- * Typed RCU declaration owned by Salts::Concurrency.
+ * Typed RCU declaration owned by SaltsCore::Concurrency.
  * This adds C type safety only; reclamation/lifetime semantics remain cmeta_rcu.
  */
 #define SALTS_RCU_TYPE(name_, type_)                                                               \
