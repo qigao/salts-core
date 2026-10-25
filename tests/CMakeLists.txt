@@ -27,3 +27,8 @@ target_link_libraries(saltscore_native_io_test PRIVATE SaltsCore::NativeIO)
 set_target_properties(saltscore_native_io_test PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.native_io COMMAND saltscore_native_io_test)
+
+add_executable(saltscore_buffer_test test_buffer.c)
+target_link_libraries(saltscore_buffer_test PRIVATE SaltsCore::Core)
+set_target_properties(saltscore_buffer_test PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME saltscore.buffer COMMAND saltscore_buffer_test)

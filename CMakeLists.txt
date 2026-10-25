@@ -45,6 +45,11 @@ elseif(UNIX)
     _DEFAULT_SOURCE=1 _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700)
 endif()
 
+# C11 memory pool / retained-buffer ownership; no CMeta reflection.
+# Platform is already defined, avoiding a configure-time forward target.
+target_sources(saltscore_core PRIVATE src/core/cmeta_buffer.c)
+target_link_libraries(saltscore_core PUBLIC SaltsCore::Platform)
+
 # The original bounded primitives have no Reflection/CFlow dependency.
 # Keep all six original source units together for full API surface coverage.
 add_library(saltscore_concurrency STATIC
@@ -146,6 +151,9 @@ install(TARGETS saltscore_core saltscore_platform saltscore_concurrency saltscor
 install(DIRECTORY include/salts_core include/salts
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.h")
+
+install(FILES include/cmeta_api.h include/cmeta_buffer.h
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 install(FILES include/coro.h include/coro_pool.h include/coro_executor.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
