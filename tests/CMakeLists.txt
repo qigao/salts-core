@@ -45,3 +45,6 @@ if(UNIX AND NOT CMAKE_CROSSCOMPILING AND
   add_test(NAME saltscore.native_pipe COMMAND saltscore_native_pipe_test)
   set_tests_properties(saltscore.native_pipe PROPERTIES TIMEOUT 12)
 endif()
+
+# Re-run original source-repository conformance against standalone SDK modules.
+add_subdirectory(conformance)
