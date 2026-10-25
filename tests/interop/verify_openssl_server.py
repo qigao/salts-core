@@ -96,17 +96,27 @@ def main() -> int:
         if not path.is_file():
             raise FileNotFoundError(f"missing exact peer/tool fixture: {path}")
     check_version(openssl)
+    # Exercise TLS 1.3 and TLS 1.2 independently; do not let one protocol
+    # failure suppress evidence for the other. All failures still fail CTest.
     cases = [
-        ("TLSv1.2", "localhost", "p384-test-root-cert.pem", "accept"),
         ("TLSv1.3", "localhost", "p384-test-root-cert.pem", "accept"),
-        ("TLSv1.2", "localhost", "p384-test-wrong-root-cert.pem", "reject"),
+        ("TLSv1.2", "localhost", "p384-test-root-cert.pem", "accept"),
         ("TLSv1.3", "localhost", "p384-test-wrong-root-cert.pem", "reject"),
-        ("TLSv1.2", "wrong.example", "p384-test-root-cert.pem", "reject"),
+        ("TLSv1.2", "localhost", "p384-test-wrong-root-cert.pem", "reject"),
         ("TLSv1.3", "wrong.example", "p384-test-root-cert.pem", "reject"),
+        ("TLSv1.2", "wrong.example", "p384-test-root-cert.pem", "reject"),
     ]
+    failures = []
     for version, name, ca_name, expect in cases:
-        run_case(client, openssl, fixtures, version, name,
-                 fixtures / ca_name, expect)
+        try:
+            run_case(client, openssl, fixtures, version, name,
+                     fixtures / ca_name, expect)
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            failures.append(f"{version} {expect} {name}: {error}")
+            print(f"interop_case_failed={version} {expect} {name}", flush=True)
+    if failures:
+        raise RuntimeError(f"{len(failures)}/{len(cases)} independent TLS cases failed\n" +
+                           "\n\n".join(failures))
     return 0
 
 
