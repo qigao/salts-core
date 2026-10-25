@@ -1,0 +1,35 @@
+name: SaltsCore standalone SDK contract
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  sdk:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove no legacy Salts/CMeta/CFlow/CSTL dependency
+        shell: bash
+        run: |
+          python3 tools/check_dependency_boundaries.py
+          python3 -m unittest discover -s tests -p 'test_dependency_boundaries.py'
+      - name: Configure, compile, test, and install
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build -DBUILD_TESTING=ON "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/saltscore-sdk"
+          cmake --build build --config Release --parallel 2
+          ctest --test-dir build --output-on-failure -C Release
+          cmake --install build --config Release
+      - name: Installed C11 and C++17 consumer
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S tests/installed -B build-installed "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/saltscore-sdk"
+          cmake --build build-installed --config Release --parallel 2
+          ctest --test-dir build-installed --output-on-failure -C Release
