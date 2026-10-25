@@ -214,10 +214,11 @@ int main(int argc, char **argv) {
       fprintf(stderr,
               "OpenSSL interop failed: connected=%u failed=%u terminal=%u"
               " sent=%u received=%u version=%s expected=%s"
-              " cipher=%s response=%.12s\n",
+              " cipher=%s stage=%s response=%.12s\n",
               probe.connected, probe.failed, probe.terminal,
               probe.sent, probe.received, probe.negotiated_version,
-              expected_version, probe.negotiated_cipher, probe.response);
+              expected_version, probe.negotiated_cipher,
+              probe.failure_stage, probe.response);
       result = 9;
     }
   }
