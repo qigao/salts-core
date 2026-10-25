@@ -47,3 +47,10 @@ target_link_libraries(saltscore_ring_test PRIVATE SaltsCore::Core)
 set_target_properties(saltscore_ring_test PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.ring COMMAND saltscore_ring_test)
+
+add_executable(saltscore_native_io_udp_test test_native_io_udp.c)
+target_link_libraries(saltscore_native_io_udp_test PRIVATE SaltsCore::NativeIO)
+set_target_properties(saltscore_native_io_udp_test PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME saltscore.native_io_udp COMMAND saltscore_native_io_udp_test)
+set_tests_properties(saltscore.native_io_udp PROPERTIES TIMEOUT 25)
