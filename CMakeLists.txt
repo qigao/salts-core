@@ -34,12 +34,29 @@ endif()
 
 # Platform extraction from Salts: OS-owned time, CSPRNG, and synchronization.
 # Historical cmeta_ symbol names remain until a separately qualified ABI epoch.
+# Platform owns the original registration/dispatch state. Never compile
+# another copy into CFlow or NativeIO. No provider/ACE dependency.
+option(SALTSCORE_ENABLE_EPOLL_READINESS
+  "Explicitly include Linux epoll readiness backend" OFF)
+if(SALTSCORE_ENABLE_EPOLL_READINESS AND
+   NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  message(FATAL_ERROR "epoll readiness is available only on Linux")
+endif()
 set(_saltscore_platform_sources
-    src/platform/clock.c src/platform/random.c)
+    src/platform/clock.c src/platform/random.c src/platform/readiness.c)
 if(WIN32)
   list(APPEND _saltscore_platform_sources src/platform/thread_win32.c)
 else()
   list(APPEND _saltscore_platform_sources src/platform/thread_posix.c)
+endif()
+if(UNIX)
+  list(APPEND _saltscore_platform_sources src/platform/readiness_poll.c)
+  if(APPLE)
+    list(APPEND _saltscore_platform_sources src/platform/readiness_kqueue.c)
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+         SALTSCORE_ENABLE_EPOLL_READINESS)
+    list(APPEND _saltscore_platform_sources src/platform/readiness_epoll.c)
+  endif()
 endif()
 add_library(saltscore_platform SHARED ${_saltscore_platform_sources})
 add_library(SaltsCore::Platform ALIAS saltscore_platform)
@@ -52,6 +69,23 @@ target_include_directories(saltscore_platform PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_link_libraries(saltscore_platform PUBLIC Threads::Threads)
+# Windows MSVC C11 atomic contract is mandatory for the readiness handles.
+if(MSVC)
+  target_compile_options(saltscore_platform PRIVATE
+    $<$<COMPILE_LANGUAGE:C>:-experimental:c11atomics>)
+endif()
+if(UNIX)
+  target_compile_definitions(saltscore_platform PRIVATE
+    SALTS_ENABLE_POLL_READINESS=1)
+endif()
+if(APPLE)
+  target_compile_definitions(saltscore_platform PRIVATE
+    SALTS_ENABLE_KQUEUE_READINESS=1)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+       SALTSCORE_ENABLE_EPOLL_READINESS)
+  target_compile_definitions(saltscore_platform PRIVATE
+    SALTS_ENABLE_EPOLL_READINESS=1)
+endif()
 if(WIN32)
   target_link_libraries(saltscore_platform PRIVATE bcrypt)
 elseif(APPLE)

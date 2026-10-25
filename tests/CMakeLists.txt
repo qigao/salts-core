@@ -1,3 +1,11 @@
+add_executable(saltscore_readiness_test test_readiness.c)
+target_compile_features(saltscore_readiness_test PRIVATE c_std_11)
+target_link_libraries(saltscore_readiness_test PRIVATE SaltsCore::Platform)
+set_target_properties(saltscore_readiness_test PROPERTIES
+  C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME saltscore.readiness_owner COMMAND saltscore_readiness_test)
+set_tests_properties(saltscore.readiness_owner PROPERTIES TIMEOUT 15)
+
 add_executable(saltscore_utf8_test test_utf8.c)
 target_link_libraries(saltscore_utf8_test PRIVATE SaltsCore::Core)
 target_compile_features(saltscore_utf8_test PRIVATE c_std_11)

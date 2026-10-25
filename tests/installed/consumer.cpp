@@ -10,12 +10,18 @@
 #include <salts/deadline_queue.h>
 #include <salts/spsc_ring.h>
 #include <salts/thread.h>
+#include <salts/readiness.h>
 
 #include <cstring>
 
 int main() {
   if (!salts_core_utf8_valid("\xf0\x9f\x8e\x89",4u) ||
       salts_core_utf8_valid("\xf4\x90\x80\x80",4u)) return 10;
+#if defined(_WIN32)
+  if (cmeta_readiness_backend_supported(SALTS_READINESS_BACKEND_POLL)) return 11;
+#else
+  if (!cmeta_readiness_backend_supported(SALTS_READINESS_BACKEND_POLL)) return 11;
+#endif
   salts_core_runtime_abi_0_1_required();
   if (salts_core_runtime_abi_version() != SALTS_CORE_RUNTIME_ABI_VERSION ||
       salts_core_runtime_mem_pool_size() != sizeof(mem_pool_t) ||

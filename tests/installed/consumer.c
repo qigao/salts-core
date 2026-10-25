@@ -9,6 +9,7 @@
 #include <salts/deadline_queue.h>
 #include <salts/error_codes.h>
 #include <salts/random.h>
+#include <salts/readiness.h>
 #include <salts/rcu.h>
 #include <salts/thread.h>
 
@@ -18,6 +19,11 @@ int main(void) {
   salts_core_bytes_view v = {0};
   if (!salts_core_utf8_valid("\xe6\x97\xa5",3u) ||
       salts_core_utf8_valid("\xed\xa0\x80",3u)) return 12;
+#if defined(_WIN32)
+  if (cmeta_readiness_backend_supported(SALTS_READINESS_BACKEND_POLL)) return 13;
+#else
+  if (!cmeta_readiness_backend_supported(SALTS_READINESS_BACKEND_POLL)) return 13;
+#endif
   salts_core_runtime_abi_0_1_required();
   if (salts_core_runtime_abi_version() != SALTS_CORE_RUNTIME_ABI_VERSION ||
       salts_core_runtime_mem_pool_size() != sizeof(mem_pool_t) ||
