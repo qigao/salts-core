@@ -41,3 +41,9 @@ if(TARGET SaltsCore::URI)
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
   add_test(NAME saltscore.uri COMMAND saltscore_uri_test)
 endif()
+
+add_executable(saltscore_ring_test test_ring.c)
+target_link_libraries(saltscore_ring_test PRIVATE SaltsCore::Core)
+set_target_properties(saltscore_ring_test PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME saltscore.ring COMMAND saltscore_ring_test)
