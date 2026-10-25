@@ -49,6 +49,11 @@ endif()
 # Platform is already defined, avoiding a configure-time forward target.
 target_sources(saltscore_core PRIVATE src/core/cmeta_buffer.c)
 target_link_libraries(saltscore_core PUBLIC SaltsCore::Platform)
+if(MSVC)
+  # cmeta_buffer.c uses C11 _Atomic; MSVC requires explicit language support.
+  target_compile_options(saltscore_core PRIVATE
+    $<$<COMPILE_LANGUAGE:C>:-experimental:c11atomics>)
+endif()
 
 # The original bounded primitives have no Reflection/CFlow dependency.
 # Keep all six original source units together for full API surface coverage.
