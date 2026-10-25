@@ -15,3 +15,9 @@ target_link_libraries(saltscore_concurrency_test PRIVATE SaltsCore::Concurrency)
 set_target_properties(saltscore_concurrency_test PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.concurrency COMMAND saltscore_concurrency_test)
+
+add_executable(saltscore_coroutine_test test_coroutine.c)
+target_link_libraries(saltscore_coroutine_test PRIVATE SaltsCore::Coroutine)
+set_target_properties(saltscore_coroutine_test PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME saltscore.coroutine COMMAND saltscore_coroutine_test)

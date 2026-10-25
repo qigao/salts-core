@@ -6,11 +6,11 @@ find_package(SaltsCore CONFIG REQUIRED)
 add_executable(consumer_c consumer.c)
 target_compile_features(consumer_c PRIVATE c_std_11)
 target_link_libraries(consumer_c PRIVATE
-  SaltsCore::Core SaltsCore::Platform SaltsCore::Concurrency)
+  SaltsCore::Core SaltsCore::Platform SaltsCore::Concurrency SaltsCore::Coroutine)
 add_test(NAME sdk.consumer_c COMMAND consumer_c)
 
 add_executable(consumer_cpp consumer.cpp)
 target_compile_features(consumer_cpp PRIVATE cxx_std_17)
 target_link_libraries(consumer_cpp PRIVATE
-  SaltsCore::Core SaltsCore::Platform SaltsCore::Concurrency)
+  SaltsCore::Core SaltsCore::Platform SaltsCore::Concurrency SaltsCore::Coroutine)
 add_test(NAME sdk.consumer_cpp COMMAND consumer_cpp)
