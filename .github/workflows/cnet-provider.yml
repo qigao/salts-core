@@ -11,6 +11,7 @@ on:
       - ".github/workflows/cnet-provider.yml"
       - "tests/installed/cnet_consumer.*"
       - "tests/test_gmssl_*.c"
+      - "tests/test_cnet_tcp_loopback.c"
       - "tests/CMakeLists.txt"
   workflow_dispatch:
 permissions:
@@ -69,6 +70,9 @@ jobs:
             "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/saltscore-sdk"
           cmake --build build-cnet --parallel 2
           ctest --test-dir build-cnet --output-on-failure -C Release --no-tests=error
+          # A provider link alone is not network conformance: execute real TCP.
+          ctest --test-dir build-cnet --output-on-failure -C Release \
+            -R '^saltscore[.]cnet_tcp_loopback$' --no-tests=error
           # Exact required pinned-provider gates, in addition to all CTests.
           ctest --test-dir build-cnet --output-on-failure -C Release \
             -R '^saltscore[.]gmssl_(tls_io_abi|shangmi_provider)$' --no-tests=error

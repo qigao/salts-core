@@ -82,6 +82,25 @@ add_test(NAME saltscore.cnet_policy COMMAND saltscore_cnet_policy_test)
 # Run real pinned-provider ABI and ShangMi KATs only when the optional
 # transport provider graph was actually configured. No fake TLS fallback.
 if(TARGET SaltsCore::CNet)
+  # Genuine loopback TCP acceptance + borrowed/retained ownership + stop drain.
+  add_executable(saltscore_cnet_tcp_loopback_test test_cnet_tcp_loopback.c)
+  target_compile_features(saltscore_cnet_tcp_loopback_test PRIVATE c_std_11)
+  set_target_properties(saltscore_cnet_tcp_loopback_test PROPERTIES
+    C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  target_link_libraries(saltscore_cnet_tcp_loopback_test PRIVATE SaltsCore::CNet)
+  if(WIN32)
+    target_link_libraries(saltscore_cnet_tcp_loopback_test PRIVATE ws2_32)
+  endif()
+  if(MSVC)
+    target_compile_options(saltscore_cnet_tcp_loopback_test PRIVATE
+      $<$<COMPILE_LANGUAGE:C>:-experimental:c11atomics>)
+  endif()
+  add_test(NAME saltscore.cnet_tcp_loopback
+    COMMAND saltscore_cnet_tcp_loopback_test)
+  set_tests_properties(saltscore.cnet_tcp_loopback PROPERTIES TIMEOUT 20)
+endif()
+
+if(TARGET SaltsCore::CNet)
   add_executable(saltscore_gmssl_tls_io_abi_test test_gmssl_tls_io_abi.c)
   target_compile_features(saltscore_gmssl_tls_io_abi_test PRIVATE c_std_11)
   set_target_properties(saltscore_gmssl_tls_io_abi_test PROPERTIES
