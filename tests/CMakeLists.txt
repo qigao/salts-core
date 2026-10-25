@@ -73,4 +73,8 @@ set_target_properties(saltscore_cnet_policy_test PROPERTIES
 target_include_directories(saltscore_cnet_policy_test PRIVATE
   "${PROJECT_SOURCE_DIR}/include")
 target_link_libraries(saltscore_cnet_policy_test PRIVATE SaltsCore::Platform)
+if(MSVC)
+  target_compile_options(saltscore_cnet_policy_test PRIVATE
+    $<$<COMPILE_LANGUAGE:C>:-experimental:c11atomics>)
+endif()
 add_test(NAME saltscore.cnet_policy COMMAND saltscore_cnet_policy_test)
