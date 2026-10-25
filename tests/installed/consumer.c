@@ -1,3 +1,4 @@
+#include <cmeta_buffer.h>
 #include <salts_core/bytes.h>
 #include <salts/native_io.h>
 #include <coro_executor.h>
@@ -28,5 +29,11 @@ int main(void) {
       cmeta_deadline_queue_destroy(&q) != SALTS_OK) return 3;
   if (coro_executor_current() != NULL || coro_executor_yield() != SALTS_EINVAL) return 4;
   if (native_io_endpoint_valid((native_io_endpoint){0})) return 5;
+  mem_pool_t pool = {0};
+  if (mem_init(&pool, 0) != 0) return 6;
+  mem_buffer_t *buffer = mem_get_buffer(&pool, 3u);
+  if (!buffer || mem_buffer_capacity(buffer) < 3u) return 7;
+  mem_buffer_release(buffer);
+  mem_destroy(&pool);
   return 0;
 }
