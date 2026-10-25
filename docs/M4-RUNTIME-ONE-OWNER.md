@@ -140,3 +140,19 @@ and cleanup semantics are unchanged; process clients must still quiesce before
 unloading CNet. LeakSanitizer remains **enabled**, not suppressed.
 
 This is a candidate source fix until ASan/UBSan exact-head tests confirm it.
+
+## M4.12 — installed C11/C++17 SDK relocation acceptance
+
+After each provider platform's first clean-prefix ABI audit, CI **moves** the
+entire installed SaltsCore SDK out of its original prefix. The original path
+is explicitly checked absent. It then runs `find_package(SaltsCore CONFIG
+REQUIRED)` from an unrelated second build directory using only the relocated
+prefix, builds and executes all seven C11/C++17 CNet consumers, and repeats
+the installed binary-owner/export/import audit. The pinned GmSSL/KCP/c-ares
+provider DLLs stay on their legitimate external vcpkg dependency path, not
+in the old SaltsCore prefix.
+
+This tests actual package relocatability and cross-DSO buffer ownership after
+relocation, not just installed header presence. A JSON audit report for the
+relocated binaries is uploaded per OS. The gate must pass at its exact HEAD
+before calling SDK relocation qualified.
