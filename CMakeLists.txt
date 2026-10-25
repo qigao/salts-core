@@ -51,7 +51,7 @@ target_sources(saltscore_core PRIVATE src/core/cmeta_buffer.c)
 target_link_libraries(saltscore_core PUBLIC SaltsCore::Platform)
 if(MSVC)
   # cmeta_buffer.c uses C11 _Atomic; MSVC requires explicit language support.
-  target_compile_options(saltscore_core PRIVATE
+  target_compile_options(saltscore_core PUBLIC
     $<$<COMPILE_LANGUAGE:C>:-experimental:c11atomics>)
 endif()
 
