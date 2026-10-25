@@ -33,3 +33,11 @@ target_link_libraries(saltscore_buffer_test PRIVATE SaltsCore::Core)
 set_target_properties(saltscore_buffer_test PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.buffer COMMAND saltscore_buffer_test)
+
+if(TARGET SaltsCore::URI)
+  add_executable(saltscore_uri_test test_uri.c)
+  target_link_libraries(saltscore_uri_test PRIVATE SaltsCore::URI)
+  set_target_properties(saltscore_uri_test PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  add_test(NAME saltscore.uri COMMAND saltscore_uri_test)
+endif()
