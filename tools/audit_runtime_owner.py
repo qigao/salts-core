@@ -19,6 +19,7 @@ import sys
 
 PARTS = ("core", "platform", "concurrency", "coroutine", "native_io", "cnet")
 OWNERS = {
+    "salts_core_utf8_valid": "core",
     "salts_core_runtime_abi_0_1_required": "core",
     "salts_core_runtime_abi_version": "core",
     "salts_core_runtime_mem_pool_size": "core",

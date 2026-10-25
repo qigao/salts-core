@@ -1,3 +1,10 @@
+add_executable(saltscore_utf8_test test_utf8.c)
+target_link_libraries(saltscore_utf8_test PRIVATE SaltsCore::Core)
+target_compile_features(saltscore_utf8_test PRIVATE c_std_11)
+set_target_properties(saltscore_utf8_test PROPERTIES
+  C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME saltscore.utf8_strict COMMAND saltscore_utf8_test)
+
 add_executable(saltscore_runtime_abi_test test_runtime_abi.c)
 target_compile_features(saltscore_runtime_abi_test PRIVATE c_std_11)
 target_link_libraries(saltscore_runtime_abi_test PRIVATE SaltsCore::Core)

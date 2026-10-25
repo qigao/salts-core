@@ -1,6 +1,7 @@
 #include <ring_buffer.h>
 #include <cmeta_buffer.h>
 #include <salts_core/bytes.h>
+#include <salts_core/utf8.h>
 #include <salts_core/runtime_abi.h>
 #include <salts/native_io.h>
 #include <coro_executor.h>
@@ -15,6 +16,8 @@
 
 int main(void) {
   salts_core_bytes_view v = {0};
+  if (!salts_core_utf8_valid("\xe6\x97\xa5",3u) ||
+      salts_core_utf8_valid("\xed\xa0\x80",3u)) return 12;
   salts_core_runtime_abi_0_1_required();
   if (salts_core_runtime_abi_version() != SALTS_CORE_RUNTIME_ABI_VERSION ||
       salts_core_runtime_mem_pool_size() != sizeof(mem_pool_t) ||
