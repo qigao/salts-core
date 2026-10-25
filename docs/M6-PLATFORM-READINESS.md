@@ -54,3 +54,12 @@ alongside the actual pipe/close test; these tests qualify only the
 enumerated failure-atomic operations, not every original Salts
 Readiness injection case. Extended blocked-callback cancellation and
 platform-specific poll/kqueue/epoll conformance remain pending.
+
+## Sanitizer workflow syntax gate
+
+The SDK workflow now runs `tools/check_ci_ctest_regex.py` against the
+actual CNet sanitizer workflow before qualification. It fails on a lost
+closing quote, missing ^/$ anchors, invalid regular expression or an
+empty `ctest -R` selector. This avoids an otherwise silent build-only
+run being mistaken for ASan/TSan evidence. Both sanitizer binaries
+still execute the full selected suite with LeakSanitizer/TSan enabled.
