@@ -79,3 +79,22 @@ scanner. The M4.1 WebSocket parser has its own 3-platform RFC 6455 CI.
 
 **Nothing in this PR qualifies production TLS, GmSSL, or full CNet.** It is a
 complete source/import boundary candidate plus provider-free contract tests.
+
+## Reproducible provider CI candidate
+
+`vcpkg.json` supplies an explicit **cnet** feature, with no dependencies in the
+minimal Core default. `vcpkg-configuration.json` pins the exact qigao custom
+registries from Salts, including GmSSL `3.2.0#13` at registry commit
+`2e214ae44a3e3244eded5db6361194576356fc9e`. Built-in baseline is
+`b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01` and canonical vcpkg
+scripts revision is `04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4`.
+
+The scoped Linux provider workflow `.github/workflows/cnet-provider.yml`
+bootstraps that exact vcpkg tool via Git, uses a local **files-only** vcpkg
+binary cache (no NuGet or Mono), and builds with both
+`SALTSCORE_BUILD_URI=ON`, `SALTSCORE_BUILD_CNET=ON` and
+`VCPKG_MANIFEST_FEATURES=cnet`. It then compiles, links, runs CTest, and
+installs a real CNet DSO plus C11/C++17 CNet consumers. It must be **observed
+and fully successful**, with exact-head package/link evidence, before CNet can
+be called provider-qualified. Linux-only success still does not certify
+Windows/macOS provider closure or TLS peer interop.

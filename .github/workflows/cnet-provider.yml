@@ -1,0 +1,81 @@
+name: SaltsCore CNet pinned-provider qualification
+on:
+  pull_request:
+    paths:
+      - "src/cnet/**"
+      - "include/cnet/**"
+      - "vendor/cnet/**"
+      - "cmake/SaltsCoreCNet.cmake"
+      - "vcpkg.json"
+      - "vcpkg-configuration.json"
+      - ".github/workflows/cnet-provider.yml"
+      - "tests/installed/cnet_consumer.*"
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: read
+jobs:
+  linux-cnet:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      VCPKG_MANIFEST_FEATURES: cnet
+      VCPKG_DEFAULT_TRIPLET: x64-linux
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install C11 build tools and host re2c
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build pkg-config nasm re2c autoconf automake libtool \
+            curl zip unzip tar
+      - name: Bootstrap canonical vcpkg scripts (no NuGet, no Mono)
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/saltscore-vcpkg"
+          mkdir -p "$root"
+          git -C "$root" init -q
+          git -C "$root" remote add origin https://github.com/microsoft/vcpkg.git
+          git -C "$root" fetch --no-tags origin 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
+          git -C "$root" checkout --detach FETCH_HEAD
+          git -C "$root" fetch --no-tags origin b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+          test "$(git -C "$root" rev-parse HEAD)" = 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
+          git -C "$root" cat-file -e "b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01:versions/baseline.json"
+          "$root/bootstrap-vcpkg.sh" -disableMetrics
+          "$root/vcpkg" version
+          echo "VCPKG_ROOT=$root" >> "$GITHUB_ENV"
+      - name: Restore local ABI binary cache
+        uses: actions/cache@v4
+        with:
+          path: build/vcpkg-binary-cache
+          key: saltscore-cnet-x64-linux-v8-04a9d8e5-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+      - name: Configure explicit CNet provider graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/vcpkg-binary-cache
+          echo "VCPKG_BINARY_SOURCES=clear;files,$GITHUB_WORKSPACE/build/vcpkg-binary-cache,readwrite" >> "$GITHUB_ENV"
+          export VCPKG_BINARY_SOURCES="clear;files,$GITHUB_WORKSPACE/build/vcpkg-binary-cache,readwrite"
+          cmake -S . -B build-cnet -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux -DVCPKG_MANIFEST_FEATURES=cnet \
+            -DSALTSCORE_BUILD_URI=ON -DSALTSCORE_BUILD_CNET=ON \
+            "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/saltscore-sdk"
+          cmake --build build-cnet --parallel 2
+          ctest --test-dir build-cnet --output-on-failure -C Release --no-tests=error
+          cmake --install build-cnet --config Release
+      - name: Real installed CNet C11/C++17 consumer
+        shell: bash
+        run: |
+          set -euo pipefail
+          export LD_LIBRARY_PATH="$RUNNER_TEMP/saltscore-sdk/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:${LD_LIBRARY_PATH:-}"
+          cmake -S tests/installed -B build-installed-cnet -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/saltscore-sdk"
+          cmake --build build-installed-cnet --parallel 2
+          ctest --test-dir build-installed-cnet --output-on-failure -C Release --no-tests=error
+          test -f "$RUNNER_TEMP/saltscore-sdk/include/cnet/cnet.h"
+          grep -Fq 'SaltsCore::CNet' "$RUNNER_TEMP/saltscore-sdk/lib/cmake/SaltsCore/SaltsCoreTargets.cmake"

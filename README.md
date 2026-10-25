@@ -52,10 +52,15 @@ GmSSL (project overlay), c-ares, KCP and SIMDe SDK and an installed host re2c:
 ```sh
 cmake -S . -B build-cnet -DBUILD_TESTING=ON \
   -DSALTSCORE_BUILD_URI=ON -DSALTSCORE_BUILD_CNET=ON \
+  -DVCPKG_MANIFEST_FEATURES=cnet \
   -DCMAKE_TOOLCHAIN_FILE=/path/to/verified-vcpkg-toolchain.cmake
 cmake --build build-cnet --parallel
 ctest --test-dir build-cnet --output-on-failure
 ```
+
+The checked-in vcpkg manifest keeps CNet under an explicit feature; the
+pinned registry snapshot uses GmSSL 3.2.0#13. The scoped pinned-provider
+Linux workflow is in `.github/workflows/cnet-provider.yml`.
 
 An unavailable dependency fails configuration, without substituting another
 TLS provider or an implicit transport fallback. **No full CNet provider build,
