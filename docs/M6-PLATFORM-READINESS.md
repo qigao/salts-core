@@ -63,3 +63,20 @@ closing quote, missing ^/$ anchors, invalid regular expression or an
 empty `ctest -R` selector. This avoids an otherwise silent build-only
 run being mistaken for ASan/TSan evidence. Both sanitizer binaries
 still execute the full selected suite with LeakSanitizer/TSan enabled.
+
+## M6.10 — real close/shutdown versus borrowed callback race
+
+A second **real OS poll** C11 test (POSIX) holds a readiness callback
+blocked on its caller-owned synchronization gate. Separate Platform
+threads invoke `cmeta_readiness_close` or
+`cmeta_readiness_reactor_shutdown` after dispatch has started.
+Both operations must remain incomplete while the callback is blocked;
+the test releases that callback, joins the owner thread, verifies
+one delivery and correct quiescent close/shutdown/destroy. Each
+interleaving is repeated eight times. Cleanup retains both the callback
+state and OS pipe handles until all public operations have settled.
+
+The callback test uses no fake scheduler or surrogate Reactor.
+Linux ASan/UBSan/LSan and TSan repeat it three times alongside
+the backend rollback/terminal tests. Windows Reactor unsupported
+selection remains a separate CTest, not silently emulated.

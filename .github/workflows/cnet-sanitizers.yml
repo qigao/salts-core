@@ -99,7 +99,7 @@ jobs:
           ctest --test-dir "build-sanitize-${{ matrix.kind }}" \
             -C RelWithDebInfo --no-tests=error --output-on-failure \
             --timeout 120 --repeat until-fail:3 \
-            -R '^saltscore[.](two_cnet_plugins|cnet_tcp_loopback|buffer|native_io|readiness_owner|readiness_faults)$'
+            -R '^saltscore[.](two_cnet_plugins|cnet_tcp_loopback|buffer|native_io|readiness_owner|readiness_faults|readiness_close_race)$'
 
 
 
