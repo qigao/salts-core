@@ -7,7 +7,7 @@ installed SDK, not just a header or package build.
 ## Pinned dependency mechanics
 
 The scoped Windows provider job selects `windows-2025` and a
-`Visual Studio 17 2022` x64 CMake generator, with `x64-windows` vcpkg
+`Visual Studio 18 2026` x64 CMake generator, with `x64-windows` vcpkg
 triplet. Microsoft vcpkg scripts are fetched at exact SHA
 `04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4`; the builtin
 dependency baseline is `b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01`.
