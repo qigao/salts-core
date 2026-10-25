@@ -1383,11 +1383,8 @@ void disruptor_worker_release_entry(disruptor_t *disruptor, const disruptor_curs
 // =============================================================================
 
 static void disruptor_idle_sleep(void) {
-#ifdef _WIN32
-  Sleep(1);
-#else
-  usleep(1000);
-#endif
+  /* Platform owns cross-platform sleeping; avoid non-portable usleep. */
+  cmeta_sleep_ms(1u);
 }
 
 void disruptor_consumer_run(disruptor_t *disruptor,
