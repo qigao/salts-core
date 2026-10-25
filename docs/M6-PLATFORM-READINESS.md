@@ -36,3 +36,21 @@ This is an additive pre-stable 0.1 candidate. Old Salts 2.3 still
 defines overlapping readiness symbols; the two must never be linked
 together in one process. Downstream Salts CFlow migration is tracked
 in Draft PR #1311 stacked over Salts #1304; no production cutover.
+
+## M6.9 — failure-atomic fake backend conformance
+
+`saltscore.readiness_faults` now injects exact backend
+`SALTS_EIO` failures into the *real* shared Readiness state machine
+for register, arm, unarm, close and shutdown. The test requires
+proper handle rollback, retryable registration/close, fixed capacity,
+generation fencing (old tokens cannot trigger new registration
+callbacks), stale versus duplicate delivery accounting, and exactly
+one terminal callback for shutdown/fatal errors. The backend fixture
+remains test-local and borrows caller-owned state; no Platform
+implementation source is copied into the test or CFlow.
+
+Linux CNet/provider ASan/UBSan/LSan and TSan each repeat this test
+alongside the actual pipe/close test; these tests qualify only the
+enumerated failure-atomic operations, not every original Salts
+Readiness injection case. Extended blocked-callback cancellation and
+platform-specific poll/kqueue/epoll conformance remain pending.

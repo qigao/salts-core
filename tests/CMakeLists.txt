@@ -1,3 +1,13 @@
+# Real copied readiness state machine with test-only injection of native
+# backend hook failures: register, arm, unarm, close, shutdown, stale events.
+add_executable(saltscore_readiness_faults_test test_readiness_faults.c)
+target_compile_features(saltscore_readiness_faults_test PRIVATE c_std_11)
+target_link_libraries(saltscore_readiness_faults_test PRIVATE SaltsCore::Platform)
+set_target_properties(saltscore_readiness_faults_test PROPERTIES
+  C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME saltscore.readiness_faults COMMAND saltscore_readiness_faults_test)
+set_tests_properties(saltscore.readiness_faults PROPERTIES TIMEOUT 20)
+
 add_executable(saltscore_readiness_test test_readiness.c)
 target_compile_features(saltscore_readiness_test PRIVATE c_std_11)
 target_link_libraries(saltscore_readiness_test PRIVATE SaltsCore::Platform)
