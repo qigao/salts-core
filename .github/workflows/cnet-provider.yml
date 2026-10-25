@@ -8,6 +8,7 @@ on:
       - "cmake/SaltsCoreCNet.cmake"
       - "vcpkg.json"
       - "vcpkg-configuration.json"
+      - "cmake/ci/github-packages.py"
       - ".github/workflows/cnet-provider.yml"
       - "tests/installed/cnet_consumer.*"
       - "tests/test_gmssl_*.c"
