@@ -186,6 +186,20 @@ if(SALTSCORE_BUILD_URI)
   install(FILES include/uri_parser.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 endif()
 
+# Provider-free C11 WebSocket frame parser. This is a private CNet build
+# component, not a public SDK target. Minimal Core never links it.
+option(SALTSCORE_BUILD_WEBSOCKET_PARSER "Qualify the CNet-private WebSocket frame parser" OFF)
+if(SALTSCORE_BUILD_WEBSOCKET_PARSER)
+  add_library(saltscore_wsparser OBJECT
+    src/cnet/wsparser/websocket_frame_parser.c)
+  target_compile_features(saltscore_wsparser PUBLIC c_std_11)
+  set_target_properties(saltscore_wsparser PROPERTIES
+    C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+    POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
+  target_include_directories(saltscore_wsparser PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/cnet/wsparser")
+endif()
+
 install(TARGETS saltscore_core saltscore_platform saltscore_concurrency saltscore_coroutine saltscore_native_io
   EXPORT SaltsCoreTargets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
