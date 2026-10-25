@@ -40,3 +40,15 @@ jobs:
           cmake -S tests/installed -B build-installed -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/saltscore-sdk"
           cmake --build build-installed --config Release --parallel 2
           ctest --test-dir build-installed --output-on-failure -C Release
+      - name: Prove future minor ABI 0.2 cannot load installed 0.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Requested 0.2 must fail against installed 0.1; an extra cache
+          # entry or a matching major-zero package is not an ABI waiver.
+          if cmake -S tests/abi-version-mismatch -B build-abi-version-mismatch \
+                "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/saltscore-sdk"; then
+            echo "ABI violation: find_package(SaltsCore 0.2) accepted 0.1" >&2
+            exit 1
+          fi
+          echo "Expected rejection: 0.2 consumer cannot resolve 0.1 ABI"
