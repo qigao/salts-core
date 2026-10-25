@@ -16,7 +16,10 @@ bounded sharded executor). These are imported from exact Salts sources and
 have no CMeta/CFlow dependencies. A further stacked candidate moves the
 original NativeIO backend and Sharded/IPC ownership to
 `SaltsCore::NativeIO` (IOCP, epoll, io_uring, kqueue); the ACE completion-token
-adapter remains in Salts and is not installed by Core. They require exact-head Linux/Windows/macOS
+adapter remains in Salts and is not installed by Core. A further candidate
+extracts `mem_pool_t` / `mem_buffer_t` / `mem_slice_t` from the old
+`cmeta_buffer.c` into mandatory Core to unblock CNet without introducing
+Reflection types or another allocator ABI. They require exact-head Linux/Windows/macOS
 CI and installed C11/C++17 qualification before this candidate is accepted. It is not yet a replacement for any
 published `Salts::Core` binary, and no old APIs or CMake aliases have been
 cut over.

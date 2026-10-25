@@ -10,6 +10,10 @@ find_package(Threads REQUIRED)
 add_library(saltscore_core STATIC src/bytes.c)
 add_library(SaltsCore::Core ALIAS saltscore_core)
 target_compile_features(saltscore_core PUBLIC c_std_11)
+if(MSVC)
+  target_compile_options(saltscore_core PUBLIC
+    $<$<COMPILE_LANGUAGE:C>:-experimental:c11atomics>)
+endif()
 set_target_properties(saltscore_core PROPERTIES
   EXPORT_NAME Core C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   C_VISIBILITY_PRESET hidden)
@@ -44,6 +48,11 @@ elseif(UNIX)
   target_compile_definitions(saltscore_platform PRIVATE
     _DEFAULT_SOURCE=1 _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700)
 endif()
+
+# Salts Core buffer/pool primitive, no reflection. Static Core consumes
+# only the OS synchronization provided by Platform.
+target_sources(saltscore_core PRIVATE src/core/cmeta_buffer.c)
+target_link_libraries(saltscore_core PUBLIC SaltsCore::Platform)
 
 # The original bounded primitives have no Reflection/CFlow dependency.
 # Keep all six original source units together for full API surface coverage.
@@ -151,6 +160,9 @@ install(FILES include/coro.h include/coro_pool.h include/coro_executor.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES vendor/minicoro/LICENSE
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/minicoro)
+
+install(FILES include/cmeta_api.h include/cmeta_buffer.h
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 set(_saltscore_package_dir "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsCore")
 configure_package_config_file(

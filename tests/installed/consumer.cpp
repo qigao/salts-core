@@ -1,4 +1,5 @@
 #include <salts_core/bytes.h>
+#include <cmeta_buffer.h>
 #include <salts/native_io.h>
 #include <salts/native_io_sharded.h>
 #include <coro.h>
@@ -24,5 +25,11 @@ int main() {
   if (coro_executor_current() != nullptr || coro_state(nullptr) != coro_DEAD) return 4;
   if (native_io_request_valid(native_io_request{}) ||
       native_io_sharded_endpoint_valid(native_io_sharded_endpoint{})) return 5;
+  mem_pool_t pool{};
+  if (mem_init(&pool, 0u) != 0) return 6;
+  mem_buffer_t *b = mem_get_buffer(&pool, 12u);
+  if (!b) return 7;
+  mem_buffer_release(b);
+  mem_destroy(&pool);
   return 0;
 }
