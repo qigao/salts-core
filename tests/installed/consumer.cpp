@@ -1,6 +1,7 @@
 #include <ring_buffer.h>
 #include <cmeta_buffer.h>
 #include <salts_core/bytes.h>
+#include <salts_core/runtime_abi.h>
 #include <salts/native_io.h>
 #include <salts/native_io_sharded.h>
 #include <coro.h>
@@ -12,6 +13,11 @@
 #include <cstring>
 
 int main() {
+  salts_core_runtime_abi_0_1_required();
+  if (salts_core_runtime_abi_version() != SALTS_CORE_RUNTIME_ABI_VERSION ||
+      salts_core_runtime_mem_pool_size() != sizeof(mem_pool_t) ||
+      salts_core_runtime_mem_buffer_size() != sizeof(mem_buffer_t) ||
+      salts_core_runtime_mem_slice_size() != sizeof(mem_slice_t)) return 9;
   salts_core_bytes_view view{};
   cmeta_spsc_ring ring{};
   unsigned char storage[8]{};

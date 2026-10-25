@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(SaltsCore VERSION 0.1.0 LANGUAGES C)
+# Pre-stable ABI epoch: 0.2 must not silently satisfy an installed 0.1 DLL/DSO.
+set(SALTSCORE_NATIVE_SOVERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
 
 # All test executables and runtime DLLs share a directory on multi-config Windows.
 # This is DLL discovery, not a copy of the runtime or a static fallback.
@@ -19,7 +21,7 @@ target_compile_features(saltscore_core PUBLIC c_std_11)
 set_target_properties(saltscore_core PROPERTIES
   EXPORT_NAME Core C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   C_VISIBILITY_PRESET default WINDOWS_EXPORT_ALL_SYMBOLS ON
-  VERSION "${PROJECT_VERSION}" SOVERSION "${PROJECT_VERSION_MAJOR}")
+  VERSION "${PROJECT_VERSION}" SOVERSION "${SALTSCORE_NATIVE_SOVERSION}")
 target_include_directories(saltscore_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
@@ -44,7 +46,7 @@ add_library(SaltsCore::Platform ALIAS saltscore_platform)
 set_target_properties(saltscore_platform PROPERTIES
   EXPORT_NAME Platform C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   C_VISIBILITY_PRESET default WINDOWS_EXPORT_ALL_SYMBOLS ON
-  VERSION "${PROJECT_VERSION}" SOVERSION "${PROJECT_VERSION_MAJOR}")
+  VERSION "${PROJECT_VERSION}" SOVERSION "${SALTSCORE_NATIVE_SOVERSION}")
 target_compile_features(saltscore_platform PUBLIC c_std_11)
 target_include_directories(saltscore_platform PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -62,7 +64,7 @@ endif()
 # Salts Core buffer/pool primitive, no reflection. Static Core consumes
 # only the OS synchronization provided by Platform.
 target_sources(saltscore_core PRIVATE
-  src/core/cmeta_buffer.c src/core/ring_buffer.c)
+  src/core/cmeta_buffer.c src/core/ring_buffer.c src/runtime_abi.c)
 target_link_libraries(saltscore_core PUBLIC SaltsCore::Platform)
 
 # The original bounded primitives have no Reflection/CFlow dependency.
@@ -75,7 +77,7 @@ add_library(SaltsCore::Concurrency ALIAS saltscore_concurrency)
 set_target_properties(saltscore_concurrency PROPERTIES
   EXPORT_NAME Concurrency C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   C_VISIBILITY_PRESET default WINDOWS_EXPORT_ALL_SYMBOLS ON
-  VERSION "${PROJECT_VERSION}" SOVERSION "${PROJECT_VERSION_MAJOR}")
+  VERSION "${PROJECT_VERSION}" SOVERSION "${SALTSCORE_NATIVE_SOVERSION}")
 target_compile_features(saltscore_concurrency PUBLIC c_std_11)
 target_include_directories(saltscore_concurrency PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -101,7 +103,7 @@ add_library(SaltsCore::Coroutine ALIAS saltscore_coroutine)
 set_target_properties(saltscore_coroutine PROPERTIES
   EXPORT_NAME Coroutine C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   C_VISIBILITY_PRESET default WINDOWS_EXPORT_ALL_SYMBOLS ON
-  VERSION "${PROJECT_VERSION}" SOVERSION "${PROJECT_VERSION_MAJOR}")
+  VERSION "${PROJECT_VERSION}" SOVERSION "${SALTSCORE_NATIVE_SOVERSION}")
 target_compile_features(saltscore_coroutine PUBLIC c_std_11)
 target_include_directories(saltscore_coroutine
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -149,7 +151,7 @@ endif()
 set_target_properties(saltscore_native_io PROPERTIES
   EXPORT_NAME NativeIO C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   C_VISIBILITY_PRESET default WINDOWS_EXPORT_ALL_SYMBOLS ON
-  VERSION "${PROJECT_VERSION}" SOVERSION "${PROJECT_VERSION_MAJOR}")
+  VERSION "${PROJECT_VERSION}" SOVERSION "${SALTSCORE_NATIVE_SOVERSION}")
 target_compile_features(saltscore_native_io PUBLIC c_std_11)
 target_include_directories(saltscore_native_io PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -222,6 +224,16 @@ if(SALTSCORE_BUILD_CNET)
   include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsCoreCNet.cmake")
 endif()
 
+# PE/COFF does not honor ELF/Mach-O SOVERSION. Encode the pre-stable 0.1 ABI
+# epoch in each Windows DLL and its import library, without a filename alias.
+# A future 0.2 DLL must not replace an older consumer's 0.1 dependency.
+if(WIN32)
+  foreach(_runtime IN ITEMS core platform concurrency coroutine native_io)
+    set_target_properties(saltscore_${_runtime} PROPERTIES
+      OUTPUT_NAME "saltscore_${_runtime}-${SALTSCORE_NATIVE_SOVERSION}")
+  endforeach()
+endif()
+
 install(TARGETS saltscore_core saltscore_platform saltscore_concurrency saltscore_coroutine saltscore_native_io
   EXPORT SaltsCoreTargets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -246,7 +258,7 @@ configure_package_config_file(
   INSTALL_DESTINATION "${_saltscore_package_dir}")
 write_basic_package_version_file(
   "${CMAKE_CURRENT_BINARY_DIR}/SaltsCoreConfigVersion.cmake"
-  VERSION ${PROJECT_VERSION} COMPATIBILITY SameMajorVersion)
+  VERSION ${PROJECT_VERSION} COMPATIBILITY SameMinorVersion)
 install(FILES
   "${CMAKE_CURRENT_BINARY_DIR}/SaltsCoreConfig.cmake"
   "${CMAKE_CURRENT_BINARY_DIR}/SaltsCoreConfigVersion.cmake"

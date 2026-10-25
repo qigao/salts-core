@@ -84,9 +84,13 @@ add_library(saltscore_cnet SHARED ${_saltscore_cnet_sources})
 add_library(SaltsCore::CNet ALIAS saltscore_cnet)
 target_compile_features(saltscore_cnet PUBLIC c_std_11)
 set_target_properties(saltscore_cnet PROPERTIES
-  VERSION "${PROJECT_VERSION}" SOVERSION "${PROJECT_VERSION_MAJOR}"
+  VERSION "${PROJECT_VERSION}" SOVERSION "${SALTSCORE_NATIVE_SOVERSION}"
   EXPORT_NAME CNet C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   WINDOWS_EXPORT_ALL_SYMBOLS ON)
+if(WIN32)
+  set_target_properties(saltscore_cnet PROPERTIES
+    OUTPUT_NAME "saltscore_cnet-${SALTSCORE_NATIVE_SOVERSION}")
+endif()
 target_include_directories(saltscore_cnet
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

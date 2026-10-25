@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(SaltsCoreInstalledConsumer LANGUAGES C CXX)
 include(CTest)
-find_package(SaltsCore CONFIG REQUIRED)
+find_package(SaltsCore 0.1 CONFIG REQUIRED)
 
 add_executable(consumer_c consumer.c)
 target_compile_features(consumer_c PRIVATE c_std_11)
