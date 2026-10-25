@@ -39,6 +39,30 @@ CNet integrations stay in Salts.
 
 See [architecture](docs/ARCHITECTURE.md) for ownership and migration gates.
 
+## CNet source migration (Draft, opt-in only)
+
+The next stacked Draft candidate stages the whole CNet transport source tree,
+after the original Salts CNet IPC FIFO, peer index and native-path changes.
+Provider-free CNet destination/owner/recovery policies are tested on all three
+desktop platforms, even with the transport disabled.
+
+To request a **real CNet provider build** explicitly, provide a verified
+GmSSL (project overlay), c-ares, KCP and SIMDe SDK and an installed host re2c:
+
+```sh
+cmake -S . -B build-cnet -DBUILD_TESTING=ON \
+  -DSALTSCORE_BUILD_URI=ON -DSALTSCORE_BUILD_CNET=ON \
+  -DCMAKE_TOOLCHAIN_FILE=/path/to/verified-vcpkg-toolchain.cmake
+cmake --build build-cnet --parallel
+ctest --test-dir build-cnet --output-on-failure
+```
+
+An unavailable dependency fails configuration, without substituting another
+TLS provider or an implicit transport fallback. **No full CNet provider build,
+TLS/CA/SAN, real network interop, sanitizer or ABI qualification has yet been
+established by the source-extraction change.** The original Salts CNet remains
+the production owner until the consumers cut over together.
+
 ## Local M0 build
 
 ```sh

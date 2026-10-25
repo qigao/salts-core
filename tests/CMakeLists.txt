@@ -59,3 +59,18 @@ if(TARGET saltscore_wsparser)
   target_link_libraries(saltscore_wsparser_test PRIVATE saltscore_wsparser)
   add_test(NAME saltscore.wsparser COMMAND saltscore_wsparser_test)
 endif()
+
+# Compile the actual provider-free CNet policy sources on every platform even
+# when CNet/TLS itself is disabled. These are test-only, never SDK exports.
+add_executable(saltscore_cnet_policy_test
+  test_cnet_policy.c
+  ../src/cnet/cnet_destination_policy.c
+  ../src/cnet/cnet_owner_strategy.c
+  ../src/cnet/cnet_recovery_policy.c)
+target_compile_features(saltscore_cnet_policy_test PRIVATE c_std_11)
+set_target_properties(saltscore_cnet_policy_test PROPERTIES
+  C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+target_include_directories(saltscore_cnet_policy_test PRIVATE
+  "${PROJECT_SOURCE_DIR}/include")
+target_link_libraries(saltscore_cnet_policy_test PRIVATE SaltsCore::Platform)
+add_test(NAME saltscore.cnet_policy COMMAND saltscore_cnet_policy_test)

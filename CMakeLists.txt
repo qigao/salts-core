@@ -188,8 +188,9 @@ endif()
 
 # Provider-free C11 WebSocket frame parser. This is a private CNet build
 # component, not a public SDK target. Minimal Core never links it.
+option(SALTSCORE_BUILD_CNET "Build standalone CNet with required pinned providers" OFF)
 option(SALTSCORE_BUILD_WEBSOCKET_PARSER "Qualify the CNet-private WebSocket frame parser" OFF)
-if(SALTSCORE_BUILD_WEBSOCKET_PARSER)
+if(SALTSCORE_BUILD_WEBSOCKET_PARSER OR SALTSCORE_BUILD_CNET)
   add_library(saltscore_wsparser OBJECT
     src/cnet/wsparser/websocket_frame_parser.c)
   target_compile_features(saltscore_wsparser PUBLIC c_std_11)
@@ -198,6 +199,16 @@ if(SALTSCORE_BUILD_WEBSOCKET_PARSER)
     POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
   target_include_directories(saltscore_wsparser PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cnet/wsparser")
+endif()
+
+# Optional CNet uses exactly the native Core targets and explicit provider
+# packages. There is no implicit source fallback or direct old Salts import.
+if(SALTSCORE_BUILD_CNET)
+  if(NOT TARGET SaltsCore::URI)
+    message(FATAL_ERROR
+      "SaltsCore::CNet requires SALTSCORE_BUILD_URI=ON (real re2c at build time)")
+  endif()
+  include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsCoreCNet.cmake")
 endif()
 
 install(TARGETS saltscore_core saltscore_platform saltscore_concurrency saltscore_coroutine saltscore_native_io
