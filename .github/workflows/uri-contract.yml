@@ -46,6 +46,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export LD_LIBRARY_PATH="$RUNNER_TEMP/uri-sdk/lib:${LD_LIBRARY_PATH:-}"
           cmake -S tests/installed -B build-uri-consumer -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/uri-sdk"
           cmake --build build-uri-consumer --config Release --parallel 2
           ctest --test-dir build-uri-consumer -C Release --output-on-failure
