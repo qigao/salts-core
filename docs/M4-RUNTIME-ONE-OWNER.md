@@ -123,3 +123,20 @@ Sanitizer evidence must reference the exact branch commit; adding this job
 does not constitute a passing TSan/ASan claim until both jobs succeed. The
 original Salts module transition and multi-provider TLS interoperability
 remain separate gates.
+
+## M4.11 — address LeakSanitizer's per-DSO global mutex leak
+
+The new sanitized two-plugin test found an actual **320-byte heap leak**
+(8 allocations × 40 bytes) at `cmeta_mutex_init()` via the CNet module's
+once-initialized global provider lock. Each `dlclose` left the allocated
+mutex behind; `cnet_module_shutdown()` could not safely destroy that mutex
+because a concurrent `cnet_module_init()` might already be waiting on it.
+
+The CNet module's owner-state lock is now a **statically initialized native
+mutex** (`PTHREAD_MUTEX_INITIALIZER` on POSIX, `SRWLOCK_INIT` on Windows).
+No lock allocation or destructor is needed, avoiding both the leak and
+destroy-under-waiter race. The provider's `references`/`resolvers` admission
+and cleanup semantics are unchanged; process clients must still quiesce before
+unloading CNet. LeakSanitizer remains **enabled**, not suppressed.
+
+This is a candidate source fix until ASan/UBSan exact-head tests confirm it.
