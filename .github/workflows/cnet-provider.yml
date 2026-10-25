@@ -6,6 +6,7 @@ on:
       - "include/cnet/**"
       - "vendor/cnet/**"
       - "cmake/SaltsCoreCNet.cmake"
+      - "CMakeLists.txt"
       - "vcpkg.json"
       - "vcpkg-configuration.json"
       - "cmake/ci/github-packages.py"
@@ -239,7 +240,7 @@ jobs:
           cmake --build build-cnet --config Release --parallel 2
           if ($LASTEXITCODE -ne 0) { throw "Windows CNet compilation failed" }
           $vcpkgBin = Join-Path $env:GITHUB_WORKSPACE 'vcpkg_installed/x64-windows/bin'
-          $buildBin = Join-Path $env:GITHUB_WORKSPACE 'build-cnet/Release'
+          $buildBin = Join-Path $env:GITHUB_WORKSPACE 'build-cnet/bin/Release'
           $env:PATH = "$vcpkgBin;$buildBin;$env:PATH"
           ctest --test-dir build-cnet -C Release --output-on-failure --timeout 65 --no-tests=error
           if ($LASTEXITCODE -ne 0) { throw "Windows CNet native CTest failed" }

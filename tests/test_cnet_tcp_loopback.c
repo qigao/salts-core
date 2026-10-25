@@ -5,6 +5,7 @@
  */
 #include <cnet/cnet.h>
 #include <salts/clock.h>
+#include <salts/thread.h>
 #include <salts/error_codes.h>
 #include <cmeta_buffer.h>
 
@@ -41,6 +42,11 @@ static int test_recv_timeout(test_socket s) {
   return setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 }
 #endif
+
+/* Defined in a separate shared module, linked to the installed Core owner. */
+extern mem_pool_t *saltscore_owner_probe_pool(void);
+extern const void *saltscore_owner_probe_thread(void);
+extern void saltscore_owner_probe_release(mem_slice_t *slice);
 
 typedef struct tcp_probe {
   unsigned connected;
@@ -181,6 +187,11 @@ int main(void) {
          probe.owned_slice.length == 1u &&
          probe.owned_slice.data[0] == incoming &&
          probe.borrowed_received == 0u && probe.failed == 0u);
+  /* This slice was created by the CNet DSO; compare with the executable and
+   * an independently loaded module on this same live OS thread. */
+  VERIFY(mem_buffer_pool(probe.owned_slice.buffer) == mem_global());
+  VERIFY(saltscore_owner_probe_pool() == mem_global());
+  VERIFY(saltscore_owner_probe_thread() == cmeta_thread_current_token());
 
   pending = mem_get_buffer(mem_global(), 1u);
   VERIFY(pending != NULL);
@@ -220,6 +231,7 @@ cleanup:
     (void)cnet_listener_destroy(&listener);
   }
   test_close_socket(peer);
-  if (probe.owned_slice.buffer) mem_slice_release(&probe.owned_slice);
+  /* Last release deliberately occurs in another DLL/DSO after CNet destroy. */
+  if (probe.owned_slice.buffer) saltscore_owner_probe_release(&probe.owned_slice);
   return result;
 }

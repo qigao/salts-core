@@ -30,6 +30,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Shared foundation must be found from the clean installed prefix,
+          # not from build-tree archives or an already installed legacy Salts.
+          case "$RUNNER_OS" in
+            Windows) export PATH="$(cygpath -u "$RUNNER_TEMP")/saltscore-sdk/bin:$PATH" ;;
+            macOS) export DYLD_LIBRARY_PATH="$RUNNER_TEMP/saltscore-sdk/lib:${DYLD_LIBRARY_PATH:-}" ;;
+            Linux) export LD_LIBRARY_PATH="$RUNNER_TEMP/saltscore-sdk/lib:${LD_LIBRARY_PATH:-}" ;;
+          esac
           cmake -S tests/installed -B build-installed -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/saltscore-sdk"
           cmake --build build-installed --config Release --parallel 2
           ctest --test-dir build-installed --output-on-failure -C Release
