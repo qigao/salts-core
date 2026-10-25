@@ -33,8 +33,8 @@ int main() {
   mem_buffer_release(buffer);
   mem_destroy(&pool);
   unsigned char area[4]{};
-  ring_data_type ring{};
-  ring_init(&ring, area, sizeof(area));
-  if (ring_write_acquire(&ring, 1u) == nullptr) return 8;
+  ring_data_type bipartite{};
+  ring_init(&bipartite, area, sizeof(area));
+  if (ring_write_acquire(&bipartite, 1u) == nullptr) return 8;
   return 0;
 }
