@@ -85,3 +85,16 @@ This distinguishes symbol ownership from the already-passed live pointer
 identity and basic plugin unload tests. The audit does not yet prove an
 old-Salts binary can coexist, threaded unload under TSan, or a final new
 ABI/SONAME epoch; these gates remain **open**.
+
+## M4.9 — bounded cross-thread release after plugin unload
+
+The two-plugin runtime test additionally creates four caller-owned retained
+buffers from plugin A, unloads A only after its callbacks have returned, then
+runs four `cmeta_thread_create` workers concurrently using plugin B's
+release entry point. Each worker checks the one shared pool and same-thread
+Platform token identity; the parent joins all workers **before** unloading B.
+Failure cleanup also joins all admitted workers before any module teardown.
+
+This is a bounded quiescent-unload/parallel-release contract, **not** a license
+to `dlclose` a library while any of its code is executing. TSan/ASan and
+real adversarial close/cancel races remain qualification gates.

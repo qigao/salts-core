@@ -61,6 +61,36 @@ static void close_plugin(plugin *p) {
   p->module = NULL;
 }
 
+/* Concurrent last-reference release after producer plugin A has unloaded.
+ * The B module must remain loaded until all callbacks are quiescent.
+ * Each worker owns a distinct slice; no borrowed callback survives unload.
+ */
+enum { RELEASE_WORKERS = 4 };
+
+typedef struct release_worker_context {
+  release_fn release;
+  pool_fn pool;
+  token_fn token;
+  mem_pool_t *expected_pool;
+  mem_slice_t slice;
+  int success;
+} release_worker_context;
+
+static void release_worker(void *opaque) {
+  release_worker_context *w = (release_worker_context *)opaque;
+  if (w == NULL || w->slice.buffer == NULL ||
+      w->pool() != w->expected_pool ||
+      w->token() != cmeta_thread_current_token() ||
+      mem_global() != w->expected_pool ||
+      mem_buffer_pool(w->slice.buffer) != w->expected_pool ||
+      w->slice.length != 1u ||
+      (unsigned char)w->slice.data[0] != 0x7bu) {
+    return;
+  }
+  w->release(&w->slice);
+  w->success = w->slice.buffer == NULL;
+}
+
 int main(int argc, char **argv) {
   int result = 0, round;
   mem_pool_t *const pool = mem_global();
@@ -70,6 +100,10 @@ int main(int argc, char **argv) {
   for (round = 0; round != 8; ++round) {
     plugin a = {0}, b = {0};
     mem_slice_t retained = {0};
+    release_worker_context workers[RELEASE_WORKERS] = {{0}};
+    cmeta_thread_t threads[RELEASE_WORKERS] = {0};
+    size_t i, started = 0u;
+    int join_failed = 0;
 
 #define VERIFY(e) do { if (!(e)) { \
   fprintf(stderr, "two CNet plugins failure line %d, round %d: %s\n", \
@@ -84,18 +118,52 @@ int main(int argc, char **argv) {
     VERIFY(retained.buffer != NULL && retained.length == 1u);
     VERIFY(mem_buffer_pool(retained.buffer) == pool);
     VERIFY((unsigned char)retained.data[0] == 0x7bu);
+    for (i = 0u; i < RELEASE_WORKERS; ++i) {
+      workers[i].slice = a.alloc();
+      VERIFY(workers[i].slice.buffer != NULL);
+      VERIFY(mem_buffer_pool(workers[i].slice.buffer) == pool);
+      workers[i].expected_pool = pool;
+      workers[i].pool = b.pool;
+      workers[i].token = b.token;
+      workers[i].release = b.release;
+    }
 
-    /* Plugin A and its direct CNet link are removed while the buffer lives. */
+    /* Plugin A and its direct CNet link are removed while its buffers live.
+     * A callback is never invoked during or after its own module's unload. */
     close_plugin(&a);
     VERIFY(mem_global() == pool && b.pool() == pool && b.token() == token);
     VERIFY((unsigned char)retained.data[0] == 0x7bu);
     b.release(&retained);
     VERIFY(retained.buffer == NULL);
+
+    for (i = 0u; i < RELEASE_WORKERS; ++i) {
+      VERIFY(cmeta_thread_create(&threads[i], release_worker, &workers[i]) == 0);
+      ++started;
+    }
+    /* Multiple module-B callbacks can now concurrently release distinct
+     * references into the one global slab/cache domain. */
+    for (i = 0u; i < started; ++i) {
+      if (cmeta_thread_join(&threads[i]) != 0) join_failed = 1;
+    }
+    started = 0u;
+    VERIFY(join_failed == 0);
+    for (i = 0u; i < RELEASE_WORKERS; ++i) {
+      VERIFY(workers[i].success && workers[i].slice.buffer == NULL);
+    }
     close_plugin(&b);
     VERIFY(mem_global() == pool && cmeta_thread_current_token() == token);
     continue;
 
 cleanup:
+    /* Quiescence is mandatory before unloading plugin B, including on an
+     * allocation/thread-creation/test failure. */
+    for (i = 0u; i < started; ++i) (void)cmeta_thread_join(&threads[i]);
+    for (i = 0u; i < RELEASE_WORKERS; ++i) {
+      if (workers[i].slice.buffer) {
+        if (b.module && b.release) b.release(&workers[i].slice);
+        else mem_slice_release(&workers[i].slice);
+      }
+    }
     if (retained.buffer) {
       if (b.module && b.release) b.release(&retained);
       else mem_slice_release(&retained);
