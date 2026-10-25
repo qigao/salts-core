@@ -23,8 +23,11 @@ Salts `bbeecfff4615d1385787b05369879aa08ed7249a`. The script uses
 `curl` with host allowlisting, GitHub package API authentication and ZIP
 path/symlink checks. It emits the resolved re2c package version to the
 GitHub Actions environment and checks runtime host binary/tool assets.
-**Current re2c selection is the latest stable hosted package, not an exact
-version pin**; audit/pin before production release.
+The re2c host binary is pinned to GitHub Packages `Qigao.Re2c.Binary`
+version **4.6.4** with immutable downloaded package SHA-256
+`9e1eb668eb818e81c6ba50d9342f874247b2ea66f33a00d2e253053ef1474269`.
+Missing or mismatching artifacts fail closed, rather than floating to the
+latest stable re2c version.
 
 ## Runtime tests
 
