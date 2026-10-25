@@ -315,11 +315,16 @@ def restore_cache(feed, config, cache):
 
 
 def restore_re2c(feed, destination):
-    version = feed.latest_stable("Qigao.Re2c.Binary")
+    # Locked against the audited Windows CI artifact; do not float host compiler tools.
+    version = "4.6.4"
+    expected_sha256 = "9e1eb668eb818e81c6ba50d9342f874247b2ea66f33a00d2e253053ef1474269"
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=True)
     nupkg = destination / "re2c.nupkg"
     feed.package("Qigao.Re2c.Binary", version, nupkg)
+    if sha256(nupkg) != expected_sha256:
+        nupkg.unlink(missing_ok=True)
+        raise ValueError("re2c pinned package digest mismatch")
     extract_package(nupkg, destination / "package")
     hosts = {("Linux", "X64"): "linux-x64", ("Linux", "ARM64"): "linux-arm64",
              ("macOS", "X64"): "macos-x64", ("macOS", "ARM64"): "macos-arm64",
