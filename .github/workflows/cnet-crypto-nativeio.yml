@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/cnet-crypto-nativeio.yml"
       - "tests/crypto-nativeio/**"
+      - "tests/cnet-crypto-owner/**"
   workflow_dispatch:
 
 permissions:
@@ -124,7 +125,7 @@ jobs:
             "-DCRYPTO_TEST_FIXTURES=$GITHUB_WORKSPACE/_crypto/providers/gmssl/tests/fixtures"
           cmake --build build-cnet-policy --parallel 2
           test "$(ctest --test-dir build-cnet-policy -N |
-            sed -n 's/^Total Tests: //p')" = 2
+            sed -n 's/^Total Tests: //p')" = 3
           ctest --test-dir build-cnet-policy --no-tests=error \
             --output-on-failure --timeout 60 --repeat until-fail:3
           test ! -e "$sdk/include/cnet/cnet.h"
