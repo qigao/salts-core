@@ -100,7 +100,7 @@ jobs:
           cmake --build build-installed-cnet --parallel 2
           ctest --test-dir build-installed-cnet --output-on-failure -C Release --no-tests=error
           test -f "$RUNNER_TEMP/saltscore-sdk/include/cnet/cnet.h"
-          grep -Fq 'SaltsCore::CNet' "$RUNNER_TEMP/saltscore-sdk/lib/cmake/SaltsCore/SaltsCoreTargets.cmake"
+          grep -Fq 'Salts::CNet' "$RUNNER_TEMP/saltscore-sdk/lib/cmake/SaltsCore/SaltsCoreTargets.cmake"
       - name: Audit installed ELF exports and consumer DT_NEEDED
         shell: bash
         run: |
@@ -203,7 +203,7 @@ jobs:
           cmake --install build-cnet --config Release
           test -f "$RUNNER_TEMP/saltscore-sdk/include/cnet/cnet.h"
           test -n "$(find "$RUNNER_TEMP/saltscore-sdk/lib" -name 'libsaltscore_cnet*.dylib' -print -quit)"
-          grep -Fq 'SaltsCore::CNet' "$RUNNER_TEMP/saltscore-sdk/lib/cmake/SaltsCore/SaltsCoreTargets.cmake"
+          grep -Fq 'Salts::CNet' "$RUNNER_TEMP/saltscore-sdk/lib/cmake/SaltsCore/SaltsCoreTargets.cmake"
       - name: Verify independent macOS C11/C++17 installed SDK
         shell: bash
         run: |
@@ -349,7 +349,7 @@ jobs:
           if (-not (Get-ChildItem -Path "$prefix/bin" -Filter '*saltscore_cnet*.dll')) {
             throw "missing installed CNet DLL"
           }
-          if (-not (Select-String -Path "$prefix/lib/cmake/SaltsCore/SaltsCoreTargets.cmake" -SimpleMatch 'SaltsCore::CNet' -Quiet)) {
+          if (-not (Select-String -Path "$prefix/lib/cmake/SaltsCore/SaltsCoreTargets.cmake" -SimpleMatch 'Salts::CNet' -Quiet)) {
             throw "missing installed CNet CMake target"
           }
 

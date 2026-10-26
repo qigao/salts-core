@@ -2,5 +2,19 @@
 include(CMakeFindDependencyMacro)
 find_dependency(Threads)
 
+# Reject a pre-existing legacy Salts runtime owner instead of silently accepting
+# colliding Salts:: targets from a different binary or SDK.
+get_property(_salts_core_owner GLOBAL PROPERTY SALTS_CORE_PACKAGE_OWNER)
+if(TARGET Salts::Core AND NOT _salts_core_owner STREQUAL "${CMAKE_CURRENT_LIST_DIR}")
+  message(FATAL_ERROR "Salts::Core is already owned by another package; mixed native owners forbidden")
+endif()
 include("${CMAKE_CURRENT_LIST_DIR}/SaltsCoreTargets.cmake")
+set_property(GLOBAL PROPERTY SALTS_CORE_PACKAGE_OWNER "${CMAKE_CURRENT_LIST_DIR}")
+foreach(_salts_core_required IN ITEMS Core Platform Concurrency Coroutine NativeIO)
+  if(NOT TARGET "Salts::${_salts_core_required}")
+    message(FATAL_ERROR "SaltsCore SDK missing required Salts::${_salts_core_required} target")
+  endif()
+endforeach()
+unset(_salts_core_owner)
+unset(_salts_core_required)
 check_required_components(SaltsCore)

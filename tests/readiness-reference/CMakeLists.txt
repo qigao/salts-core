@@ -19,13 +19,12 @@ endif()
 # The standalone dependency scanner forbids concrete legacy package
 # references. Build the runtime prohibition from its namespace and suffix
 # while still failing configuration for any historical owner target.
-set(_legacy_prefix "Salts::")
-foreach(_old IN ITEMS Core Platform NativeIO)
-  if(TARGET "${_legacy_prefix}${_old}")
-    message(FATAL_ERROR "Forbidden duplicate legacy runtime ${_old}")
+foreach(_owner IN ITEMS Core Platform NativeIO)
+  if(NOT TARGET "Salts::${_owner}")
+    message(FATAL_ERROR "Missing canonical installed Salts::${_owner} owner")
   endif()
 endforeach()
-get_target_property(_kind SaltsCore::Platform TYPE)
+get_target_property(_kind Salts::Platform TYPE)
 if(NOT _kind STREQUAL "SHARED_LIBRARY")
   message(FATAL_ERROR "Readiness contract requires installed shared Platform")
 endif()
@@ -43,7 +42,7 @@ function(m6_add_original name)
   target_include_directories(m6_original_readiness_${name} PRIVATE
     "${_tests}")
   target_link_libraries(m6_original_readiness_${name} PRIVATE
-    SaltsCore::Platform m6_original_tinytest)
+    Salts::Platform m6_original_tinytest)
   if(MSVC)
     target_compile_options(m6_original_readiness_${name} PRIVATE
       $<$<COMPILE_LANGUAGE:C>:-experimental:c11atomics>)

@@ -16,7 +16,7 @@ find_package(Threads REQUIRED)
 
 # Keep the minimal foundation target usable without platform/transport providers.
 add_library(saltscore_core SHARED src/bytes.c)
-add_library(SaltsCore::Core ALIAS saltscore_core)
+add_library(Salts::Core ALIAS saltscore_core)
 target_compile_features(saltscore_core PUBLIC c_std_11)
 set_target_properties(saltscore_core PROPERTIES
   EXPORT_NAME Core C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
@@ -59,7 +59,7 @@ if(UNIX)
   endif()
 endif()
 add_library(saltscore_platform SHARED ${_saltscore_platform_sources})
-add_library(SaltsCore::Platform ALIAS saltscore_platform)
+add_library(Salts::Platform ALIAS saltscore_platform)
 set_target_properties(saltscore_platform PROPERTIES
   EXPORT_NAME Platform C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   C_VISIBILITY_PRESET default WINDOWS_EXPORT_ALL_SYMBOLS ON
@@ -99,7 +99,7 @@ endif()
 # only the OS synchronization provided by Platform.
 target_sources(saltscore_core PRIVATE
   src/core/cmeta_buffer.c src/core/ring_buffer.c src/runtime_abi.c src/utf8.c)
-target_link_libraries(saltscore_core PUBLIC SaltsCore::Platform)
+target_link_libraries(saltscore_core PUBLIC Salts::Platform)
 
 # The original bounded primitives have no Reflection/CFlow dependency.
 # Keep all six original source units together for full API surface coverage.
@@ -107,7 +107,7 @@ add_library(saltscore_concurrency SHARED
   src/concurrency/deadline_queue.c src/concurrency/disruptor.c
   src/concurrency/rcu.c src/concurrency/spsc_ring.c
   src/concurrency/thread_pool.c src/concurrency/thread_pool_lf.c)
-add_library(SaltsCore::Concurrency ALIAS saltscore_concurrency)
+add_library(Salts::Concurrency ALIAS saltscore_concurrency)
 set_target_properties(saltscore_concurrency PROPERTIES
   EXPORT_NAME Concurrency C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   C_VISIBILITY_PRESET default WINDOWS_EXPORT_ALL_SYMBOLS ON
@@ -116,7 +116,7 @@ target_compile_features(saltscore_concurrency PUBLIC c_std_11)
 target_include_directories(saltscore_concurrency PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-target_link_libraries(saltscore_concurrency PUBLIC SaltsCore::Platform)
+target_link_libraries(saltscore_concurrency PUBLIC Salts::Platform)
 if(MSVC)
   target_compile_options(saltscore_concurrency PUBLIC
     $<$<COMPILE_LANGUAGE:C>:-experimental:c11atomics>)
@@ -133,7 +133,7 @@ add_library(saltscore_coroutine SHARED
   src/coroutine/coro.c
   src/coroutine/coro_pool.c
   src/coroutine/coro_executor.c)
-add_library(SaltsCore::Coroutine ALIAS saltscore_coroutine)
+add_library(Salts::Coroutine ALIAS saltscore_coroutine)
 set_target_properties(saltscore_coroutine PROPERTIES
   EXPORT_NAME Coroutine C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   C_VISIBILITY_PRESET default WINDOWS_EXPORT_ALL_SYMBOLS ON
@@ -143,7 +143,7 @@ target_include_directories(saltscore_coroutine
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
          $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/vendor/minicoro)
-target_link_libraries(saltscore_coroutine PUBLIC SaltsCore::Concurrency)
+target_link_libraries(saltscore_coroutine PUBLIC Salts::Concurrency)
 if(APPLE)
   target_compile_definitions(saltscore_coroutine PRIVATE _DARWIN_C_SOURCE=1)
 elseif(UNIX)
@@ -157,7 +157,7 @@ add_library(saltscore_native_io SHARED
   src/native-io/native_io_accept_escrow.c
   src/native-io/native_io_sharded.c
   src/native-io/native_ipc.c)
-add_library(SaltsCore::NativeIO ALIAS saltscore_native_io)
+add_library(Salts::NativeIO ALIAS saltscore_native_io)
 if(WIN32)
   target_sources(saltscore_native_io PRIVATE
     src/native-io/native_io_iocp.c src/native-io/native_ipc_windows.c)
@@ -191,8 +191,8 @@ target_include_directories(saltscore_native_io PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_link_libraries(saltscore_native_io
-  PUBLIC SaltsCore::Platform
-  PRIVATE SaltsCore::Coroutine)
+  PUBLIC Salts::Platform
+  PRIVATE Salts::Coroutine)
 if(WIN32)
   target_link_libraries(saltscore_native_io PRIVATE ws2_32)
 endif()
@@ -217,7 +217,7 @@ if(SALTSCORE_BUILD_URI)
     VERBATIM)
   add_library(saltscore_uri STATIC
     src/uri/uri_parser.c "${_saltscore_uri_generated}")
-  add_library(SaltsCore::URI ALIAS saltscore_uri)
+  add_library(Salts::URI ALIAS saltscore_uri)
   target_compile_features(saltscore_uri PUBLIC c_std_11)
   set_target_properties(saltscore_uri PROPERTIES
     EXPORT_NAME URI C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
@@ -251,9 +251,9 @@ endif()
 # Optional CNet uses exactly the native Core targets and explicit provider
 # packages. There is no implicit source fallback or direct old Salts import.
 if(SALTSCORE_BUILD_CNET)
-  if(NOT TARGET SaltsCore::URI)
+  if(NOT TARGET Salts::URI)
     message(FATAL_ERROR
-      "SaltsCore::CNet requires SALTSCORE_BUILD_URI=ON (real re2c at build time)")
+      "Salts::CNet requires SALTSCORE_BUILD_URI=ON (real re2c at build time)")
   endif()
   include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsCoreCNet.cmake")
 endif()
@@ -298,7 +298,7 @@ install(FILES
   "${CMAKE_CURRENT_BINARY_DIR}/SaltsCoreConfigVersion.cmake"
   DESTINATION "${_saltscore_package_dir}")
 install(EXPORT SaltsCoreTargets FILE SaltsCoreTargets.cmake
-  NAMESPACE SaltsCore:: DESTINATION "${_saltscore_package_dir}")
+  NAMESPACE Salts:: DESTINATION "${_saltscore_package_dir}")
 
 if(BUILD_TESTING)
   add_subdirectory(tests)

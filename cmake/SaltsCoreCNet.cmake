@@ -1,6 +1,6 @@
 # Core CNet: explicit provider-backed network transport. No fallback and
 # no target/source import from the historical Salts or SaltsUtils packages.
-if(NOT TARGET SaltsCore::URI OR NOT TARGET saltscore_wsparser)
+if(NOT TARGET Salts::URI OR NOT TARGET saltscore_wsparser)
   message(FATAL_ERROR "CNet requires native Core URI and WebSocket parser targets")
 endif()
 find_package(c-ares CONFIG REQUIRED)
@@ -81,7 +81,7 @@ set(_saltscore_cnet_sources
   $<TARGET_OBJECTS:saltscore_wsparser>)
 
 add_library(saltscore_cnet SHARED ${_saltscore_cnet_sources})
-add_library(SaltsCore::CNet ALIAS saltscore_cnet)
+add_library(Salts::CNet ALIAS saltscore_cnet)
 target_compile_features(saltscore_cnet PUBLIC c_std_11)
 set_target_properties(saltscore_cnet PROPERTIES
   VERSION "${PROJECT_VERSION}" SOVERSION "${SALTSCORE_NATIVE_SOVERSION}"
@@ -103,12 +103,12 @@ target_include_directories(saltscore_cnet
     "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/reed")
 target_link_libraries(saltscore_cnet
   PUBLIC
-    SaltsCore::Core
-    SaltsCore::NativeIO
-    SaltsCore::Concurrency
+    Salts::Core
+    Salts::NativeIO
+    Salts::Concurrency
   PRIVATE
-    SaltsCore::URI
-    SaltsCore::Platform
+    Salts::URI
+    Salts::Platform
     saltscore_cnet_monocypher
     saltscore_cnet_reed
     c-ares::cares

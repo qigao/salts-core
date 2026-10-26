@@ -27,6 +27,17 @@ class DependencyGateTest(unittest.TestCase):
                                  ".cmake")
         self.assertEqual(len(output), 2)
 
+    def test_native_salts_targets_are_allowed(self):
+        content = ("add_library(Salts::Platform ALIAS saltscore_platform)\n"
+                   "target_link_libraries(app PRIVATE Salts::Core Salts::NativeIO)\n")
+        self.assertEqual(self.check_text(content, ".cmake"), [])
+
+    def test_alternate_namespaces_rejected(self):
+        content = ("target_link_libraries(a PRIVATE SaltsCore::Platform)\n"
+                   "target_link_libraries(b PRIVATE Crypto::TLS)\n"
+                   "target_link_libraries(c PRIVATE SaltsCrypto::Crypto)\n")
+        self.assertEqual(len(self.check_text(content, ".cmake")), 3)
+
     def test_reflection_and_actor_includes_rejected(self):
         self.assertEqual(len(self.check_text("#include <cmeta/struct.h>\n"
                                              "#include <cflow/executor.h>\n"
