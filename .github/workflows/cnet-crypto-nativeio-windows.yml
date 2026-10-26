@@ -153,7 +153,7 @@ jobs:
                   check=True, capture_output=True, text=True
               ).stdout
               return set(x.lower() for x in re.findall(
-                  r"(?i)\b[A-Za-z0-9_-]+[.]dll\b", data))
+                  r"(?i)\b[A-Za-z0-9_.-]+[.]dll\b", data))
           # Check the executable's immediate owners, then recurse through
           # ONLY the exact installed DLL closure. Some MSVC linkers place
           # Foundation behind NativeIO rather than a direct EXE import.
