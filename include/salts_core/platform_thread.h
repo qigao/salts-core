@@ -23,6 +23,11 @@ typedef struct salts_platform_once { salts_atomic32 state; } salts_platform_once
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_thread_create(salts_platform_thread **out, salts_platform_thread_fn fn, void *arg);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_thread_join(salts_platform_thread **thread, int *result);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_thread_detach(salts_platform_thread **thread);
+/* Native OS identity never crosses the C ABI as pthread_t/HANDLE storage. */
+SALTS_CORE_PLATFORM_API uint64_t SALTS_CORE_PLATFORM_CALL salts_platform_thread_current_id(void);
+SALTS_CORE_PLATFORM_API uint64_t SALTS_CORE_PLATFORM_CALL salts_platform_thread_id(const salts_platform_thread *thread);
+/* Early exit must retire the Platform worker's reference before OS exit. */
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL salts_platform_thread_exit(int result);
 SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL salts_platform_thread_yield(void);
 /* Uniform maximum representable relative duration on Windows and POSIX.
  * No truncation to infinite wait or silent clock-source downgrade.
