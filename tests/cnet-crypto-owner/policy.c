@@ -27,7 +27,7 @@ static int bounded_optional(const char *s, size_t capacity)
     size_t i;
     if (s == NULL) return 1;
     for (i = 0u; i < capacity; ++i)
-        if (s[i] == '\\0') return 1;
+        if (s[i] == '\0') return 1;
     return 0;
 }
 
