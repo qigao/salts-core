@@ -103,11 +103,10 @@ static int run_partial_send(void)
     operation.user_data = 0xC1u;
 
     /* A real 256 KiB overlapped send exceeds SO_SNDBUF. Its immutable
-     * mem_buffer_t stays borrowed until observed terminal. On readiness
-     * backends we demand a positive short OS completion before reading.
-     * On IOCP we first demand genuine asynchronous backpressure, then
-     * unblock the outstanding WSASend by receiving from the peer; Windows
-     * may complete the *whole* overlapped request, not a short prefix.
+     * mem_buffer_t stays borrowed until observed terminal. POSIX must
+     * prove a positive short OS completion before the peer reads.
+     * IOCP may complete early with the full request, or remain pending;
+     * both paths require an observed packet and exact peer delivery.
      */
     operation.buffer = mem_buffer_data(payload);
     operation.length = PAYLOAD_SIZE;
@@ -116,24 +115,46 @@ static int run_partial_send(void)
     outstanding = true;
 
 #if defined(_WIN32)
-    /* Nonblocking loopback receiver is deliberately idle for 64 real IOCP
-     * polling cycles. Full-send completion before peer drain is NOT
-     * admitted as evidence of an overlapped retained-backpressure request.
-     * POSIX's short completion contract remains separate below.
+    /* IOCP completes the *requested* overlapped operation. Its kernel
+     * packet may arrive either before or after the receiver drains, even
+     * when SO_SNDBUF is deliberately small. Never assume an immediate
+     * positive terminal is impossible: an observed terminal must first
+     * retire its request lease, otherwise the failure cleanup would
+     * illegally wait for a second packet for the same generation.
+     *
+     * If no completion arrives in the first 64 polls we keep the
+     * immutable buffer borrowed and start draining genuine TCP bytes.
      */
     for (step = 0u; step < 64u; ++step) {
         size_t count = 0u;
         status = native_io_backend_observe(
             &backend, events, OBSERVE_BATCH, 1u, &count);
-        if ((status != SALTS_OK && status != SALTS_ETIMEDOUT)
-            || count != 0u)
+        if (status != SALTS_OK && status != SALTS_ETIMEDOUT)
             goto done;
+        if (!count) continue;
+        if (count != 1u || !outstanding ||
+            events[0].request.slot != request.slot ||
+            events[0].request.generation != request.generation)
+            goto done;
+        /* Matching observed terminal releases the OS buffer borrow
+         * even if the completion is an error; do not cancel it again.
+         */
+        outstanding = false;
+        request = (native_io_request){0};
+        ++observed_parts;
+        if (events[0].kind != NATIVE_IO_COMPLETION_OK ||
+            events[0].user_data != 0xC1u ||
+            events[0].bytes == 0u || events[0].bytes > PAYLOAD_SIZE)
+            goto done;
+        accepted = events[0].bytes;
+        if (accepted < PAYLOAD_SIZE) ++short_parts;
+        break;
     }
 
-    /* The request is still in the kernel with an immutable borrowed
-     * backing. Remove real TCP backpressure by consuming and verifying
-     * bytes through Winsock recv (not a synthetic NativeIO completion).
-     * An actual IOCP terminal is still required before buffer release.
+    /* Any still-pending send remains borrowed. Remove TCP backpressure
+     * by consuming and verifying actual WinSock peer bytes (never a
+     * synthetic NativeIO completion); a matching IOCP terminal must
+     * always precede releasing its borrowed backing.
      * Bound diagnosis by wall time: Windows 1ms GQCS can sleep longer
      * than 1ms, so a large iteration budget alone can exceed CTest.
      */
@@ -172,17 +193,21 @@ static int run_partial_send(void)
         if (count) {
             const size_t remaining = PAYLOAD_SIZE - accepted;
             if (count != 1u || !outstanding
-                || events[0].kind != NATIVE_IO_COMPLETION_OK
                 || events[0].request.slot != request.slot
-                || events[0].request.generation != request.generation
+                || events[0].request.generation != request.generation)
+                goto done;
+            /* This packet is terminal for the matching generation,
+             * whatever its result. Retire before a fail-closed exit.
+             */
+            outstanding = false;
+            request = (native_io_request){0};
+            ++observed_parts;
+            if (events[0].kind != NATIVE_IO_COMPLETION_OK
                 || events[0].user_data != 0xC1u
                 || !events[0].bytes || events[0].bytes > remaining)
                 goto done;
             if (events[0].bytes < remaining) ++short_parts;
             accepted += events[0].bytes;
-            ++observed_parts;
-            outstanding = false;
-            request = (native_io_request){0};
         }
     }
     if (outstanding || accepted != PAYLOAD_SIZE ||
