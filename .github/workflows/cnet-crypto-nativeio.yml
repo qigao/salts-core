@@ -1,0 +1,141 @@
+name: CNet Crypto CipherBIO real NativeIO handoff (test-only)
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/cnet-crypto-nativeio.yml"
+      - "tests/crypto-nativeio/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nativeio-real-tcp:
+    name: "${{ matrix.os }} installed Crypto TLS + SaltsCore NativeIO TCP"
+    runs-on: "${{ matrix.os }}"
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    steps:
+      - name: Checkout exact SaltsCore test candidate
+        uses: actions/checkout@v4
+      - name: Checkout independently qualified Crypto PR26 source at pinned HEAD
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/crypto
+          ref: 369b4dd7b2863cca2be8f939a6c5a834ecf5663d
+          path: _crypto
+          persist-credentials: false
+      - name: Checkout immutable upstream GmSSL source
+        uses: actions/checkout@v4
+        with:
+          repository: guanzhi/GmSSL
+          ref: 7c9f02904ef33e59c87b4f16621cc8fd434e7579
+          path: _gmssl-upstream
+          persist-credentials: false
+      - name: Verify pinned Crypto and original source provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C _crypto rev-parse HEAD)" = \
+            369b4dd7b2863cca2be8f939a6c5a834ecf5663d
+          test "$(git -C _gmssl-upstream rev-parse HEAD)" = \
+            7c9f02904ef33e59c87b4f16621cc8fd434e7579
+          python3 _crypto/tools/verify_gmssl_import.py
+          cmake "-DGMSSL_UPSTREAM_SOURCE=$GITHUB_WORKSPACE/_gmssl-upstream" \
+            "-DGMSSL_ASSEMBLY_RECEIPT=$RUNNER_TEMP/cnet-crypto-source.json" \
+            -P _crypto/tools/assemble_gmssl.cmake
+          test -s "$RUNNER_TEMP/cnet-crypto-source.json"
+      - name: Compile one real private PIC GmSSL source owner
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S _gmssl-upstream -B build-gmssl -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DBUILD_SHARED_LIBS=OFF -DENABLE_TLS=ON -DENABLE_SECP256R1=ON \
+            -DENABLE_SHA2=ON -DENABLE_AES=ON -DENABLE_AES_CCM=OFF \
+            -DENABLE_SHA1=ON -DENABLE_CHACHA20=OFF -DENABLE_GHASH=OFF \
+            -DENABLE_SM9=OFF -DENABLE_CMS=OFF -DENABLE_LMS=OFF \
+            -DENABLE_XMSS=OFF -DENABLE_SPHINCS=OFF -DENABLE_KYBER=OFF \
+            -DENABLE_ZUC=OFF -DENABLE_SKF=OFF -DENABLE_SDF=OFF
+          cmake --build build-gmssl --target gmssl --parallel 2
+          test -s build-gmssl/bin/libgmssl.a
+      - name: Independently install one Crypto SM3 TLS shared owner and host-only BIO
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$RUNNER_TEMP/cnet-crypto-sdk"
+          cmake -S _crypto -B build-crypto -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            "-DCRYPTO_GMSSL_SOURCE=$GITHUB_WORKSPACE/_gmssl-upstream" \
+            "-DCRYPTO_GMSSL_STATIC=$GITHUB_WORKSPACE/build-gmssl/bin/libgmssl.a"
+          cmake --build build-crypto --parallel 2
+          cmake --install build-crypto --prefix "$sdk"
+          test -s "$sdk/include/crypto/cipher_bio.h"
+          test -s "$sdk/lib/cmake/CryptoTLS/CryptoTLSTargets.cmake"
+          test -s "$sdk/lib/libcrypto_tls.$(
+            [[ "$RUNNER_OS" == macOS ]] && printf dylib || printf so)"
+      - name: Install native SaltsCore platform/Core/NativeIO without production CNet
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$RUNNER_TEMP/cnet-crypto-sdk"
+          cmake -S . -B build-core -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF -DSALTSCORE_BUILD_URI=OFF \
+            -DSALTSCORE_BUILD_CNET=OFF
+          cmake --build build-core --parallel 2
+          cmake --install build-core --prefix "$sdk"
+          test -s "$sdk/include/salts/native_io.h"
+          test -s "$sdk/lib/cmake/SaltsCore/SaltsCoreTargets.cmake"
+          test ! -e "$sdk/include/cnet/cnet.h"
+      - name: Build and run REAL TCP NativeIO + installed opaque Crypto C11 consumer
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$RUNNER_TEMP/cnet-crypto-sdk"
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            export DYLD_LIBRARY_PATH="$sdk/lib:${DYLD_LIBRARY_PATH:-}"
+          else
+            export LD_LIBRARY_PATH="$sdk/lib:${LD_LIBRARY_PATH:-}"
+          fi
+          cmake -S tests/crypto-nativeio -B build-nativeio-crypto -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$sdk" \
+            "-DCRYPTO_TEST_FIXTURES=$GITHUB_WORKSPACE/_crypto/providers/gmssl/tests/fixtures"
+          cmake --build build-nativeio-crypto --parallel 2
+          test "$(ctest --test-dir build-nativeio-crypto -N |
+            sed -n 's/^Total Tests: //p')" = 1
+          ctest --test-dir build-nativeio-crypto --no-tests=error \
+            --output-on-failure --timeout 120 --repeat until-fail:3
+      - name: Audit final installed external NativeIO and one GmSSL owner link
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary="$GITHUB_WORKSPACE/build-nativeio-crypto/saltscore_crypto_nativeio_real_tcp_tls"
+          test -x "$binary"
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            otool -L "$binary" | tee "$RUNNER_TEMP/crypto-nativeio-links.txt"
+          else
+            readelf -d "$binary" | tee "$RUNNER_TEMP/crypto-nativeio-links.txt"
+          fi
+          grep -q 'crypto_tls' "$RUNNER_TEMP/crypto-nativeio-links.txt"
+          grep -q 'saltscore_native_io' "$RUNNER_TEMP/crypto-nativeio-links.txt"
+          if grep -E 'libgmssl[.]|gmssl[.]dll|libcrypto_provider' \
+              "$RUNNER_TEMP/crypto-nativeio-links.txt"; then
+            echo "Duplicate GmSSL native owner in CNet NativeIO integration" >&2
+            exit 1
+          fi
+      - name: Upload only source/NativeIO completion and ABI evidence (no keys)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cnet-crypto-nativeio-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/cnet-crypto-source.json
+            ${{ runner.temp }}/crypto-nativeio-links.txt
+            build-nativeio-crypto/Testing/Temporary/LastTest.log
+            build-core/CMakeCache.txt
+            build-crypto/CMakeCache.txt
+          if-no-files-found: warn
