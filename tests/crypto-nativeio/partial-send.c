@@ -92,9 +92,12 @@ static int run_partial_send(void)
     operation.endpoint = endpoint;
     operation.user_data = 0xC1u;
 
-    /* First request is intentionally larger than OS SO_SNDBUF and the
-     * receiver does not read before its terminal event. The actual OS
-     * must produce a partial positive NativeIO completion.
+    /* A real 256 KiB overlapped send exceeds SO_SNDBUF. Its immutable
+     * mem_buffer_t stays borrowed until observed terminal. On readiness
+     * backends we demand a positive short OS completion before reading.
+     * On IOCP we first demand genuine asynchronous backpressure, then
+     * unblock the outstanding WSASend by receiving from the peer; Windows
+     * may complete the *whole* overlapped request, not a short prefix.
      */
     operation.buffer = mem_buffer_data(payload);
     operation.length = PAYLOAD_SIZE;
@@ -102,6 +105,65 @@ static int run_partial_send(void)
         goto done;
     outstanding = true;
 
+#if defined(_WIN32)
+    /* Nonblocking loopback receiver is deliberately idle for 64 real IOCP
+     * polling cycles. Full-send completion before peer drain is NOT
+     * admitted as evidence of an overlapped retained-backpressure request.
+     * POSIX's short completion contract remains separate below.
+     */
+    for (step = 0u; step < 64u; ++step) {
+        size_t count = 0u;
+        status = native_io_backend_observe(
+            &backend, events, OBSERVE_BATCH, 1u, &count);
+        if ((status != SALTS_OK && status != SALTS_ETIMEDOUT)
+            || count != 0u)
+            goto done;
+    }
+
+    /* The request is still in the kernel with an immutable borrowed
+     * backing. Remove real TCP backpressure by consuming and verifying
+     * bytes through Winsock recv (not a synthetic NativeIO completion).
+     * An actual IOCP terminal is still required before buffer release.
+     */
+    for (step = 0u; step < MAX_STEPS &&
+                    (outstanding || accepted != PAYLOAD_SIZE ||
+                     read_cursor != PAYLOAD_SIZE); ++step) {
+        size_t count = 0u;
+        if (drain_receiver(target_fd, mem_buffer_const_data(payload),
+                           PAYLOAD_SIZE, &read_cursor) != 0)
+            goto done;
+        if (!outstanding && accepted < PAYLOAD_SIZE) {
+            operation.buffer = mem_buffer_data(payload) + accepted;
+            operation.length = PAYLOAD_SIZE - accepted;
+            if (native_io_backend_submit(&backend, &operation,
+                                         &request) != SALTS_OK)
+                goto done;
+            outstanding = true;
+        }
+        status = native_io_backend_observe(
+            &backend, events, OBSERVE_BATCH, 1u, &count);
+        if (status != SALTS_OK && status != SALTS_ETIMEDOUT)
+            goto done;
+        if (count) {
+            const size_t remaining = PAYLOAD_SIZE - accepted;
+            if (count != 1u || !outstanding
+                || events[0].kind != NATIVE_IO_COMPLETION_OK
+                || events[0].request.slot != request.slot
+                || events[0].request.generation != request.generation
+                || events[0].user_data != 0xC1u
+                || !events[0].bytes || events[0].bytes > remaining)
+                goto done;
+            if (events[0].bytes < remaining) ++short_parts;
+            accepted += events[0].bytes;
+            ++observed_parts;
+            outstanding = false;
+            request = (native_io_request){0};
+        }
+    }
+    if (outstanding || accepted != PAYLOAD_SIZE ||
+        read_cursor != PAYLOAD_SIZE || observed_parts == 0u)
+        goto done;
+#else
     for (step = 0u; step < MAX_STEPS; ++step) {
         size_t count = 0u;
         status = native_io_backend_observe(
@@ -163,6 +225,7 @@ static int run_partial_send(void)
     if (accepted != PAYLOAD_SIZE || read_cursor != PAYLOAD_SIZE
         || observed_parts < 2u || !short_parts)
         goto done;
+#endif
 
     if (native_io_backend_close(&backend) != SALTS_OK) goto done;
     backend_closed = true;
@@ -207,7 +270,7 @@ done:
         "NativeIO actual OS short-send contract failed: accepted=%zu/%u "
         "received=%zu terminals=%zu partial=%zu\n",
         accepted, PAYLOAD_SIZE, read_cursor, observed_parts, short_parts);
-    else printf("NativeIO real TCP OS short-send PASS: "
+    else printf("NativeIO real TCP backpressure/short-send PASS: "
         "retained Core mem_buffer until %zu completions, %zu partial\n",
         observed_parts, short_parts);
     return rc;
