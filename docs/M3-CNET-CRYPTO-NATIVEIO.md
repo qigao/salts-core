@@ -68,13 +68,24 @@ The final link audit requires `crypto_tls` and
 - Windows IOCP with overlapped sockets is a **separate mandatory**
   platform gate; POSIX sockets or readiness emulation are not an
   acceptable surrogate.
-- Nonzero partial-send handling is implemented, but a forced *OS-level*
-  short `TCP_SEND` completion must be separately injected/verified
-  before marking the corresponding failure mode accepted.
-- NativeIO close/cancel **simultaneously** with TLS callback drives
-  remains a later real concurrency/TSan gate; this initial test is
-  one-owner serialized. Crypto CipherBIO's independent cross-thread
-  cancellation/TSan gate already exists in Draft #26.
+- Nonzero partial-send handling is implemented **and separately
+  qualified against actual kernel TCP_SEND completions**: the dedicated
+  `partial-send.c` test constrains SO_SNDBUF, submits 256 KiB without
+  initially reading from the peer, REQUIRES a genuine nonzero short
+  completion, then resubmits precisely the untouched remaining backing
+  and checks every received byte on real loopback TCP. No invented
+  completion or backend-internal retry shortcut qualifies.
+- NativeIO's documented cross-thread **wake-only** contract is now
+  exercised in `cancel.c`: a real worker races wake with owner observe;
+  Owner closes admission, requests cancellation and MUST observe the
+  corresponding CANCELLED terminal before releasing receive backing.
+  The test executes 64 cycles per CTest execution under both release
+  and source-level TSan. Other backend operations remain Owner-only.
+- NativeIO close/cancel **simultaneously with a separate thread driving
+  TLS callbacks** remains a *later* combined CNet race gate. The
+  existing Crypto CipherBIO independently qualifies concurrent
+  cancellation of its callback under TSan; do not extrapolate that
+  to unsafe native backend multi-owner mutation.
 - The full SaltsCore foundation owner and CNet plugin acceptance remains
   tracked in [salts-core #20](https://github.com/qigao/salts-core/issues/20);
   production transition additionally requires [Crypto #18](https://github.com/qigao/crypto/issues/18).
@@ -82,3 +93,22 @@ The final link audit requires `crypto_tls` and
 CI uses a fresh installed prefix; it neither updates the production
 CNet target nor mutates its registry baseline. Do not merge any Draft
 or switch production until all explicit unmet gates have been qualified.
+
+## Current exact-head qualification (2026-10-26)
+
+At SaltsCore candidate `842b5192b4b55c9010482f6cbbb82b83a17c36b4`,
+both [real Linux/macOS installed NativeIO #40276226073](https://github.com/qigao/salts-core/actions/runs/40276226073)
+and [Linux full-source ASan/UBSan/LSan + TSan #40276226096](https://github.com/qigao/salts-core/actions/runs/40276226096)
+are **SUCCESS**. The release matrix runs **3 independent real
+NativeIO CTests, repeated 3 times each on epoll and kqueue**. The
+sanitizer matrix instruments the pinned original GmSSL, one Crypto
+shared owner + static CipherBIO, all SaltsCore Core/Platform/NativeIO
+shared libraries, and the independent installed consumer together.
+Both sanitizer types repeat all three tests three times without
+disabled assertions or suppressions.
+
+There is still **no claim of production CNet switch, complete CNet API
+parity, or Windows true IOCP/overlapped equivalent**. Both linked
+libraries are installed from separately checked-out immutable commits
+into one clean SDK prefix; production GmSSL and vcpkg registry pins
+remain unchanged.
