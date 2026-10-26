@@ -81,7 +81,7 @@ static void crypto_test_diag(
         fprintf(stderr,
           "CNET_CRYPTO_TEST_DIAG phase=%s server=%d handshake=%d"
           " tls_write_pending=%d write_offset=%zu write_total=%zu"
-          " cipher_in=%zu cipher_out=%zu snapshot_ok=%d result=%d count=%zu\\n",
+          " cipher_in=%zu cipher_out=%zu snapshot_ok=%d result=%d count=%zu\n",
           phase, state != NULL && state->server,
           state != NULL && state->handshake_complete,
           eng != NULL && eng->write_source != NULL,
@@ -91,8 +91,7 @@ static void crypto_test_diag(
           snapshot_ok, result, count);
     }
 }
-#define CRYPTO_TEST_DIAG(phase, state, result, count) \\
-    crypto_test_diag((phase), (state), (int)(result), (count))
+#define CRYPTO_TEST_DIAG(phase, state, result, count) crypto_test_diag((phase), (state), (int)(result), (count))
 #else
 #define CRYPTO_TEST_DIAG(phase, state, result, count) ((void)0)
 #endif
