@@ -57,7 +57,11 @@ static cnet_crypto_state *get_engine(const cnet_tls_state *state)
 /* TEST-ONLY numeric state diagnostics, bounded globally; never print
  * plaintext, records, keys, certificates, peer identity or buffers.
  */
-static atomic_uint crypto_test_log_remaining = ATOMIC_VAR_INIT(100u);
+/* C11 permits constant static initialization of an atomic integer.
+ * MSVC /experimental:c11atomics rejects ATOMIC_VAR_INIT() here with C2099;
+ * direct scalar initialization preserves the same 100-event bound.
+ */
+static atomic_uint crypto_test_log_remaining = 100u;
 static void crypto_test_diag(
     const char *phase, const cnet_tls_state *state, int result,
     size_t count)
