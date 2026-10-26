@@ -27,7 +27,7 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_portable_abi_verify(
 }
 
 static int valid_order(salts_memory_order order) {
-    return order >= SALTS_MEMORY_RELAXED && order <= SALTS_MEMORY_SEQ_CST;
+    return order <= SALTS_MEMORY_SEQ_CST;
 }
 static int valid_load(salts_memory_order order) {
     return order == SALTS_MEMORY_RELAXED || order == SALTS_MEMORY_CONSUME ||

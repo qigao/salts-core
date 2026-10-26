@@ -229,3 +229,12 @@ if(TARGET Salts::CNet)
     COMMAND saltscore_cnet_tls_ca_san_test)
   set_tests_properties(saltscore.cnet_tls_ca_san PROPERTIES TIMEOUT 65)
 endif()
+
+# Cross-compiler-compatible Atomic/Thread runtime; no consumer-native _Atomic.
+add_executable(saltscore_portable_concurrency_test test_portable_concurrency.c)
+target_compile_features(saltscore_portable_concurrency_test PRIVATE c_std_11)
+set_target_properties(saltscore_portable_concurrency_test PROPERTIES
+  C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+target_link_libraries(saltscore_portable_concurrency_test PRIVATE Salts::Platform)
+add_test(NAME saltscore.portable_concurrency COMMAND saltscore_portable_concurrency_test)
+set_tests_properties(saltscore.portable_concurrency PROPERTIES TIMEOUT 45)

@@ -34,14 +34,16 @@ extern "C" {
 # error "An explicit eight-byte alignment implementation is required"
 #endif
 
-typedef enum salts_memory_order {
+/* Fixed 32-bit ABI even if clients use -fshort-enums. */
+typedef uint32_t salts_memory_order;
+enum {
     SALTS_MEMORY_RELAXED = 0,
     SALTS_MEMORY_CONSUME = 1,
     SALTS_MEMORY_ACQUIRE = 2,
     SALTS_MEMORY_RELEASE = 3,
     SALTS_MEMORY_ACQ_REL = 4,
     SALTS_MEMORY_SEQ_CST = 5
-} salts_memory_order;
+};
 
 typedef struct salts_atomic8 { uint8_t value; } salts_atomic8;
 typedef struct salts_atomic16 { uint16_t value; } salts_atomic16;
