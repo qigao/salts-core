@@ -344,7 +344,6 @@ static int run_tls_nativeio(uint32_t protocol)
     io_owner owner = {0};
     crypto_tls_session_options options[2];
     native_io_backend_stats stats = {0};
-    crypto_tls_cipher_bio_snapshot snap = {0};
     static const unsigned char payload[] =
         "CNet NativeIO terminal retention and exact Crypto TLS ciphertext";
     unsigned char response[sizeof(payload)] = {0};
