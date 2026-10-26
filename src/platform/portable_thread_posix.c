@@ -148,10 +148,20 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_unlock(salts_platform_mutex *m
 }
 int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_destroy(salts_platform_mutex **owner) {
     salts_platform_mutex *m;
+    int rc;
     if (!owner || !(m = *owner)) return SALTS_EINVAL;
+    /* pthread_mutex_destroy on a locked mutex is undefined by POSIX.
+     * Reject an already held lock BEFORE attempting destruction. This
+     * trylock is not a concurrent-close barrier: the caller still must
+     * guarantee that no new entrants or waiters can arrive.
+     */
+    rc = pthread_mutex_trylock(&m->native);
+    if (rc != 0) return rc == EBUSY ? SALTS_EBUSY : SALTS_EINVAL;
+    if (pthread_mutex_unlock(&m->native) != 0) return SALTS_EBUSY;
     if (pthread_mutex_destroy(&m->native) != 0) return SALTS_EBUSY;
     *owner = NULL;
-    free(m); return SALTS_OK;
+    free(m);
+    return SALTS_OK;
 }
 int SALTS_CORE_PLATFORM_CALL salts_platform_condition_create(salts_platform_condition **out) {
     salts_platform_condition *c;
