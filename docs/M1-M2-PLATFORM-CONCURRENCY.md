@@ -23,9 +23,9 @@ It does not import CMeta types or scheduling objects.
 
 ## Contracts
 
-- Public `SaltsCore::Core` remains dependency-free. `SaltsCore::Platform`
-  links only system Threads / Win32 BCrypt. `SaltsCore::Concurrency` links
-  `SaltsCore::Platform` and has no Salts/CMeta/CFlow/CSTL dependency.
+- Public `Salts::Core` remains dependency-free. `Salts::Platform`
+  links only system Threads / Win32 BCrypt. `Salts::Concurrency` links
+  `Salts::Platform` and has no Salts/CMeta/CFlow/CSTL dependency.
 - Public `<salts/*.h>` and historical `cmeta_*` symbols are **migration**
   compatibility spellings. Do **not** link new and old copies of these symbols
   into the same image during qualification. No `Salts::` alias is exported.

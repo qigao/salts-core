@@ -1,7 +1,7 @@
 # M4.4 — Verified TCP TLS handshake and CA/SAN rejection (Draft)
 
 Stacked on SaltsCore PR #16 real TCP loopback and PR #15 provider-backed
-`SaltsCore::CNet`. This adds a genuine TLS-over-NativeIO network test. It
+`Salts::CNet`. This adds a genuine TLS-over-NativeIO network test. It
 uses the existing pinned GmSSL provider and the **unchanged** fixture material
 from the original Salts CNet conformance suite. No fixtures are regenerated.
 

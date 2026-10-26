@@ -4,7 +4,7 @@ Source: qigao/salts master `d6d936a86087a7f9a982126157d154e905580f30`.
 
 ## Ownership
 - Native `coro_create`/`coro_yield`/`coro_resume` and scheduler, pool and sharded
-  executor move into the independent `SaltsCore::Coroutine` target.
+  executor move into the independent `Salts::Coroutine` target.
 - Files copied unchanged: `coroutine/src/{coro.c,coro_pool.c,coro_executor.c,coro_executor_internal.h}`,
   `coroutine/include/{coro.h,coro_pool.h,coro_executor.h}`.
 - Private vendor: `vendor/minicoro/minicoro.h` and `LICENSE`. Vendor header is NOT public.

@@ -12,7 +12,7 @@ Only includes and old target-owner text changed. Existing pool/buffer allocation
 reference counts, zero-copy slices, external buffer callback/retention and
 bounded recycler remain unchanged.
 
-`SaltsCore::Core` now links `SaltsCore::Platform` for mutex/once/TLS.
+`Salts::Core` now links `Salts::Platform` for mutex/once/TLS.
 No CMeta reflection descriptors or CFlow actors are required, despite legacy
 `cmeta_` API naming. `CNet`'s publicly exported `mem_buffer_t` and
 `mem_slice_t` can therefore use these types without a dependency on old Salts.

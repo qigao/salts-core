@@ -10,7 +10,7 @@ Source: qigao/salts master `d6d936a86087a7f9a982126157d154e905580f30`.
   `native_ipc.h`; keep their original C11 ABI for independent inspection.
 - **Not copied:** `native_io_ace_token.h` — this POSA/ACE projection and any
   CMeta Interface bindings remain in Salts as adapters over Core NativeIO.
-- `SaltsCore::NativeIO` links publicly to Platform and privately to
+- `Salts::NativeIO` links publicly to Platform and privately to
   Coroutine (which depends on Concurrency). It does not link old
   Salts/CMeta/CFlow or own a second service/owner hierarchy.
 - The private OS implementation branches retain IOCP (Windows), epoll/

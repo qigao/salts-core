@@ -37,7 +37,7 @@ No fallback to system OpenSSL, libuv, plaintext, old Salts libraries, a
 fake CMeta/CFlow provider or unversioned vendored CNet is accepted. CMake
 uses REQUIRED provider lookups, with no production target when disabled.
 
-One SHARED `SaltsCore::CNet` owns the production CNet Client/Manager/
+One SHARED `Salts::CNet` owns the production CNet Client/Manager/
 Handoff/Listener/UDP/KCP/TLS/WebSocket/Resolver implementations. It links
 publicly to new Core/Concurrency/NativeIO and privately to URI, Platform,
 KCP, c-ares, GmSSL and one namespaced Monocypher/Reed implementation.

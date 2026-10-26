@@ -31,7 +31,7 @@ are cleaned up on test failure.
 `SaltsCore CNet pinned-provider qualification` now asserts the
 `saltscore.cnet_tcp_loopback` CTest explicitly, in addition to the
 GmSSL TLS I/O ABI and ShangMi provider-only KAT tests. This only runs
-when the *actual* provider-backed `SaltsCore::CNet` DSO is enabled,
+when the *actual* provider-backed `Salts::CNet` DSO is enabled,
 never in the default minimal-Core build.
 
 Successful Linux results establish real TCP acceptance and non-TLS

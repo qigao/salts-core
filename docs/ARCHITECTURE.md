@@ -9,7 +9,7 @@ Salts (CMeta / CFlow / CSTL / Component / ACE)  ─┐
 SaltsUtils (Jinja / DataBind / Parsers)           ─┼─> SaltsCore SDK
 TurboScript / TurboAgent / TurboMedia            ─┘
 
-SaltsCore::Core [C11 base byte views / future buffer/error]
+Salts::Core [C11 base byte views / future buffer/error]
   ├── Platform (clock/thread/CSPRNG) ──> Concurrency ──> Coroutine ──> NativeIO ──> CNet
   ├── FS, Process [native OS; independent bounded queues / native pipes]
   ├── Unicode 17 ──> IDNA UTS #46

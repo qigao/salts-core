@@ -7,17 +7,17 @@ on the historical `qigao/salts`, `qigao/salts-utils`, CMeta, CFlow, or CSTL
 packages. Development is tracked by [migration epic #1](https://github.com/qigao/salts-core/issues/1).
 
 The original M0 bootstrap implements an **owned-by-caller, non-owning counted byte view**
-in `SaltsCore::Core`. The stacked M1/M2 migration candidate adds
-`SaltsCore::Platform` (clock, OS CSPRNG, thread/synchronization) and
-`SaltsCore::Concurrency` (SPSC, bounded deadline queue, RCU, Disruptor,
+in `Salts::Core`. The stacked M1/M2 migration candidate adds
+`Salts::Platform` (clock, OS CSPRNG, thread/synchronization) and
+`Salts::Concurrency` (SPSC, bounded deadline queue, RCU, Disruptor,
 ThreadPool and Leader/Followers). The next stacked candidate adds
-`SaltsCore::Coroutine` (the original minicoro-backed lifecycle, pool and
+`Salts::Coroutine` (the original minicoro-backed lifecycle, pool and
 bounded sharded executor). These are imported from exact Salts sources and
 have no CMeta/CFlow dependencies. The next Core foundation slice extracts
 `mem_buffer_t`, `mem_slice_t` and the bounded slab allocator and the original single-owner bipartite `ring_buffer`
 from old `salts/utils`, with only the independent Platform synchronization API. A further stacked candidate moves the
 original NativeIO backend and Sharded/IPC ownership to
-`SaltsCore::NativeIO` (IOCP, epoll, io_uring, kqueue); the ACE completion-token
+`Salts::NativeIO` (IOCP, epoll, io_uring, kqueue); the ACE completion-token
 adapter remains in Salts and is not installed by Core. They require exact-head Linux/Windows/macOS
 CI and installed C11/C++17 qualification before this candidate is accepted. It is not yet a replacement for any
 published `Salts::Core` binary, and no old APIs or CMake aliases have been
@@ -34,7 +34,7 @@ IDNA depends only on the new Unicode module. FS and Process are native system
 components; they **must not require** CFlow IO Actors or CMeta Reflection.
 Advanced CMeta/CFlow/CSTL/Component/ACE functionality remains in `qigao/salts`
 and consumes the new Core, never the other way round. The plain CNet transport
-implementation will migrate to optional `SaltsCore::CNet`; CMeta/ACE-specific
+implementation will migrate to optional `Salts::CNet`; CMeta/ACE-specific
 CNet integrations stay in Salts.
 
 See [architecture](docs/ARCHITECTURE.md) for ownership and migration gates.
@@ -81,6 +81,6 @@ ctest --test-dir build-installed --output-on-failure
 python3 tools/check_dependency_boundaries.py
 ```
 
-The standalone install exports `SaltsCore::Core` through
+The standalone install exports `Salts::Core` through
 `find_package(SaltsCore CONFIG REQUIRED)`. Optional targets will be exported
 only when their independent implementations and platform gates are qualified.

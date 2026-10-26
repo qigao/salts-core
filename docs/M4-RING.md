@@ -9,7 +9,7 @@ already used by CNet's bounded inbound handoff. The algorithm was copied
 byte-for-byte; only the installed header swaps old `platform.h` for the
 independent `cmeta_api.h` and standard `stddef.h`.
 
-- Installs `<ring_buffer.h>` with `SaltsCore::Core`, no CMeta/CSTL/CFlow.
+- Installs `<ring_buffer.h>` with `Salts::Core`, no CMeta/CSTL/CFlow.
 - Caller owns fixed storage, supplies no allocator and must not use across
   concurrent producers/consumers (use SPSC ring instead).
 - New native test proves FIFO, tail invalidate/wrap, empty transition and

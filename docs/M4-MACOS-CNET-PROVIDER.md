@@ -20,7 +20,7 @@ never Mono/NuGet or an unversioned system TLS fallback.
 
 ## Runtime and installed-SDK gates
 
-- Compile/link **all CNet source** and install `SaltsCore::CNet` dylib.
+- Compile/link **all CNet source** and install `Salts::CNet` dylib.
 - Run the full source CTest suite in macOS kqueue mode.
 - Explicitly run the TCP accepted-loopback retained ownership test,
   real TLS trusted CA + correct SAN / wrong CA / wrong DNS identity test,
