@@ -77,3 +77,21 @@ add_test(NAME cnet.crypto_nativeio_real_partial_tcp_send
   COMMAND saltscore_crypto_nativeio_partial_send)
 set_tests_properties(cnet.crypto_nativeio_real_partial_tcp_send
   PROPERTIES TIMEOUT 120)
+
+# Only native_io_backend_wake() is used by the other thread. The NativeIO
+# Owner alone cancels, observes terminal completion, closes and destroys.
+# Positive retained socket I/O is NOT a mock or a fabricated completion.
+find_package(Threads REQUIRED)
+add_executable(saltscore_crypto_nativeio_cancel_wake cancel.c)
+set_target_properties(saltscore_crypto_nativeio_cancel_wake PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+target_link_libraries(saltscore_crypto_nativeio_cancel_wake PRIVATE
+  SaltsCore::NativeIO Threads::Threads)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(saltscore_crypto_nativeio_cancel_wake
+    PRIVATE -Wall -Wextra -Werror)
+endif()
+add_test(NAME cnet.crypto_nativeio_cancel_wake_terminal
+  COMMAND saltscore_crypto_nativeio_cancel_wake)
+set_tests_properties(cnet.crypto_nativeio_cancel_wake_terminal
+  PROPERTIES TIMEOUT 120)
