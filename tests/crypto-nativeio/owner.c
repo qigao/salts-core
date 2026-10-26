@@ -14,10 +14,7 @@
 #include <crypto/tls_ext.h>
 #include <crypto/cipher_bio.h>
 
-#include <arpa/inet.h>
 #include <errno.h>
-#include <fcntl.h>
-#include <netinet/in.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -25,8 +22,49 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* Real IOCP requires Winsock overlapped sockets and native Windows handles.
+ * Do not run Windows through POSIX poll/select or a readiness adapter.
+ */
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN 1
+#endif
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0600
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+typedef SOCKET native_tcp_socket;
+typedef int native_socklen_t;
+#define CRYPTO_TEST_INVALID_SOCKET INVALID_SOCKET
+static void native_socket_close(native_tcp_socket value)
+{
+    if (value != INVALID_SOCKET) (void)closesocket(value);
+}
+static native_tcp_socket native_socket_open(void)
+{
+    return WSASocketW(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0,
+                      WSA_FLAG_OVERLAPPED);
+}
+#else
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+typedef int native_tcp_socket;
+typedef socklen_t native_socklen_t;
+#define CRYPTO_TEST_INVALID_SOCKET (-1)
+static void native_socket_close(native_tcp_socket value)
+{
+    if (value >= 0) (void)close(value);
+}
+static native_tcp_socket native_socket_open(void)
+{
+    return socket(AF_INET, SOCK_STREAM, 0);
+}
+#endif
 
 #ifndef SDK_CA_FILE
 #error SDK_CA_FILE required
@@ -48,7 +86,7 @@ enum {
 
 typedef struct io_peer {
     native_io_endpoint endpoint;
-    int socket_fd;
+    native_tcp_socket socket_fd;
     crypto_tls_cipher_bio *bio;
     crypto_tls_session *session;
     crypto_tls_io callbacks;
@@ -86,32 +124,46 @@ typedef struct io_owner {
 
 static native_io_backend_kind selected_backend(void)
 {
-#if defined(__linux__)
+#if defined(_WIN32)
+    return NATIVE_IO_BACKEND_IOCP;
+#elif defined(__linux__)
     return NATIVE_IO_BACKEND_EPOLL;
 #elif defined(__APPLE__)
     return NATIVE_IO_BACKEND_KQUEUE;
 #else
-#error This first real NativeIO ciphertext handoff gate is POSIX Linux/macOS
+#error No supported native IO completion backend for this test OS
 #endif
 }
 
-static int set_nonblocking(int fd)
+static int set_nonblocking(native_tcp_socket fd)
 {
+#ifdef _WIN32
+    u_long enabled = 1ul;
+    return ioctlsocket(fd, FIONBIO, &enabled) == 0 ? 0 : -1;
+#else
     const int flags = fcntl(fd, F_GETFL, 0);
-    if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) != 0) return -1;
-    return 0;
+    return flags >= 0 && fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0
+        ? 0 : -1;
+#endif
 }
 
 /* Actual loopback TCP sockets. No fake completion queue or socketpair alias. */
-static int make_connected_tcp(int *out_client, int *out_server)
+static int make_connected_tcp(
+    native_tcp_socket *out_client, native_tcp_socket *out_server)
 {
     struct sockaddr_in address;
-    socklen_t address_len = (socklen_t)sizeof(address);
-    int listener = -1, client = -1, server = -1;
+    native_socklen_t address_len = (native_socklen_t)sizeof(address);
+    native_tcp_socket listener = CRYPTO_TEST_INVALID_SOCKET;
+    native_tcp_socket client = CRYPTO_TEST_INVALID_SOCKET;
+    native_tcp_socket server = CRYPTO_TEST_INVALID_SOCKET;
     memset(&address, 0, sizeof(address));
-    *out_client = *out_server = -1;
-    listener = socket(AF_INET, SOCK_STREAM, 0);
-    if (listener < 0) goto fail;
+    *out_client = *out_server = CRYPTO_TEST_INVALID_SOCKET;
+    /* Both the connecting socket and listener are Winsock
+     * WSA_FLAG_OVERLAPPED; the accepted stream endpoint is associated
+     * with the actual IOCP by SaltsCore::NativeIO, never by this test.
+     */
+    listener = native_socket_open();
+    if (listener == CRYPTO_TEST_INVALID_SOCKET) goto fail;
     address.sin_family = AF_INET;
     address.sin_port = 0;
     if (inet_pton(AF_INET, "127.0.0.1", &address.sin_addr) != 1
@@ -119,20 +171,22 @@ static int make_connected_tcp(int *out_client, int *out_server)
         || getsockname(listener, (struct sockaddr *)&address,
                        &address_len) != 0
         || listen(listener, 2) != 0) goto fail;
-    client = socket(AF_INET, SOCK_STREAM, 0);
-    if (client < 0 || connect(client, (struct sockaddr *)&address,
-                              sizeof(address)) != 0) goto fail;
+    client = native_socket_open();
+    if (client == CRYPTO_TEST_INVALID_SOCKET
+        || connect(client, (struct sockaddr *)&address,
+                    sizeof(address)) != 0) goto fail;
     server = accept(listener, NULL, NULL);
-    if (server < 0 || set_nonblocking(client) != 0
+    if (server == CRYPTO_TEST_INVALID_SOCKET
+        || set_nonblocking(client) != 0
         || set_nonblocking(server) != 0) goto fail;
-    close(listener);
+    native_socket_close(listener);
     *out_client = client;
     *out_server = server;
     return 0;
 fail:
-    if (server >= 0) close(server);
-    if (client >= 0) close(client);
-    if (listener >= 0) close(listener);
+    native_socket_close(server);
+    native_socket_close(client);
+    native_socket_close(listener);
     return -1;
 }
 
@@ -350,13 +404,19 @@ static int run_tls_nativeio(uint32_t protocol)
     size_t received = 0u, total_cipher = 0u, i, got;
     bool sent = false, ready = false, shutdown_done[2] = {false,false};
     crypto_tls_result status;
-    int rc = 1, sockets[2] = {-1, -1}, remaining = 0;
+    native_tcp_socket sockets[2] = {
+        CRYPTO_TEST_INVALID_SOCKET, CRYPTO_TEST_INVALID_SOCKET
+    };
+    int rc = 1, remaining = 0;
 
+#ifndef _WIN32
     (void)signal(SIGPIPE, SIG_IGN);
+#endif
     owner.config = (native_io_backend_config){
         selected_backend(), 2u, 8u, COMPLETION_CAPACITY
     };
-    for (i = 0u; i < 2u; ++i) owner.peers[i].socket_fd = -1;
+    for (i = 0u; i < 2u; ++i)
+        owner.peers[i].socket_fd = CRYPTO_TEST_INVALID_SOCKET;
     CHECK(make_connected_tcp(&sockets[0], &sockets[1]) == 0);
     owner.peers[0].socket_fd = sockets[0];
     owner.peers[1].socket_fd = sockets[1];
@@ -515,9 +575,9 @@ cleanup:
     if (owner.backend_initialized) {
         for (i = 0u; i < 2u; ++i) {
             io_peer *peer = &owner.peers[i];
-            if (peer->socket_fd >= 0) {
-                (void)close(peer->socket_fd);
-                peer->socket_fd = -1;
+            if (peer->socket_fd != CRYPTO_TEST_INVALID_SOCKET) {
+                native_socket_close(peer->socket_fd);
+                peer->socket_fd = CRYPTO_TEST_INVALID_SOCKET;
             }
             if (native_io_endpoint_valid(peer->endpoint) &&
                 native_io_backend_release_socket(
@@ -528,8 +588,8 @@ cleanup:
             rc = 1;
     } else {
         for (i = 0u; i < 2u; ++i)
-            if (owner.peers[i].socket_fd >= 0)
-                (void)close(owner.peers[i].socket_fd);
+            if (owner.peers[i].socket_fd != CRYPTO_TEST_INVALID_SOCKET)
+                native_socket_close(owner.peers[i].socket_fd);
     }
     if (rc) {
         fprintf(stderr, "Crypto NativeIO real TLS %u failed; "
@@ -548,9 +608,19 @@ cleanup:
 
 int main(void)
 {
+    int rc = 0;
+#ifdef _WIN32
+    WSADATA winsock;
+    if (WSAStartup(MAKEWORD(2, 2), &winsock) != 0) return 5;
+#endif
     if (crypto_tls_abi_version() != CRYPTO_TLS_ABI_VERSION)
-        return 3;
-    if (run_tls_nativeio(CRYPTO_TLS_1_2) != 0) return 1;
-    if (run_tls_nativeio(CRYPTO_TLS_1_3) != 0) return 2;
-    return 0;
+        rc = 3;
+    else if (run_tls_nativeio(CRYPTO_TLS_1_2) != 0)
+        rc = 1;
+    else if (run_tls_nativeio(CRYPTO_TLS_1_3) != 0)
+        rc = 2;
+#ifdef _WIN32
+    (void)WSACleanup();
+#endif
+    return rc;
 }
