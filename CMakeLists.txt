@@ -258,6 +258,8 @@ if(SALTSCORE_BUILD_CNET)
   include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsCoreCNet.cmake")
 endif()
 
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsCoreExtraModules.cmake")
+
 # PE/COFF does not honor ELF/Mach-O SOVERSION. Encode the pre-stable 0.1 ABI
 # epoch in each Windows DLL and its import library, without a filename alias.
 # A future 0.2 DLL must not replace an older consumer's 0.1 dependency.

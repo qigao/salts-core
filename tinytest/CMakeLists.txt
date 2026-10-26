@@ -1,61 +1,18 @@
-set(CMAKE_C_STANDARD 11)
-set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_EXTENSIONS OFF)
 
-set(tinytest_include_dir "${CMAKE_CURRENT_SOURCE_DIR}/include")
-set(tinytest_source_dir "${CMAKE_CURRENT_SOURCE_DIR}/src")
-
-set(tinytest_public_headers
-  "${tinytest_include_dir}/tinytest.h"
-  "${tinytest_include_dir}/tinytest.hpp")
-
-set(tinytest_detail_headers
-  "${tinytest_include_dir}/tinytest/detail/runtime.h"
-  "${tinytest_include_dir}/tinytest/detail/pp.h"
-  "${tinytest_include_dir}/tinytest/detail/traits.h"
-  "${tinytest_include_dir}/tinytest/detail/equality.h")
-
-set(tinytest_sources
-  "${tinytest_source_dir}/tinytest.c")
-
-add_library(tinytest STATIC)
-target_sources(tinytest PRIVATE
-  ${tinytest_sources}
-  ${tinytest_public_headers}
-  ${tinytest_detail_headers})
-
-source_group(TREE "${tinytest_source_dir}" PREFIX "Source Files"
-  FILES ${tinytest_sources})
-source_group(TREE "${tinytest_include_dir}" PREFIX "Header Files"
-  FILES ${tinytest_public_headers} ${tinytest_detail_headers})
-
-cmake_config_target(tinytest
-  VERSION "${PROJECT_VERSION}" SOVERSION "${SALTS_NATIVE_SOVERSION}"
-  ALIAS Salts::TinyTest
-  FOLDER "tinytest"
-  EXPORT_NAME TinyTest)
-
-target_include_directories(tinytest
-  PUBLIC
-    $<BUILD_INTERFACE:${tinytest_include_dir}>
-    $<INSTALL_INTERFACE:include>)
-
-install(TARGETS tinytest
-  EXPORT SaltsTargets
-  COMPONENT TinyTest)
-install(FILES ${tinytest_public_headers}
-  DESTINATION include
-  COMPONENT TinyTest)
-install(FILES ${tinytest_detail_headers}
-  DESTINATION include/tinytest/detail
-  COMPONENT TinyTest)
-
-# Respect the repository-wide build switches. Consumers configuring Salts as a
-# production package must not implicitly build TinyTest examples/tests.
-if(BUILD_EXAMPLES)
-  add_subdirectory(examples)
-endif()
-
-if(BUILD_TESTS)
-  add_subdirectory(test)
-endif()
+# TinyTest owns no CMeta metadata or mocking runtime. TinyMock stays in Salts.
+add_library(saltscore_tinytest STATIC src/tinytest.c)
+add_library(Salts::TinyTest ALIAS saltscore_tinytest)
+set_target_properties(saltscore_tinytest PROPERTIES
+  EXPORT_NAME TinyTest C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+  POSITION_INDEPENDENT_CODE ON)
+target_compile_features(saltscore_tinytest PUBLIC c_std_11)
+target_include_directories(saltscore_tinytest PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+install(TARGETS saltscore_tinytest EXPORT SaltsCoreTargets
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(FILES include/tinytest.h include/tinytest.hpp
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(DIRECTORY include/tinytest/detail
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/tinytest
+  FILES_MATCHING PATTERN "*.h")

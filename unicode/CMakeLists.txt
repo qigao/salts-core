@@ -5,6 +5,7 @@ if(NOT DEFINED ENV{RE2C_ROOT} OR NOT IS_DIRECTORY "$ENV{RE2C_ROOT}")
   message(FATAL_ERROR "Salts::Unicode requires RE2C_ROOT with Unicode 17 re2c stdlib")
 endif()
 set(RE2C_ROOT "$ENV{RE2C_ROOT}")
+find_program(RE2C_EXECUTABLE NAMES re2c HINTS "${RE2C_ROOT}/bin" NO_DEFAULT_PATH REQUIRED)
 set(RE2C_UNICODE_PROPERTIES "${RE2C_ROOT}/share/re2c/stdlib/unicode_properties.re")
 set(RE2C_UNICODE_CATEGORIES "${RE2C_ROOT}/share/re2c/stdlib/unicode_categories.re")
 foreach(_table IN ITEMS "${RE2C_UNICODE_PROPERTIES}" "${RE2C_UNICODE_CATEGORIES}")
@@ -111,44 +112,33 @@ add_custom_command(
   COMMENT "Generating Unicode 17.0.0 UTF-8 scanner with re2c"
   VERBATIM)
 
-add_library(
-  salts_unicode STATIC
-  include/salts_unicode.h src/salts_unicode_case.c src/unicode_case_data.h
+
+# The original Unicode 17.0.0 generated lexer, cases and fixed data are now
+# exclusively owned by the standalone native Core SDK. No CMeta or fallback.
+add_library(saltscore_unicode STATIC
+  src/salts_unicode_case.c src/unicode_case_data.h
   src/salts_unicode_casefold.c src/unicode_casefold_data.h
-  include/salts_unicode_normalize.h src/salts_unicode_normalize.c src/unicode_normalization_data.h
+  src/salts_unicode_normalize.c src/unicode_normalization_data.h
   src/salts_unicode_grapheme.c src/unicode_grapheme_data.h
   src/salts_unicode_word.c src/unicode_word_data.h
   src/salts_unicode_line_break.c src/unicode_line_break_data.h
   src/salts_unicode_bidi.c src/unicode_bidi_data.h
   src/salts_unicode_emoji.c src/salts_unicode_emoji.h src/unicode_emoji_data.h
-  src/salts_unicode_names.c ${SALTS_UNICODE_LEXER_GEN})
-cmake_config_target(
-  salts_unicode
-  ALIAS
-  Salts::Unicode
-  FOLDER
-  "unicode"
-  EXPORT_NAME
-  Unicode)
-
-target_include_directories(
-  salts_unicode
-  PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+  src/salts_unicode_names.c src/unicode_names_data.h
+  "${SALTS_UNICODE_LEXER_GEN}")
+add_library(Salts::Unicode ALIAS saltscore_unicode)
+set_target_properties(saltscore_unicode PROPERTIES
+  EXPORT_NAME Unicode C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+  POSITION_INDEPENDENT_CODE ON)
+target_compile_features(saltscore_unicode PUBLIC c_std_11)
+target_include_directories(saltscore_unicode
+  PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src"
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-         $<INSTALL_INTERFACE:include> $<INSTALL_INTERFACE:include/unicode>)
-target_link_libraries(salts_unicode PUBLIC Salts::Core)
-target_compile_features(salts_unicode PUBLIC c_std_11)
-
-install(
-  TARGETS salts_unicode
-  EXPORT SaltsTargets
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+target_link_libraries(saltscore_unicode PUBLIC Salts::Core)
+install(TARGETS saltscore_unicode EXPORT SaltsCoreTargets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES include/salts_unicode.h include/salts_unicode_normalize.h DESTINATION include/unicode)
+install(FILES include/salts_unicode.h include/salts_unicode_normalize.h
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES data/LICENSE.txt
-        DESTINATION share/licenses/salts_unicode)
-
-if(BUILD_TESTS)
-  add_subdirectory(test)
-endif()
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/unicode)
