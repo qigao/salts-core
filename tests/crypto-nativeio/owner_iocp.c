@@ -1,15 +1,20 @@
 /* SPDX-License-Identifier: Apache-2.0
-/* Built from the same TLS/NativeIO owner logic as Linux epoll/macOS
- * kqueue, with REAL IOCP OVERLAPPED WinSock socket admission.
- * NativeIO uses GetQueuedCompletionStatus for these TCP requests.
+ * Test-only REAL Windows IOCP/OVERLAPPED WinSock TCP + installed C11
+ * Crypto::TLSCipherBIO, adapted from the qualified POSIX owner logic.
+ * No production CNet TLS target or GmSSL registry pin is changed.
  */
- * QUALIFICATION ONLY — real SaltsCore NativeIO TCP completions hand off
- * bounded ciphertext to the installed opaque Crypto::TLSCipherBIO.
- * This program links SaltsCore::NativeIO, SaltsCore::Core, Crypto::TLS
- * and Crypto::TLSCipherBIO, not legacy Salts or GmSSL::GmSSL.
- *
- * The production CNet TLS backend is deliberately UNCHANGED.
- */
+#ifndef _WIN32
+#error This test requires real Windows IOCP
+#endif
+#define WIN32_LEAN_AND_MEAN
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601
+#endif
+/* Include Winsock2 before Windows/platform headers; never winsock.h. */
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+
 #include <salts/native_io.h>
 #include <salts/error_codes.h>
 #include <cmeta_buffer.h>
@@ -17,18 +22,6 @@
 #include <crypto/tls_ext.h>
 #include <crypto/cipher_bio.h>
 
-/* These are REAL Windows overlapped WinSock handles associated with IOCP.
- * There is no POSIX compatibility layer or readiness implementation. */
-#ifndef _WIN32
-#error This qualification must compile and run on actual Windows IOCP
-#endif
-#define WIN32_LEAN_AND_MEAN
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0601
-#endif
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <windows.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
