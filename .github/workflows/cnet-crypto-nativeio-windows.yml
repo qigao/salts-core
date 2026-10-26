@@ -147,15 +147,43 @@ jobs:
               "saltscore_crypto_nativeio_real_tcp_tls.exe"))
           if len(bins) != 1:
               raise SystemExit(f"Expected exactly one actual IOCP test executable, found {bins}")
-          dep = subprocess.run([str(candidates[0]), "/dependents", str(bins[0])],
-                               check=True, capture_output=True, text=True).stdout
-          imported = set(x.lower() for x in re.findall(
-              r"(?i)\b[A-Za-z0-9_-]+[.]dll\b", dep))
-          for required in ("crypto_tls.dll", "saltscore_core-0.1.dll", "saltscore_native_io-0.1.dll"):
-              if required not in imported:
-                  raise SystemExit(f"Missing installed shared native owner import: {required}")
-          if any("gmssl" in x or "crypto_provider" in x for x in imported):
+          def imported_names(image):
+              data = subprocess.run(
+                  [str(candidates[0]), "/dependents", str(image)],
+                  check=True, capture_output=True, text=True
+              ).stdout
+              return set(x.lower() for x in re.findall(
+                  r"(?i)\b[A-Za-z0-9_-]+[.]dll\b", data))
+          # Check the executable's immediate owners, then recurse through
+          # ONLY the exact installed DLL closure. Some MSVC linkers place
+          # Foundation behind NativeIO rather than a direct EXE import.
+          direct = imported_names(bins[0])
+          for required in ("crypto_tls.dll", "saltscore_native_io-0.1.dll"):
+              if required not in direct:
+                  raise SystemExit(f"Missing mandatory direct native DLL import: {required}; actual={sorted(direct)}")
+          sdk_modules = {p.name.lower(): p for p in dll_dir.glob('*.dll')}
+          seen = set()
+          pending = [bins[0]]
+          imported = set()
+          while pending:
+              image = pending.pop()
+              key = str(image.resolve()).lower()
+              if key in seen:
+                  continue
+              seen.add(key)
+              linked = imported_names(image)
+              imported.update(linked)
+              for dep_name in linked:
+                  dll = sdk_modules.get(dep_name)
+                  if dll is not None:
+                      pending.append(dll)
+          if "saltscore_core-0.1.dll" not in imported:
+              raise SystemExit(f"Missing Core Foundation runtime from full installed DLL closure: {sorted(imported)}")
+          if any("gmssl" in name or "crypto_provider" in name for name in imported):
               raise SystemExit("A second native GmSSL provider is imported")
+          if sum(1 for name in sdk_modules if name == 'crypto_tls.dll') != 1:
+              raise SystemExit("Expected exactly one physical installed Crypto TLS DLL")
+          print("Windows IOCP verified direct and transitive native DLL imports:", sorted(imported))
           report = Path(os.environ["RUNNER_TEMP"])/"cnet-iocp-imports.txt"
           report.write_text("\n".join(sorted(imported))+"\n", encoding="utf-8")
           print("Windows real IOCP binary imports verified; one Crypto shared image")
