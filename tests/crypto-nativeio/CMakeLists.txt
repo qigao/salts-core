@@ -149,3 +149,22 @@ endif()
 add_test(NAME cnet.crypto_nativeio_cpp17_one_owner
   COMMAND saltscore_crypto_nativeio_cpp17_owner)
 set_tests_properties(cnet.crypto_nativeio_cpp17_one_owner PROPERTIES TIMEOUT 60)
+
+if(WIN32)
+  # A REAL IOCP completion-owned overlapped WSARecv is cancelled while a
+  # distinct Win32 thread calls only native_io_backend_wake(); the owner must
+  # observe exactly one CANCELLED terminal before releasing backing bytes.
+  add_executable(saltscore_crypto_nativeio_cancel_iocp cancel_iocp.c)
+  set_target_properties(saltscore_crypto_nativeio_cancel_iocp PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  target_link_libraries(saltscore_crypto_nativeio_cancel_iocp PRIVATE
+    SaltsCore::NativeIO ws2_32)
+  if(MSVC)
+    target_compile_options(saltscore_crypto_nativeio_cancel_iocp PRIVATE
+      /experimental:c11atomics /W4 /WX)
+  endif()
+  add_test(NAME cnet.crypto_nativeio_real_iocp_cancel_wake_terminal
+    COMMAND saltscore_crypto_nativeio_cancel_iocp)
+  set_tests_properties(cnet.crypto_nativeio_real_iocp_cancel_wake_terminal
+    PROPERTIES TIMEOUT 120)
+endif()
