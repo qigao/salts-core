@@ -152,9 +152,17 @@ jobs:
             echo "DUPLICATE GmSSL / CNet image in candidate owner" >&2
             exit 1
           fi
-          nm -gU "$candidate" | grep -Eq ' _cnet_owner_init$'
-          nm -gU "$candidate" | grep -Eq ' _cnet_tls_handshake$'
-          nm -gU "$candidate" | grep -Eq ' _cnet_client_init$'
+          # Materialize the COMPLETE Mach-O export table first.
+          # nm | grep -q triggers SIGPIPE/LLVM abort under bash pipefail:
+          # an audit-script failure, not a native CNet/TLS defect.
+          nm -gU "$candidate" > "$RUNNER_TEMP/cnet-crypto-linked-exports.txt"
+          test -s "$RUNNER_TEMP/cnet-crypto-linked-exports.txt"
+          for symbol in _cnet_owner_init _cnet_tls_handshake _cnet_client_init; do
+            grep -Eq " $symbol$" "$RUNNER_TEMP/cnet-crypto-linked-exports.txt" || {
+              echo "Missing required ORIGINAL CNet Owner export: $symbol" >&2
+              exit 1
+            }
+          done
           candidate_app="$GITHUB_WORKSPACE/build-cnet-linked/saltscore_cnet_crypto_original_owner_tls"
           test -x "$candidate_app"
           otool -L "$candidate_app" > "$RUNNER_TEMP/cnet-crypto-linked-app-imports.txt"
@@ -172,6 +180,7 @@ jobs:
           path: |
             ${{ runner.temp }}/crypto-source-receipt.json
             ${{ runner.temp }}/cnet-crypto-linked-imports.txt
+            ${{ runner.temp }}/cnet-crypto-linked-exports.txt
             ${{ runner.temp }}/cnet-crypto-linked-app-imports.txt
             build-cnet-linked/Testing/Temporary/LastTest.log
             build-cnet-linked/CMakeCache.txt
