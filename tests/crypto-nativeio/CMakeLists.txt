@@ -64,7 +64,6 @@ add_test(NAME cnet.crypto_nativeio_real_tcp_tls12_tls13
 set_tests_properties(cnet.crypto_nativeio_real_tcp_tls12_tls13
   PROPERTIES TIMEOUT 120)
 
-if(NOT WIN32)
 # This cannot be simulated by deliberately small Crypto transport chunks:
 # require a genuine OS-generated partial TCP_SEND terminal completion on a
 # real loopback socket with constrained SO_SNDBUF, then resubmit its prefix.
@@ -99,9 +98,20 @@ add_test(NAME cnet.crypto_nativeio_cancel_wake_terminal
   COMMAND saltscore_crypto_nativeio_cancel_wake)
 set_tests_properties(cnet.crypto_nativeio_cancel_wake_terminal
   PROPERTIES TIMEOUT 120)
-endif() # existing POSIX OS-short-send and pthread-wake tests
-
 if(WIN32)
+  # All three C11 gates must actually exercise Windows IOCP; a C++17
+  # CMake import-only smoke is a separate fourth test, never a surrogate.
+  target_link_libraries(saltscore_crypto_nativeio_partial_send PRIVATE Ws2_32)
+  target_link_libraries(saltscore_crypto_nativeio_cancel_wake PRIVATE Ws2_32)
+  foreach(_consumer IN ITEMS saltscore_crypto_nativeio_partial_send
+                            saltscore_crypto_nativeio_cancel_wake)
+    target_compile_definitions(${_consumer} PRIVATE
+      _WIN32_WINNT=0x0600 WIN32_LEAN_AND_MEAN)
+  endforeach()
+  if(MSVC)
+    target_compile_options(saltscore_crypto_nativeio_cancel_wake PRIVATE
+      /experimental:c11atomics)
+  endif()
   enable_language(CXX)
   add_executable(saltscore_crypto_nativeio_installed_cpp17 installed-cpp17.cpp)
   set_target_properties(saltscore_crypto_nativeio_installed_cpp17 PROPERTIES
