@@ -11,7 +11,7 @@
 #include <salts/error_codes.h>
 #include <string.h>
 
-enum { TEST_PATH_LIMIT = 4096u, TEST_HOST_LIMIT = 253u };
+enum { TEST_PATH_LIMIT = 4096u, TEST_HOST_LIMIT = 254u };
 
 static int bounded_nonempty(const char *s, size_t capacity)
 {
@@ -19,6 +19,15 @@ static int bounded_nonempty(const char *s, size_t capacity)
     if (s == NULL || s[0] == '\0') return 0;
     for (i = 0u; i < capacity; ++i)
         if (s[i] == '\0') return 1;
+    return 0;
+}
+
+static int bounded_optional(const char *s, size_t capacity)
+{
+    size_t i;
+    if (s == NULL) return 1;
+    for (i = 0u; i < capacity; ++i)
+        if (s[i] == '\\0') return 1;
     return 0;
 }
 
@@ -89,8 +98,7 @@ int cnet_crypto_candidate_prepare_server(
         return SALTS_ENOTSUP;
     if (!bounded_nonempty(policy->cert_file, TEST_PATH_LIMIT)
         || !bounded_nonempty(policy->key_file, TEST_PATH_LIMIT)
-        || (policy->key_password != NULL
-            && !bounded_nonempty(policy->key_password, TEST_PATH_LIMIT)))
+        || !bounded_optional(policy->key_password, TEST_PATH_LIMIT))
         return SALTS_EINVAL;
 
     prepared.struct_size = (uint32_t)sizeof(prepared);
