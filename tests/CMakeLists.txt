@@ -40,6 +40,13 @@ set_target_properties(saltscore_runtime_abi_test PROPERTIES
   C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.runtime_abi_0_1 COMMAND saltscore_runtime_abi_test)
 
+# Plain C11 borrowed string view: no reflection headers, allocator or ABI shim.
+add_executable(saltscore_vstr_contract_test test_vstr_contract.c)
+target_link_libraries(saltscore_vstr_contract_test PRIVATE Salts::Core)
+set_target_properties(saltscore_vstr_contract_test PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME saltscore.vstr_c11 COMMAND saltscore_vstr_contract_test)
+
 add_executable(saltscore_bytes_test test_bytes.c)
 target_link_libraries(saltscore_bytes_test PRIVATE Salts::Core)
 set_target_properties(saltscore_bytes_test PROPERTIES

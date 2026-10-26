@@ -282,7 +282,7 @@ install(FILES include/coro.h include/coro_pool.h include/coro_executor.h
 install(FILES vendor/minicoro/LICENSE
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/minicoro)
 
-install(FILES include/cmeta_api.h include/cmeta_buffer.h include/ring_buffer.h
+install(FILES include/vstr.h include/cmeta_api.h include/cmeta_buffer.h include/ring_buffer.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 set(_saltscore_package_dir "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsCore")
