@@ -106,7 +106,8 @@ jobs:
           sdk="$RUNNER_TEMP/cnet-iocp-sdk"
           export PATH="$(cygpath -u "$sdk")/bin:$PATH"
           ctest --test-dir build-crypto-iocp -C Release \
-            -R '^cnet[.]crypto_nativeio_(real_tcp_tls12_tls13|windows_iocp_cancel_terminal)            --no-tests=error --output-on-failure --timeout 120 \
+            -R '^cnet[.]crypto_nativeio_(real_tcp_tls12_tls13|windows_iocp_cancel_terminal)$' \
+            --no-tests=error --output-on-failure --timeout 120 \
             --repeat until-fail:3
       - name: Audit Windows imported DLL closure without GmSSL fallback
         shell: bash
