@@ -106,7 +106,7 @@ jobs:
             "-DCRYPTO_TEST_FIXTURES=$GITHUB_WORKSPACE/_crypto/providers/gmssl/tests/fixtures"
           cmake --build build-nativeio-crypto --parallel 2
           test "$(ctest --test-dir build-nativeio-crypto -N |
-            sed -n 's/^Total Tests: //p')" = 2
+            sed -n 's/^Total Tests: //p')" = 3
           ctest --test-dir build-nativeio-crypto --no-tests=error \
             --output-on-failure --timeout 120 --repeat until-fail:3
       - name: Audit final installed external NativeIO and one GmSSL owner link
