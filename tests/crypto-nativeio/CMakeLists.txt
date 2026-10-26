@@ -81,9 +81,18 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(saltscore_crypto_nativeio_partial_send PRIVATE
     -Wall -Wextra -Werror)
 endif()
-add_test(NAME cnet.crypto_nativeio_real_partial_tcp_send
+if(WIN32)
+  # An overlapped WSASend may not produce a positive short completion:
+  # demand kernel backpressure while send backing is retained, then
+  # require actual IOCP terminal and exact byte-for-byte peer delivery.
+  set(_tcp_send_test cnet.crypto_nativeio_iocp_backpressure_send)
+else()
+  # POSIX must still report at least one positive short-send terminal.
+  set(_tcp_send_test cnet.crypto_nativeio_real_partial_tcp_send)
+endif()
+add_test(NAME ${_tcp_send_test}
   COMMAND saltscore_crypto_nativeio_partial_send)
-set_tests_properties(cnet.crypto_nativeio_real_partial_tcp_send
+set_tests_properties(${_tcp_send_test}
   PROPERTIES TIMEOUT 120)
 
 # Only native_io_backend_wake() is used by the other thread. The NativeIO
