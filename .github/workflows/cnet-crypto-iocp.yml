@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/cnet-crypto-iocp.yml"
       - "tests/crypto-nativeio/**"
+      - "tests/cnet-crypto-owner/**"
   workflow_dispatch:
 
 permissions:
@@ -100,7 +101,7 @@ jobs:
           test -s build-cnet-policy/Release/cnet_crypto_owner_admission.exe
           test -s build-cnet-policy/Release/cnet_crypto_tls_state_qualification.exe
           test "$(ctest --test-dir build-cnet-policy -C Release -N |
-            sed -n 's/^Total Tests: //p')" = 2
+            sed -n 's/^Total Tests: //p')" = 3
           export PATH="$sdk/bin:$PATH"
           ctest --test-dir build-cnet-policy -C Release --no-tests=error \
             --output-on-failure --timeout 60 --repeat until-fail:3

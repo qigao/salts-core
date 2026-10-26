@@ -85,3 +85,47 @@ add_test(NAME cnet.crypto_tls_state_real_tls12_tls13
   COMMAND cnet_crypto_tls_state_qualification)
 set_tests_properties(cnet.crypto_tls_state_real_tls12_tls13
   PROPERTIES TIMEOUT 120)
+
+# Source-level, ACTUAL C11 object compilation of the unchanged production
+# cnet_owner.c with the alternative opaque Crypto TLS implementation in a
+# separate test-only build. This is NOT an executable CNet DSO yet.
+foreach(_name IN ITEMS Core NativeIO Concurrency Platform)
+  if(NOT TARGET SaltsCore::${_name})
+    message(FATAL_ERROR "Missing installed shared CNet foundation: SaltsCore::${_name}")
+  endif()
+endforeach()
+add_library(cnet_crypto_original_owner_source_probe OBJECT
+  "${_root}/src/cnet/cnet_owner.c")
+add_library(cnet_crypto_alternate_tls_source_probe OBJECT
+  "${_root}/src/cnet/cnet_tls_crypto_qualification.c")
+foreach(_target IN ITEMS
+    cnet_crypto_original_owner_source_probe
+    cnet_crypto_alternate_tls_source_probe)
+  set_target_properties(${_target} PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+  target_include_directories(${_target} PRIVATE
+    "${_root}/src/cnet" "${_root}/include"
+    "${CMAKE_CURRENT_BINARY_DIR}/cnet-private")
+  target_link_libraries(${_target} PRIVATE
+    SaltsCore::Core SaltsCore::NativeIO SaltsCore::Concurrency
+    SaltsCore::Platform Crypto::TLS Crypto::TLSCipherBIO)
+  if(MSVC)
+    target_compile_options(${_target} PRIVATE /experimental:c11atomics /W4)
+  elseif(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+    target_compile_options(${_target} PRIVATE -Wall -Wextra
+      -Werror=implicit-function-declaration
+      -Werror=incompatible-pointer-types -Werror=return-type)
+  endif()
+endforeach()
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME cnet.crypto_original_owner_opaque_tls_abi
+  COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/audit_original_owner_abi.py"
+    --owner "${_root}/src/cnet/cnet_owner.c"
+    --candidate "${_root}/src/cnet/cnet_tls_crypto_qualification.c"
+    --header "${_root}/src/cnet/cnet_tls.h"
+    --production-cmake "${_root}/cmake/SaltsCoreCNet.cmake"
+    --owner-object "$<TARGET_OBJECTS:cnet_crypto_original_owner_source_probe>"
+    --candidate-object "$<TARGET_OBJECTS:cnet_crypto_alternate_tls_source_probe>")
+set_tests_properties(cnet.crypto_original_owner_opaque_tls_abi
+  PROPERTIES TIMEOUT 45)
