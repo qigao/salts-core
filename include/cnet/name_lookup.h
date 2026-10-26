@@ -25,8 +25,9 @@ int cnet_name_lookup_init(cnet_name_lookup *lookup, const cnet_name_lookup_confi
  * 1..63 bytes, max 253 bytes excluding optional final dot; uppercase ASCII
  * is lowercased. Existing Punycode A-labels pass through as ASCII but are
  * NOT decoded or IDNA-validated. Raw non-ASCII/UTF-8 names fail closed.
- * For Unicode domains, explicitly call Salts::IDNA salts_idna_to_ascii at the
- * application boundary; reuse its ASCII output for DNS and TLS identity.
+ * Unicode domain conversion belongs to the caller's independently owned
+ * IDNA validation layer. Supply only the resulting ASCII to DNS/TLS; this
+ * standalone Core implementation never links an IDNA provider.
  * No partial output on error. Buffer needs 256 bytes. Numeric addresses
  * remain unchanged; mapped IPv6 produces an IPv4 result. out_numeric and
  * out_address are optional; other output pointers are required. */
