@@ -173,6 +173,20 @@ static int run_one(crypto_tls_provider *provider, uint32_t protocol)
      * bytes into private bounded engine storage but MUST retain them
      * until the application's CNet read consumes their exact prefix.
      */
+    /* Regression for real original CNet Owner M3.9: after handshake,
+     * polling a connection with no inbound ciphertext must NOT put the
+     * private GmSSL backend into a pending read that prevents the
+     * first application send. The original CNet idle owner does exactly
+     * this no-demand peer-close probe before a queued application write.
+     */
+    {
+        bool no_data_closed = true, no_data_pending = true;
+        CHECK(cnet_tls_cipher_input_capacity(&client) == capacity);
+        CHECK(cnet_tls_probe_peer_close(
+            &client, &no_data_closed, &no_data_pending) == SALTS_OK);
+        CHECK(!no_data_closed && !no_data_pending);
+    }
+
     for (steps = 0u; steps < MAX_STEPS; ++steps) {
         bool closed = false, pending = false, written = false;
         if (delivered != sizeof(payload)) {
