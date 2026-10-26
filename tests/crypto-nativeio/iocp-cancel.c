@@ -78,7 +78,7 @@ static int run_cycle(int index)
     op.endpoint = endpoint;
     op.buffer = mem_buffer_data(buffer);
     op.length = RECV_BYTES;
-    op.user_data = UINTPTR_C(0xC011CE);
+    op.user_data = (uintptr_t)0xC011CEu;
     if (native_io_backend_submit(&backend, &op, &request) != SALTS_OK
         || !native_io_request_valid(request))
         goto cleanup;
