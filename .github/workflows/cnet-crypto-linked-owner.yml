@@ -1,0 +1,155 @@
+name: CNet original Owner linked to opaque Crypto TLS (test-only, Linux)
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/cnet-crypto-linked-owner.yml"
+      - "cmake/SaltsCoreCNet.cmake"
+      - "cmake/SaltsCoreCNetCryptoQualification.cmake"
+      - "tests/cnet-crypto-owner/**"
+      - "tests/CMakeLists.txt"
+      - "src/cnet/cnet_tls_crypto_qualification.c"
+      - "src/cnet/cnet_tls_crypto_qualification.h"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  linux-linked-owner:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      VCPKG_MANIFEST_FEATURES: cnet
+      VCPKG_DEFAULT_TRIPLET: x64-linux
+    steps:
+      - name: Checkout original CNet Owner + Crypto qualification candidate
+        uses: actions/checkout@v4
+      - name: Checkout exact tested Crypto single-owner / CipherBIO SDK
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/crypto
+          ref: 369b4dd7b2863cca2be8f939a6c5a834ecf5663d
+          path: _crypto
+          persist-credentials: false
+      - name: Checkout immutable original GmSSL source
+        uses: actions/checkout@v4
+        with:
+          repository: guanzhi/GmSSL
+          ref: 7c9f02904ef33e59c87b4f16621cc8fd434e7579
+          path: _gmssl-upstream
+          persist-credentials: false
+      - name: Install original CNet C11 build prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build pkg-config nasm re2c autoconf automake libtool \
+            curl zip unzip tar
+      - name: Bootstrap exact canonical vcpkg provider dependency graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/cnet-linked-owner-vcpkg"
+          mkdir -p "$root"
+          git -C "$root" init -q
+          git -C "$root" remote add origin https://github.com/microsoft/vcpkg.git
+          git -C "$root" fetch --no-tags origin 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
+          git -C "$root" checkout --detach FETCH_HEAD
+          git -C "$root" fetch --no-tags origin b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+          test "$(git -C "$root" rev-parse HEAD)" = 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
+          git -C "$root" cat-file -e 'b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01:versions/baseline.json'
+          "$root/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$root" >> "$GITHUB_ENV"
+      - name: Prove exact pinned Crypto source and private native PIC owner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C _crypto rev-parse HEAD)" = \
+            369b4dd7b2863cca2be8f939a6c5a834ecf5663d
+          test "$(git -C _gmssl-upstream rev-parse HEAD)" = \
+            7c9f02904ef33e59c87b4f16621cc8fd434e7579
+          python3 _crypto/tools/verify_gmssl_import.py
+          cmake "-DGMSSL_UPSTREAM_SOURCE=$GITHUB_WORKSPACE/_gmssl-upstream" \
+            "-DGMSSL_ASSEMBLY_RECEIPT=$RUNNER_TEMP/crypto-source-receipt.json" \
+            -P _crypto/tools/assemble_gmssl.cmake
+          cmake -S _gmssl-upstream -B build-gmssl -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DBUILD_SHARED_LIBS=OFF -DENABLE_TLS=ON -DENABLE_SECP256R1=ON \
+            -DENABLE_SHA2=ON -DENABLE_AES=ON -DENABLE_AES_CCM=OFF \
+            -DENABLE_SHA1=ON -DENABLE_CHACHA20=OFF -DENABLE_GHASH=OFF \
+            -DENABLE_SM9=OFF -DENABLE_CMS=OFF -DENABLE_LMS=OFF \
+            -DENABLE_XMSS=OFF -DENABLE_SPHINCS=OFF -DENABLE_KYBER=OFF \
+            -DENABLE_ZUC=OFF -DENABLE_SKF=OFF -DENABLE_SDF=OFF
+          cmake --build build-gmssl --target gmssl --parallel 2
+          test -s build-gmssl/bin/libgmssl.a
+      - name: Install ONLY one Crypto shared owner and host CipherBIO
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$RUNNER_TEMP/crypto-linked-owner-sdk"
+          cmake -S _crypto -B build-crypto -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            "-DCRYPTO_GMSSL_SOURCE=$GITHUB_WORKSPACE/_gmssl-upstream" \
+            "-DCRYPTO_GMSSL_STATIC=$GITHUB_WORKSPACE/build-gmssl/bin/libgmssl.a"
+          cmake --build build-crypto --parallel 2
+          cmake --install build-crypto --prefix "$sdk"
+          test -s "$sdk/lib/libcrypto_tls.so"
+          test -s "$sdk/include/crypto/cipher_bio.h"
+      - name: Configure full original CNet graph with mutually exclusive test TLS source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/vcpkg-binary-cache
+          export VCPKG_BINARY_SOURCES="clear;files,$GITHUB_WORKSPACE/build/vcpkg-binary-cache,readwrite"
+          cmake -S . -B build-cnet-linked -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux -DVCPKG_MANIFEST_FEATURES=cnet \
+            -DSALTSCORE_BUILD_URI=ON -DSALTSCORE_BUILD_CNET=ON \
+            -DSALTSCORE_CNET_BUILD_CRYPTO_TEST_DSO=ON \
+            "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/crypto-linked-owner-sdk"
+          cmake --build build-cnet-linked \
+            --target saltscore_cnet_crypto_qualification \
+                     saltscore_cnet_crypto_linked_owner_loopback \
+                     saltscore_cnet_tcp_loopback_test --parallel 2
+      - name: Execute original CNet Owner TCP/retained-slice app against BOTH DSOs in separate processes
+        shell: bash
+        run: |
+          set -euo pipefail
+          export LD_LIBRARY_PATH="$RUNNER_TEMP/crypto-linked-owner-sdk/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:${LD_LIBRARY_PATH:-}"
+          for testname in saltscore.cnet_tcp_loopback \
+                          saltscore.cnet_crypto_linked_owner_tcp_loopback; do
+            ctest --test-dir build-cnet-linked --output-on-failure \
+              -R "^$testname$" --no-tests=error --repeat until-fail:3
+          done
+      - name: Fail closed on duplicate native owner and unresolved CNet TLS linkage
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate="$GITHUB_WORKSPACE/build-cnet-linked/libsaltscore_cnet_crypto_qualification.so"
+          test -s "$candidate"
+          readelf -d "$candidate" | tee "$RUNNER_TEMP/cnet-crypto-linked-imports.txt"
+          grep -q 'libcrypto_tls.so' "$RUNNER_TEMP/cnet-crypto-linked-imports.txt"
+          grep -q 'libsaltscore_core' "$RUNNER_TEMP/cnet-crypto-linked-imports.txt"
+          if grep -Ei 'libgmssl[.]|libcrypto_provider|libsaltscore_cnet[.]so' \
+              "$RUNNER_TEMP/cnet-crypto-linked-imports.txt"; then
+            echo "SECURITY FAIL: candidate linked a second GmSSL/CNet owner" >&2
+            exit 1
+          fi
+          nm -D --defined-only "$candidate" | grep -Eq ' cnet_owner_init$'
+          nm -D --defined-only "$candidate" | grep -Eq ' cnet_tls_handshake$'
+          nm -D --defined-only "$candidate" | grep -Eq ' cnet_client_init$'
+      - name: Preserve source, native imports and separate app proof (no secrets)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cnet-linked-crypto-owner-linux
+          path: |
+            ${{ runner.temp }}/crypto-source-receipt.json
+            ${{ runner.temp }}/cnet-crypto-linked-imports.txt
+            build-cnet-linked/Testing/Temporary/LastTest.log
+            build-cnet-linked/CMakeCache.txt
+          if-no-files-found: warn
