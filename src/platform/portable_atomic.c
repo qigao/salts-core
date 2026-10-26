@@ -7,8 +7,10 @@
 #  define WIN32_LEAN_AND_MEAN 1
 # endif
 # include <windows.h>
-# if defined(_MSC_VER)
-#  include <intrin.h> /* Windows 8-bit CAS must use compiler intrinsic. */
+# if defined(_MSC_VER) || defined(__clang__)
+#  include <intrin.h> /* Native Interlocked intrinsics; no linker API guess. */
+# else
+#  error "Windows provider requires MSVC or Clang; TinyCC remains a C ABI consumer"
 # endif
 #else
 # if !defined(__GNUC__) && !defined(__clang__)
@@ -59,14 +61,10 @@ static int aligned(const void *p, size_t align) {
  * Never read or modify shared storage with plain volatile arithmetic.
  */
 #if defined(_WIN32)
-# if defined(_MSC_VER)
-#  define SALTS_NATIVE_CAS8(p, e, d) _InterlockedCompareExchange8((volatile char *)(p), (char)(d), (char)(e))
-# else
-#  define SALTS_NATIVE_CAS8(p, e, d) InterlockedCompareExchange8((volatile CHAR *)(p), (CHAR)(d), (CHAR)(e))
-# endif
-# define SALTS_NATIVE_CAS16(p, e, d) InterlockedCompareExchange16((volatile SHORT *)(p), (SHORT)(d), (SHORT)(e))
-# define SALTS_NATIVE_CAS32(p, e, d) InterlockedCompareExchange((volatile LONG *)(p), (LONG)(d), (LONG)(e))
-# define SALTS_NATIVE_CAS64(p, e, d) InterlockedCompareExchange64((volatile LONGLONG *)(p), (LONGLONG)(d), (LONGLONG)(e))
+# define SALTS_NATIVE_CAS8(p, e, d) _InterlockedCompareExchange8((volatile char *)(p), (char)(d), (char)(e))
+# define SALTS_NATIVE_CAS16(p, e, d) _InterlockedCompareExchange16((volatile short *)(p), (short)(d), (short)(e))
+# define SALTS_NATIVE_CAS32(p, e, d) _InterlockedCompareExchange((volatile long *)(p), (long)(d), (long)(e))
+# define SALTS_NATIVE_CAS64(p, e, d) _InterlockedCompareExchange64((volatile __int64 *)(p), (__int64)(d), (__int64)(e))
 # define SALTS_DEFINE_ATOMIC(N, T) \
 int SALTS_CORE_PLATFORM_CALL salts_atomic##N##_init(salts_atomic##N *p, T v) { \
     if (!aligned(p, sizeof(T))) return SALTS_EINVAL; \
