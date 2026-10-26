@@ -17,8 +17,18 @@
 #include <string.h>
 #include "native_tcp_compat.h"
 
+/* On Windows a one-millisecond IOCP wait may be rounded up to the
+ * system timer granularity. Keep failed-terminal drain strictly bounded;
+ * never let CTest kill us without a diagnostic / leak-owner warning.
+ * The POSIX short-completion acceptance retains its original budget.
+ */
+#if defined(_WIN32)
+#define NATIVE_TEST_MAX_STEPS 512u
+#else
+#define NATIVE_TEST_MAX_STEPS 40000u
+#endif
 enum { PAYLOAD_SIZE = 256 * 1024, MIN_SEND_BUFFER = 1024,
-       MAX_STEPS = 40000, OBSERVE_BATCH = 4 };
+       MAX_STEPS = NATIVE_TEST_MAX_STEPS, OBSERVE_BATCH = 4 };
 
 static native_io_backend_kind native_kind(void)
 {
