@@ -116,3 +116,24 @@ set_tests_properties(cnet.crypto_nativeio_cancel_wake_terminal
   PROPERTIES TIMEOUT 120)
 
 endif() # POSIX-only short-send and pthread wake completion tests
+
+if(WIN32)
+  # A true IOCP completion requires WSA_FLAG_OVERLAPPED TCP sockets.
+  # This test calls native_io_backend_cancel (CancelIoEx), then waits
+  # for ERROR_OPERATION_ABORTED before releasing Core-backed receive data.
+  add_executable(saltscore_crypto_iocp_cancel_terminal iocp-cancel.c)
+  set_target_properties(saltscore_crypto_iocp_cancel_terminal PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  target_link_libraries(saltscore_crypto_iocp_cancel_terminal PRIVATE
+    SaltsCore::NativeIO SaltsCore::Core ws2_32)
+  add_custom_command(TARGET saltscore_crypto_iocp_cancel_terminal POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy -t
+      "$<TARGET_FILE_DIR:saltscore_crypto_iocp_cancel_terminal>"
+      "$<TARGET_RUNTIME_DLLS:saltscore_crypto_iocp_cancel_terminal>"
+    COMMAND_EXPAND_LISTS VERBATIM)
+  add_test(NAME cnet.crypto_nativeio_windows_iocp_cancel_terminal
+    COMMAND saltscore_crypto_iocp_cancel_terminal)
+  set_tests_properties(cnet.crypto_nativeio_windows_iocp_cancel_terminal
+    PROPERTIES TIMEOUT 120)
+endif()
+
