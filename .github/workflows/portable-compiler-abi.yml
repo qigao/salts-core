@@ -178,13 +178,7 @@ jobs:
             -o build-portable/tcc_platform_consumer
           export LD_LIBRARY_PATH="$PWD/build-portable:$(printenv LD_LIBRARY_PATH || true)"
           for i in 1 2 3 4 5; do ./build-portable/tcc_platform_consumer; done
-          for fixture in test_portable_timing test_portable_tss; do
-            "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -Iinclude \
-              "tests/$fixture.c" -Lbuild-portable -lsalts_portable \
-              -o "build-portable/$fixture"
-            for i in 1 2 3 4 5; do "./build-portable/$fixture"; done
-          done
-          for fixture in test_portable_timing test_portable_tss; do
+          for fixture in test_portable_timing test_portable_tss test_portable_timed_mutex; do
             "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -Iinclude \
               "tests/$fixture.c" -Lbuild-portable -lsalts_portable \
               -o "build-portable/$fixture"
@@ -224,6 +218,12 @@ jobs:
             -o build-portable/tcc_platform_consumer
           export DYLD_LIBRARY_PATH="$PWD/build-portable:$(printenv DYLD_LIBRARY_PATH || true)"
           for i in 1 2 3 4 5; do ./build-portable/tcc_platform_consumer; done
+          for fixture in test_portable_timing test_portable_tss test_portable_timed_mutex; do
+            "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -Iinclude \
+              "tests/$fixture.c" -Lbuild-portable -lsalts_portable \
+              -o "build-portable/$fixture"
+            for i in 1 2 3 4 5; do "./build-portable/$fixture"; done
+          done
 
 
   portable-thread-sanitizers:
@@ -248,7 +248,8 @@ jobs:
             "-DCMAKE_C_FLAGS=${{ matrix.flags }} -fno-omit-frame-pointer -g -O1" \
             -DBUILD_TESTING=ON
           cmake --build build-sanitize \
-            --target saltscore_portable_timing_test saltscore_portable_tss_test \
+            --target saltscore_portable_timing_test saltscore_portable_tss_test saltscore_portable_timed_mutex_test \
             --parallel 2
           ctest --test-dir build-sanitize --output-on-failure \
-            --repeat until-fail:10 -R '^saltscore\.portable_(timing|tss)$'
+            --repeat until-fail:10 -R '^saltscore\.portable_(timing|tss|timed_mutex)
+

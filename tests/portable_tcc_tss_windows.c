@@ -19,6 +19,7 @@ typedef int (SALTS_CORE_PLATFORM_CALL *atom_load_fn)(const salts_atomic32 *, sal
 typedef int (SALTS_CORE_PLATFORM_CALL *atom_store_fn)(salts_atomic32 *, uint32_t, salts_memory_order);
 typedef int (SALTS_CORE_PLATFORM_CALL *mutex_create_fn)(salts_platform_mutex **);
 typedef int (SALTS_CORE_PLATFORM_CALL *mutex_fn)(salts_platform_mutex *);
+typedef int (SALTS_CORE_PLATFORM_CALL *mutex_timed_fn)(salts_platform_mutex *, uint64_t);
 typedef int (SALTS_CORE_PLATFORM_CALL *mutex_destroy_fn)(salts_platform_mutex **);
 typedef int (SALTS_CORE_PLATFORM_CALL *cond_create_fn)(salts_platform_condition **);
 typedef int (SALTS_CORE_PLATFORM_CALL *cond_timed_fn)(salts_platform_condition *, salts_platform_mutex *, uint64_t);
@@ -54,6 +55,7 @@ int main(int argc, char **argv) {
     thread_create_fn thread_create; thread_join_fn thread_join;
     atom_init_fn atom_init;
     mutex_create_fn mutex_create; mutex_fn mutex_lock, mutex_unlock;
+    mutex_timed_fn mutex_timed;
     mutex_destroy_fn mutex_destroy; cond_create_fn cond_create;
     cond_timed_fn cond_timed; cond_destroy_fn cond_destroy;
     sleep_fn thread_sleep;
@@ -79,6 +81,7 @@ int main(int argc, char **argv) {
     LOAD(mutex_create, mutex_create_fn, "salts_platform_mutex_create");
     LOAD(mutex_lock, mutex_fn, "salts_platform_mutex_lock");
     LOAD(mutex_unlock, mutex_fn, "salts_platform_mutex_unlock");
+    LOAD(mutex_timed, mutex_timed_fn, "salts_platform_mutex_timedlock_ns");
     LOAD(mutex_destroy, mutex_destroy_fn, "salts_platform_mutex_destroy");
     LOAD(cond_create, cond_create_fn, "salts_platform_condition_create");
     LOAD(cond_timed, cond_timed_fn, "salts_platform_condition_timedwait_ns");
@@ -99,10 +102,14 @@ int main(int argc, char **argv) {
     if (thread_join(&thread, &result) || result != 43 || thread) return 11;
     if (destructor_count != 1 || key_destroy(&key) || key) return 12;
     if (mutex_create(&mutex) || cond_create(&cond) || mutex_lock(mutex)) return 13;
+    if (mutex_timed(mutex, 0) != SALTS_ETIMEDOUT ||
+        mutex_timed(mutex, UINT64_MAX) != SALTS_EINVAL) return 19;
     if (cond_timed(cond, mutex, 0u) != SALTS_ETIMEDOUT) return 14;
     if (cond_timed(cond, mutex, UINT64_MAX) != SALTS_EINVAL) return 15;
     if (mutex_unlock(mutex) || cond_destroy(&cond) || mutex_destroy(&mutex)) return 16;
     if (thread_sleep(1000000ull) || thread_sleep(UINT64_MAX) != SALTS_EINVAL) return 17;
+    if (mutex_create(&mutex) || mutex_timed(mutex, 0) ||
+        mutex_unlock(mutex) || mutex_destroy(&mutex)) return 20;
     if (!FreeLibrary(lib)) return 18;
     puts("TinyCC -> llvm-mingw timed wait/FLS destructor/cdecl ABI PASS");
     return 0;

@@ -31,5 +31,11 @@ int main() {
         salts_platform_tss_destroy(&key) || key ||
         salts_platform_thread_sleep_ns(0))
         return 4;
+    salts_platform_mutex *mutex = nullptr;
+    if (salts_platform_mutex_create(&mutex) ||
+        salts_platform_mutex_timedlock_ns(mutex, 0) ||
+        salts_platform_mutex_unlock(mutex) ||
+        salts_platform_mutex_timedlock_ns(mutex, UINT64_MAX) != SALTS_EINVAL ||
+        salts_platform_mutex_destroy(&mutex) || mutex) return 5;
     return 0;
 }

@@ -252,3 +252,11 @@ target_compile_features(saltscore_portable_tss_test PRIVATE c_std_11)
 target_link_libraries(saltscore_portable_tss_test PRIVATE Salts::Platform)
 add_test(NAME saltscore.portable_tss COMMAND saltscore_portable_tss_test)
 set_tests_properties(saltscore.portable_tss PROPERTIES TIMEOUT 30)
+
+
+# Monotonic relative timed mutex (MSVC / Clang / TinyCC C ABI).
+add_executable(saltscore_portable_timed_mutex_test test_portable_timed_mutex.c)
+target_compile_features(saltscore_portable_timed_mutex_test PRIVATE c_std_11)
+target_link_libraries(saltscore_portable_timed_mutex_test PRIVATE Salts::Platform)
+add_test(NAME saltscore.portable_timed_mutex COMMAND saltscore_portable_timed_mutex_test)
+set_tests_properties(saltscore.portable_timed_mutex PROPERTIES TIMEOUT 35)

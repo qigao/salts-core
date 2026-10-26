@@ -93,6 +93,56 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_create(salts_platform_mutex **
 int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_lock(salts_platform_mutex *m) {
     return m && pthread_mutex_lock(&m->native) == 0 ? SALTS_OK : SALTS_EINVAL;
 }
+/* Portable timed mutex: pthread_mutex_timedlock uses CLOCK_REALTIME on many
+ * systems; retry pthread_mutex_trylock under CLOCK_MONOTONIC instead.
+ * A bounded 1 ms nanosleep avoids a hot spin and a realtime-clock fallback.
+ */
+static int portable_monotonic_now_ns(uint64_t *now) {
+#if defined(CLOCK_MONOTONIC)
+    struct timespec ts;
+    if (!now || clock_gettime(CLOCK_MONOTONIC, &ts) != 0 ||
+        ts.tv_sec < 0 || ts.tv_nsec < 0 || ts.tv_nsec >= 1000000000L)
+        return SALTS_ENOTSUP;
+    if ((uint64_t)ts.tv_sec > (UINT64_MAX - 999999999ull) / 1000000000ull)
+        return SALTS_EINVAL;
+    *now = (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+    return SALTS_OK;
+#else
+    (void)now;
+    return SALTS_ENOTSUP;
+#endif
+}
+int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_timedlock_ns(
+    salts_platform_mutex *m, uint64_t duration_ns) {
+    uint64_t start = 0, now = 0, elapsed, remaining;
+    int rc;
+    if (!m || duration_ns > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS)
+        return SALTS_EINVAL;
+    rc = pthread_mutex_trylock(&m->native);
+    if (rc == 0) return SALTS_OK;
+    if (rc != EBUSY) return SALTS_EBUSY;
+    if (duration_ns == 0) return SALTS_ETIMEDOUT;
+    rc = portable_monotonic_now_ns(&start);
+    if (rc != SALTS_OK) return rc;
+    for (;;) {
+        struct timespec pause;
+        rc = portable_monotonic_now_ns(&now);
+        if (rc != SALTS_OK) return rc;
+        elapsed = now >= start ? now - start : 0;
+        if (elapsed >= duration_ns) return SALTS_ETIMEDOUT;
+        remaining = duration_ns - elapsed;
+        pause.tv_sec = 0;
+        pause.tv_nsec = (long)(remaining > 1000000ull ? 1000000ull : remaining);
+        (void)nanosleep(&pause, NULL);
+        rc = portable_monotonic_now_ns(&now);
+        if (rc != SALTS_OK) return rc;
+        if (now >= start && now - start >= duration_ns)
+            return SALTS_ETIMEDOUT;
+        rc = pthread_mutex_trylock(&m->native);
+        if (rc == 0) return SALTS_OK;
+        if (rc != EBUSY) return SALTS_EBUSY;
+    }
+}
 int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_unlock(salts_platform_mutex *m) {
     return m && pthread_mutex_unlock(&m->native) == 0 ? SALTS_OK : SALTS_EINVAL;
 }
