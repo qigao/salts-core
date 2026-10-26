@@ -60,3 +60,20 @@ add_test(NAME cnet.crypto_nativeio_real_tcp_tls12_tls13
   COMMAND saltscore_crypto_nativeio_real_tcp_tls)
 set_tests_properties(cnet.crypto_nativeio_real_tcp_tls12_tls13
   PROPERTIES TIMEOUT 120)
+
+# This cannot be simulated by deliberately small Crypto transport chunks:
+# require a genuine OS-generated partial TCP_SEND terminal completion on a
+# real loopback socket with constrained SO_SNDBUF, then resubmit its prefix.
+add_executable(saltscore_crypto_nativeio_partial_send partial-send.c)
+set_target_properties(saltscore_crypto_nativeio_partial_send PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+target_link_libraries(saltscore_crypto_nativeio_partial_send PRIVATE
+  SaltsCore::NativeIO SaltsCore::Core)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(saltscore_crypto_nativeio_partial_send PRIVATE
+    -Wall -Wextra -Werror)
+endif()
+add_test(NAME cnet.crypto_nativeio_real_partial_tcp_send
+  COMMAND saltscore_crypto_nativeio_partial_send)
+set_tests_properties(cnet.crypto_nativeio_real_partial_tcp_send
+  PROPERTIES TIMEOUT 120)
