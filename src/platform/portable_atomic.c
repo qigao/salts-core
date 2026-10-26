@@ -7,6 +7,9 @@
 #  define WIN32_LEAN_AND_MEAN 1
 # endif
 # include <windows.h>
+# if defined(_MSC_VER)
+#  include <intrin.h> /* Windows 8-bit CAS must use compiler intrinsic. */
+# endif
 #else
 # if !defined(__GNUC__) && !defined(__clang__)
 #  error "Platform atomic backend requires Win32 Interlocked or GCC/Clang __atomic; no volatile fallback"
@@ -56,7 +59,11 @@ static int aligned(const void *p, size_t align) {
  * Never read or modify shared storage with plain volatile arithmetic.
  */
 #if defined(_WIN32)
-# define SALTS_NATIVE_CAS8(p, e, d) InterlockedCompareExchange8((volatile CHAR *)(p), (CHAR)(d), (CHAR)(e))
+# if defined(_MSC_VER)
+#  define SALTS_NATIVE_CAS8(p, e, d) _InterlockedCompareExchange8((volatile char *)(p), (char)(d), (char)(e))
+# else
+#  define SALTS_NATIVE_CAS8(p, e, d) InterlockedCompareExchange8((volatile CHAR *)(p), (CHAR)(d), (CHAR)(e))
+# endif
 # define SALTS_NATIVE_CAS16(p, e, d) InterlockedCompareExchange16((volatile SHORT *)(p), (SHORT)(d), (SHORT)(e))
 # define SALTS_NATIVE_CAS32(p, e, d) InterlockedCompareExchange((volatile LONG *)(p), (LONG)(d), (LONG)(e))
 # define SALTS_NATIVE_CAS64(p, e, d) InterlockedCompareExchange64((volatile LONGLONG *)(p), (LONGLONG)(d), (LONGLONG)(e))
