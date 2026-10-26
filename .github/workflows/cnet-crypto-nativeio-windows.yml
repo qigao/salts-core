@@ -98,15 +98,107 @@ jobs:
             "-DCRYPTO_TEST_FIXTURES=$GITHUB_WORKSPACE/_crypto/providers/gmssl/tests/fixtures"
           cmake --build build-crypto-iocp --config Release --parallel 2
           test "$(ctest --test-dir build-crypto-iocp -C Release -N |
-            sed -n 's/^Total Tests: //p')" = 1
-      - name: Execute real WSASocket overlapped IOCP TLS1.2/1.3 and drain 3x
+            sed -n 's/^Total Tests: //p')" = 2
+      - name: Repeat real IOCP TLS1.2/1.3 and CancelIoEx terminal/buffer retention 3x
         shell: bash
         run: |
           set -euo pipefail
           sdk="$RUNNER_TEMP/cnet-iocp-sdk"
           export PATH="$(cygpath -u "$sdk")/bin:$PATH"
           ctest --test-dir build-crypto-iocp -C Release \
-            -R '^cnet[.]crypto_nativeio_real_tcp_tls12_tls13$' \
+            -R '^cnet[.]crypto_nativeio_(real_tcp_tls12_tls13|windows_iocp_cancel_terminal)            --no-tests=error --output-on-failure --timeout 120 \
+            --repeat until-fail:3
+      - name: Audit Windows imported DLL closure without GmSSL fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, re, subprocess, sys
+          dll_dir = Path(os.environ["RUNNER_TEMP"])/"cnet-iocp-sdk"/"bin"
+          for name in ("crypto_tls.dll", "saltscore_core-0.1.dll", "saltscore_native_io-0.1.dll"):
+              if not (dll_dir/name).is_file():
+                  raise SystemExit(f"Missing exact installed single owner DLL {name}")
+          if any(p.name.lower().startswith(("gmssl", "crypto_provider"))
+                 for p in dll_dir.glob("*.dll")):
+              raise SystemExit("Unexpected duplicate native GmSSL Provider DLL in SDK")
+          # Resolve the actual MSVC installation directly with vswhere,
+          # rather than recursively scanning all of Program Files (slow).
+          vswhere = Path("C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe")
+          if not vswhere.is_file():
+              raise SystemExit("MSVC vswhere.exe unavailable: cannot verify actual linker imports")
+          result = subprocess.run([
+              str(vswhere), "-latest", "-products", "*",
+              "-property", "installationPath"
+          ], check=True, capture_output=True, text=True)
+          installation = Path(result.stdout.strip())
+          if not installation.is_dir():
+              raise SystemExit("vswhere did not resolve a real MSVC installation")
+          candidates = sorted(
+              (installation / "VC" / "Tools" / "MSVC").glob(
+                  "*/bin/Hostx64/x64/dumpbin.exe"
+              ),
+              reverse=True
+          )
+          if not candidates:
+              raise SystemExit("MSVC dumpbin.exe unavailable: cannot substitute linker assumptions")
+          bins = list(Path("build-crypto-iocp").rglob(
+              "saltscore_crypto_nativeio_real_tcp_tls.exe"))
+          if len(bins) != 1:
+              raise SystemExit(f"Expected exactly one actual IOCP test executable, found {bins}")
+          def imported_names(image):
+              data = subprocess.run(
+                  [str(candidates[0]), "/dependents", str(image)],
+                  check=True, capture_output=True, text=True
+              ).stdout
+              return set(x.lower() for x in re.findall(
+                  r"(?i)\b[A-Za-z0-9_.-]+[.]dll\b", data))
+          # Check the executable's immediate owners, then recurse through
+          # ONLY the exact installed DLL closure. Some MSVC linkers place
+          # Foundation behind NativeIO rather than a direct EXE import.
+          direct = imported_names(bins[0])
+          for required in ("crypto_tls.dll", "saltscore_native_io-0.1.dll"):
+              if required not in direct:
+                  raise SystemExit(f"Missing mandatory direct native DLL import: {required}; actual={sorted(direct)}")
+          sdk_modules = {p.name.lower(): p for p in dll_dir.glob('*.dll')}
+          seen = set()
+          pending = [bins[0]]
+          imported = set()
+          while pending:
+              image = pending.pop()
+              key = str(image.resolve()).lower()
+              if key in seen:
+                  continue
+              seen.add(key)
+              linked = imported_names(image)
+              imported.update(linked)
+              for dep_name in linked:
+                  dll = sdk_modules.get(dep_name)
+                  if dll is not None:
+                      pending.append(dll)
+          if "saltscore_core-0.1.dll" not in imported:
+              raise SystemExit(f"Missing Core Foundation runtime from full installed DLL closure: {sorted(imported)}")
+          if any("gmssl" in name or "crypto_provider" in name for name in imported):
+              raise SystemExit("A second native GmSSL provider is imported")
+          if sum(1 for name in sdk_modules if name == 'crypto_tls.dll') != 1:
+              raise SystemExit("Expected exactly one physical installed Crypto TLS DLL")
+          print("Windows IOCP verified direct and transitive native DLL imports:", sorted(imported))
+          report = Path(os.environ["RUNNER_TEMP"])/"cnet-iocp-imports.txt"
+          report.write_text("\n".join(sorted(imported))+"\n", encoding="utf-8")
+          print("Windows real IOCP binary imports verified; one Crypto shared image")
+          PY
+      - name: Publish C11 installed IOCP evidence without certificates or secrets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cnet-crypto-windows-real-iocp-evidence
+          path: |
+            ${{ runner.temp }}/crypto-windows-iocp-source.json
+            ${{ runner.temp }}/cnet-iocp-imports.txt
+            build-crypto-iocp/Testing/Temporary/LastTest.log
+            build-crypto-iocp/CMakeCache.txt
+          if-no-files-found: warn
+ \
             --no-tests=error --output-on-failure --timeout 120 \
             --repeat until-fail:3
       - name: Audit Windows imported DLL closure without GmSSL fallback
