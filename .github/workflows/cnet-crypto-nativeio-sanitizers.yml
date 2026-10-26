@@ -1,0 +1,132 @@
+name: CNet Crypto NativeIO real owner sanitizer/TSan (test-only)
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/cnet-crypto-nativeio-sanitizers.yml"
+      - "tests/crypto-nativeio/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sanitized-nativeio-handoff:
+    name: "Linux exact source Crypto + NativeIO ${{ matrix.kind }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kind: asan-ubsan
+            flags: "-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined"
+          - kind: tsan
+            flags: "-O1 -g -fno-omit-frame-pointer -fsanitize=thread"
+    env:
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:abort_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+      LSAN_OPTIONS: exitcode=23
+      TSAN_OPTIONS: halt_on_error=1:exitcode=66
+    steps:
+      - name: Exact SaltsCore C11/NativeIO candidate
+        uses: actions/checkout@v4
+      - name: Independent exact Crypto PR26
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/crypto
+          ref: 369b4dd7b2863cca2be8f939a6c5a834ecf5663d
+          path: _crypto
+          persist-credentials: false
+      - name: Immutable original GmSSL3.2 source
+        uses: actions/checkout@v4
+        with:
+          repository: guanzhi/GmSSL
+          ref: 7c9f02904ef33e59c87b4f16621cc8fd434e7579
+          path: _gmssl-upstream
+          persist-credentials: false
+      - name: Verify and assemble exact frozen GmSSL and distinct Crypto overlays
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C _crypto rev-parse HEAD)" = \
+            369b4dd7b2863cca2be8f939a6c5a834ecf5663d
+          python3 _crypto/tools/verify_gmssl_import.py
+          cmake "-DGMSSL_UPSTREAM_SOURCE=$GITHUB_WORKSPACE/_gmssl-upstream" \
+            "-DGMSSL_ASSEMBLY_RECEIPT=$RUNNER_TEMP/crypto-nativeio-sanitizer-receipt.json" \
+            -P _crypto/tools/assemble_gmssl.cmake
+          test -s "$RUNNER_TEMP/crypto-nativeio-sanitizer-receipt.json"
+      - name: Build source-instrumented real PIC GmSSL
+        shell: bash
+        run: |
+          set -euo pipefail
+          flags="${{ matrix.flags }}"
+          cmake -S _gmssl-upstream -B build-gmssl-sanitize -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            "-DCMAKE_C_FLAGS=$flags" -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DBUILD_SHARED_LIBS=OFF -DENABLE_TLS=ON \
+            -DENABLE_SECP256R1=ON -DENABLE_SHA2=ON -DENABLE_AES=ON \
+            -DENABLE_AES_CCM=OFF -DENABLE_SHA1=ON \
+            -DENABLE_CHACHA20=OFF -DENABLE_GHASH=OFF \
+            -DENABLE_SM9=OFF -DENABLE_CMS=OFF -DENABLE_LMS=OFF \
+            -DENABLE_XMSS=OFF -DENABLE_SPHINCS=OFF -DENABLE_KYBER=OFF \
+            -DENABLE_ZUC=OFF -DENABLE_SKF=OFF -DENABLE_SDF=OFF
+          cmake --build build-gmssl-sanitize --target gmssl --parallel 2
+      - name: Install the SAME source-instrumented Crypto TLS shared owner and BIO
+        shell: bash
+        run: |
+          set -euo pipefail
+          flags="${{ matrix.flags }}"
+          sdk="$RUNNER_TEMP/nativeio-sanitized-sdk"
+          cmake -S _crypto -B build-crypto-sanitize -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            "-DCMAKE_C_FLAGS=$flags" \
+            "-DCMAKE_SHARED_LINKER_FLAGS=$flags" \
+            "-DCRYPTO_GMSSL_SOURCE=$GITHUB_WORKSPACE/_gmssl-upstream" \
+            "-DCRYPTO_GMSSL_STATIC=$GITHUB_WORKSPACE/build-gmssl-sanitize/bin/libgmssl.a"
+          cmake --build build-crypto-sanitize --parallel 2
+          cmake --install build-crypto-sanitize --prefix "$sdk"
+      - name: Install source-instrumented real Core Platform NativeIO (no CNet)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$RUNNER_TEMP/nativeio-sanitized-sdk"
+          flags="${{ matrix.flags }}"
+          cmake -S . -B build-core-sanitize -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            "-DCMAKE_C_FLAGS=$flags" \
+            "-DCMAKE_SHARED_LINKER_FLAGS=$flags" \
+            -DBUILD_TESTING=OFF -DSALTSCORE_BUILD_URI=OFF \
+            -DSALTSCORE_BUILD_CNET=OFF
+          cmake --build build-core-sanitize --parallel 2
+          cmake --install build-core-sanitize --prefix "$sdk"
+      - name: Run independent installed REAL NativeIO TCP and owner races 3x
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$RUNNER_TEMP/nativeio-sanitized-sdk"
+          flags="${{ matrix.flags }}"
+          export LD_LIBRARY_PATH="$sdk/lib:${LD_LIBRARY_PATH:-}"
+          cmake -S tests/crypto-nativeio -B build-crypto-nativeio-sanitize -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            "-DCMAKE_C_FLAGS=$flags" \
+            "-DCMAKE_EXE_LINKER_FLAGS=$flags" \
+            "-DCMAKE_PREFIX_PATH=$sdk" \
+            "-DCRYPTO_TEST_FIXTURES=$GITHUB_WORKSPACE/_crypto/providers/gmssl/tests/fixtures"
+          cmake --build build-crypto-nativeio-sanitize --parallel 2
+          test "$(ctest --test-dir build-crypto-nativeio-sanitize -N |
+            sed -n 's/^Total Tests: //p')" = 3
+          ctest --test-dir build-crypto-nativeio-sanitize \
+            --no-tests=error --output-on-failure --timeout 120 \
+            --repeat until-fail:3
+      - name: Record only sanitized conformance/provenance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cnet-crypto-nativeio-${{ matrix.kind }}-evidence
+          path: |
+            ${{ runner.temp }}/crypto-nativeio-sanitizer-receipt.json
+            build-crypto-nativeio-sanitize/Testing/Temporary/LastTest.log
+            build-core-sanitize/CMakeCache.txt
+            build-crypto-sanitize/CMakeCache.txt
+          if-no-files-found: warn
