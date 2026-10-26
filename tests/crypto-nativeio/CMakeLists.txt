@@ -26,10 +26,8 @@ if(NOT _core_type STREQUAL "SHARED_LIBRARY" OR
   message(FATAL_ERROR "NativeIO/Crypto must preserve one shared foundation and one private GmSSL owner")
 endif()
 
-if(NOT UNIX OR WIN32)
-  message(FATAL_ERROR
-    "Initial real TCP NativeIO handoff uses Linux epoll/macOS kqueue. "
-    "Windows IOCP is a separately required follow-on.")
+if(NOT UNIX AND NOT WIN32)
+  message(FATAL_ERROR "Real NativeIO handoff requires epoll, kqueue or Windows IOCP")
 endif()
 if(NOT DEFINED CRYPTO_TEST_FIXTURES)
   message(FATAL_ERROR "CRYPTO_TEST_FIXTURES must be explicit")
@@ -48,6 +46,17 @@ set_target_properties(saltscore_crypto_nativeio_real_tcp_tls PROPERTIES
 target_link_libraries(saltscore_crypto_nativeio_real_tcp_tls PRIVATE
   SaltsCore::NativeIO SaltsCore::Core
   Crypto::TLS Crypto::TLSCipherBIO)
+if(WIN32)
+  # This is actual Winsock overlapped/IOCP, not a POSIX compatibility shim.
+  target_link_libraries(saltscore_crypto_nativeio_real_tcp_tls PRIVATE ws2_32)
+  # The *installed* imported shared targets supply their runtime DLLs;
+  # no source-tree or legacy GmSSL binary may be used as a fallback.
+  add_custom_command(TARGET saltscore_crypto_nativeio_real_tcp_tls POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy -t
+      "$<TARGET_FILE_DIR:saltscore_crypto_nativeio_real_tcp_tls>"
+      "$<TARGET_RUNTIME_DLLS:saltscore_crypto_nativeio_real_tcp_tls>"
+    COMMAND_EXPAND_LISTS VERBATIM)
+endif()
 target_compile_definitions(saltscore_crypto_nativeio_real_tcp_tls PRIVATE
   "SDK_CA_FILE=\"${CRYPTO_TEST_FIXTURES}/external-io-ca-cert.pem\""
   "SDK_SERVER_CERT_FILE=\"${CRYPTO_TEST_FIXTURES}/external-io-server-cert.pem\""
@@ -61,6 +70,10 @@ add_test(NAME cnet.crypto_nativeio_real_tcp_tls12_tls13
 set_tests_properties(cnet.crypto_nativeio_real_tcp_tls12_tls13
   PROPERTIES TIMEOUT 120)
 
+# The short-send and pthread wake tests below are POSIX-only. Windows
+# must pass the full two-session real TCP/IOCP TLS test above and will gain
+# separate forced partial OVERLAPPED send and cancellation tests.
+if(UNIX AND NOT WIN32)
 # This cannot be simulated by deliberately small Crypto transport chunks:
 # require a genuine OS-generated partial TCP_SEND terminal completion on a
 # real loopback socket with constrained SO_SNDBUF, then resubmit its prefix.
@@ -95,3 +108,5 @@ add_test(NAME cnet.crypto_nativeio_cancel_wake_terminal
   COMMAND saltscore_crypto_nativeio_cancel_wake)
 set_tests_properties(cnet.crypto_nativeio_cancel_wake_terminal
   PROPERTIES TIMEOUT 120)
+
+endif() # POSIX-only short-send and pthread wake completion tests
