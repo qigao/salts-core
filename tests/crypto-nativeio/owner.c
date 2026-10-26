@@ -83,6 +83,15 @@ typedef struct io_owner {
     } \
 } while (0)
 
+static native_io_model selected_model(void)
+{
+#if defined(_WIN32)
+    return NATIVE_IO_MODEL_COMPLETION;
+#else
+    return NATIVE_IO_MODEL_READINESS;
+#endif
+}
+
 static native_io_backend_kind selected_backend(void)
 {
 #if defined(_WIN32)
@@ -325,12 +334,7 @@ static int run_tls_nativeio(uint32_t protocol)
     owner.peers[0].socket_fd = sockets[0];
     owner.peers[1].socket_fd = sockets[1];
     CHECK(native_io_backend_kind_supported(owner.config.kind)
-          && native_io_backend_kind_model(owner.config.kind) ==
-#if defined(_WIN32)
-              NATIVE_IO_MODEL_COMPLETION
-#else
-              NATIVE_IO_MODEL_READINESS
-#endif
+          && native_io_backend_kind_model(owner.config.kind) == selected_model()
           && native_io_backend_init(&owner.backend, &owner.config) == SALTS_OK);
     owner.backend_initialized = true;
     for (i = 0u; i < 2u; ++i) {
