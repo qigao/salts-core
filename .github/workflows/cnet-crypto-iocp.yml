@@ -1,0 +1,144 @@
+name: CNet Crypto real Windows IOCP and overlapped Winsock (Draft qualification)
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/cnet-crypto-iocp.yml"
+      - "tests/crypto-nativeio/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nativeio-m35-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nativeio-overlapped-iocp:
+    name: Windows-2025 MSVC real IOCP TLS and installed SDK
+    runs-on: windows-2025
+    timeout-minutes: 65
+    steps:
+      - name: Checkout exact SaltsCore test-only branch
+        uses: actions/checkout@v4
+      - name: Checkout independently qualified Crypto CipherBIO
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/crypto
+          ref: 369b4dd7b2863cca2be8f939a6c5a834ecf5663d
+          path: _crypto
+          persist-credentials: false
+      - name: Checkout original pinned GmSSL
+        uses: actions/checkout@v4
+        with:
+          repository: guanzhi/GmSSL
+          ref: 7c9f02904ef33e59c87b4f16621cc8fd434e7579
+          path: _gmssl-upstream
+          persist-credentials: false
+      - name: Verify byte-identical historical source and deterministic assembly
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C _crypto rev-parse HEAD)" = 369b4dd7b2863cca2be8f939a6c5a834ecf5663d
+          test "$(git -C _gmssl-upstream rev-parse HEAD)" = 7c9f02904ef33e59c87b4f16621cc8fd434e7579
+          python3 _crypto/tools/verify_gmssl_import.py
+          cmake "-DGMSSL_UPSTREAM_SOURCE=$GITHUB_WORKSPACE/_gmssl-upstream"             "-DGMSSL_ASSEMBLY_RECEIPT=$RUNNER_TEMP/m35-gmssl-receipt.json"             -P _crypto/tools/assemble_gmssl.cmake
+          test -s "$RUNNER_TEMP/m35-gmssl-receipt.json"
+      - name: Compile original private GmSSL source with MSVC
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S _gmssl-upstream -B build-gmssl -G 'Visual Studio 18 2026' -A x64             -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON             -DBUILD_SHARED_LIBS=OFF -DENABLE_TLS=ON -DENABLE_SECP256R1=ON             -DENABLE_SHA2=ON -DENABLE_AES=ON -DENABLE_AES_CCM=OFF             -DENABLE_SHA1=ON -DENABLE_CHACHA20=OFF -DENABLE_GHASH=OFF             -DENABLE_SM9=OFF -DENABLE_CMS=OFF -DENABLE_LMS=OFF             -DENABLE_XMSS=OFF -DENABLE_SPHINCS=OFF -DENABLE_KYBER=OFF             -DENABLE_ZUC=OFF -DENABLE_SKF=OFF -DENABLE_SDF=OFF
+          cmake --build build-gmssl --config Release --target gmssl --parallel 2
+          test -s build-gmssl/bin/Release/gmssl.lib
+      - name: Install one shared Crypto TLS owner and its host-only CipherBIO
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$GITHUB_WORKSPACE/_m35-installed"
+          cmake -S _crypto -B build-crypto -G 'Visual Studio 18 2026' -A x64             "-DCRYPTO_GMSSL_SOURCE=$GITHUB_WORKSPACE/_gmssl-upstream"             "-DCRYPTO_GMSSL_STATIC=$GITHUB_WORKSPACE/build-gmssl/bin/Release/gmssl.lib"
+          cmake --build build-crypto --config Release --parallel 2
+          cmake --install build-crypto --config Release --prefix "$sdk"
+          test -s "$sdk/bin/crypto_tls.dll"
+          test -s "$sdk/include/crypto/cipher_bio.h"
+          test -s "$sdk/lib/cmake/CryptoTLS/CryptoTLSTargets.cmake"
+      - name: Install independent SaltsCore shared NativeIO without production CNet
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$GITHUB_WORKSPACE/_m35-installed"
+          cmake -S . -B build-core -G 'Visual Studio 18 2026' -A x64             -DBUILD_TESTING=OFF -DSALTSCORE_BUILD_URI=OFF             -DSALTSCORE_BUILD_CNET=OFF
+          cmake --build build-core --config Release --parallel 2
+          cmake --install build-core --config Release --prefix "$sdk"
+          test -s "$sdk/include/salts/native_io.h"
+          test -s "$sdk/lib/cmake/SaltsCore/SaltsCoreTargets.cmake"
+          test ! -e "$sdk/include/cnet/cnet.h"
+      - name: Build independent installed C11 Crypto/TLS/IOCP and C++17 API consumers
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$GITHUB_WORKSPACE/_m35-installed"
+          cmake -S tests/crypto-nativeio -B build-iocp -G 'Visual Studio 18 2026' -A x64             "-DCMAKE_PREFIX_PATH=$sdk"             "-DCRYPTO_TEST_FIXTURES=$GITHUB_WORKSPACE/_crypto/providers/gmssl/tests/fixtures"
+          cmake --build build-iocp --config Release --parallel 2
+          test -s build-iocp/Release/saltscore_crypto_nativeio_real_tcp_tls.exe
+          test -s build-iocp/Release/saltscore_crypto_nativeio_partial_send.exe
+          test -s build-iocp/Release/saltscore_crypto_nativeio_cancel_wake.exe
+          test -s build-iocp/Release/saltscore_crypto_nativeio_installed_cpp17.exe
+          test "$(ctest --test-dir build-iocp -C Release -N | sed -n 's/^Total Tests: //p')" = 4
+          export PATH="$sdk/bin:$PATH"
+          ctest --test-dir build-iocp -C Release --no-tests=error             --output-on-failure --timeout 150 --repeat until-fail:3
+      - name: Audit Windows PE imports and one physical Crypto/Core runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $prefix = Join-Path $env:GITHUB_WORKSPACE '_m35-installed'
+          $files = @(
+            (Join-Path $env:GITHUB_WORKSPACE 'build-iocp/Release/saltscore_crypto_nativeio_real_tcp_tls.exe'),
+            (Join-Path $env:GITHUB_WORKSPACE 'build-iocp/Release/saltscore_crypto_nativeio_installed_cpp17.exe'),
+            (Join-Path $prefix 'bin/crypto_tls.dll')
+          )
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          if (-not (Test-Path $vswhere)) { throw 'vswhere required for PE evidence' }
+          $vs = & $vswhere -latest -products '*' -property installationPath
+          if (-not $vs) { throw 'MSVC installation not found' }
+          $dumpbin = Get-ChildItem -Path (Join-Path $vs 'VC/Tools/MSVC/*/bin/Hostx64/x64/dumpbin.exe') |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $dumpbin) { throw 'dumpbin required for fail-closed PE import audit' }
+          $out = Join-Path $env:RUNNER_TEMP 'm35-iocp-pe-dependents.txt'
+          '' | Set-Content $out
+          foreach ($bin in $files) {
+            if (-not (Test-Path $bin)) { throw "missing PE binary: $bin" }
+            "=== $bin ===" | Add-Content $out
+            $imports = (& $dumpbin.FullName /DEPENDENTS $bin | Out-String)
+            if ($LASTEXITCODE -ne 0) { throw "dumpbin failed: $bin" }
+            $imports | Add-Content $out
+            if ($imports -match '(?i)(^|[^a-z])(?:lib)?gmssl[.]dll|crypto_provider[.]dll|salts[.]dll') {
+              throw "Unexpected second GmSSL / legacy Salts provider: $bin"
+            }
+          }
+          $mainImports = & $dumpbin.FullName /DEPENDENTS $files[0] | Out-String
+          foreach ($dependency in @('crypto_tls[.]dll',
+              'saltscore_native_io-.*[.]dll', 'saltscore_core-.*[.]dll')) {
+            if ($mainImports -notmatch "(?i)$dependency") {
+              throw "Missing required direct PE dependency: $dependency"
+            }
+          }
+          if (@(Get-ChildItem -Path (Join-Path $prefix 'bin') -Filter 'crypto_tls.dll').Count -ne 1 -or
+              @(Get-ChildItem -Path (Join-Path $prefix 'bin') -Filter 'saltscore_core-*.dll').Count -ne 1) {
+            throw 'Duplicate or absent shared TLS/Foundation physical owner'
+          }
+          Write-Host 'Windows IOCP consumer imports one Crypto and one SaltsCore runtime; production CNet disabled'
+      - name: Upload isolated source and real IOCP evidence (never TLS keys)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: saltscore-m35-windows-iocp-nativeio
+          path: |
+            ${{ runner.temp }}/m35-gmssl-receipt.json
+            ${{ runner.temp }}/m35-iocp-pe-dependents.txt
+            build-iocp/Testing/Temporary/LastTest.log
+            build-iocp/CMakeCache.txt
+            build-core/CMakeCache.txt
+            build-crypto/CMakeCache.txt
+          if-no-files-found: warn
