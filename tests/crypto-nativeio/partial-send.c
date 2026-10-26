@@ -1,88 +1,48 @@
 /* SPDX-License-Identifier: Apache-2.0
- * REAL POSIX NativeIO TCP_SEND terminal partial-completion acceptance.
+ * REAL IOCP/epoll/kqueue TCP_SEND terminal partial-completion acceptance.
  * Exercise immutable SaltsCore retained mem_buffer backing across a native
  * short send and its exact-prefix resubmission, not a synthetic completion.
  */
+#if !defined(_WIN32)
 #define _POSIX_C_SOURCE 200809L
+#endif
 #include <salts/native_io.h>
 #include <salts/error_codes.h>
 #include <cmeta_buffer.h>
 
-#include <arpa/inet.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <netinet/in.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include "native_tcp_compat.h"
 
 enum { PAYLOAD_SIZE = 256 * 1024, MIN_SEND_BUFFER = 1024,
        MAX_STEPS = 40000, OBSERVE_BATCH = 4 };
 
 static native_io_backend_kind native_kind(void)
 {
-#if defined(__linux__)
+#if defined(_WIN32)
+    return NATIVE_IO_BACKEND_IOCP;
+#elif defined(__linux__)
     return NATIVE_IO_BACKEND_EPOLL;
 #elif defined(__APPLE__)
     return NATIVE_IO_BACKEND_KQUEUE;
 #else
-#error Actual POSIX NativeIO partial send test requires epoll/kqueue
+#error Actual NativeIO partial send test requires IOCP/epoll/kqueue
 #endif
 }
 
-static int connected(int *out_send, int *out_recv)
-{
-    struct sockaddr_in address = {0};
-    socklen_t address_len = sizeof(address);
-    int listener = -1, send_socket = -1, recv_socket = -1, flags;
-    *out_send = *out_recv = -1;
-    listener = socket(AF_INET, SOCK_STREAM, 0);
-    if (listener < 0) goto fail;
-    address.sin_family = AF_INET;
-    if (inet_pton(AF_INET, "127.0.0.1", &address.sin_addr) != 1
-        || bind(listener, (struct sockaddr *)&address, sizeof(address)) != 0
-        || getsockname(listener, (struct sockaddr *)&address,
-                       &address_len) != 0
-        || listen(listener, 1) != 0) goto fail;
-    send_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if (send_socket < 0
-        || connect(send_socket, (struct sockaddr *)&address,
-                   sizeof(address)) != 0) goto fail;
-    recv_socket = accept(listener, NULL, NULL);
-    if (recv_socket < 0) goto fail;
-    flags = fcntl(send_socket, F_GETFL, 0);
-    if (flags < 0
-        || fcntl(send_socket, F_SETFL, flags | O_NONBLOCK) != 0)
-        goto fail;
-    flags = fcntl(recv_socket, F_GETFL, 0);
-    if (flags < 0
-        || fcntl(recv_socket, F_SETFL, flags | O_NONBLOCK) != 0)
-        goto fail;
-    close(listener);
-    *out_send = send_socket;
-    *out_recv = recv_socket;
-    return 0;
-fail:
-    if (listener >= 0) close(listener);
-    if (send_socket >= 0) close(send_socket);
-    if (recv_socket >= 0) close(recv_socket);
-    return -1;
-}
-
-static int drain_receiver(int fd, const char *original,
+static int drain_receiver(native_tcp_socket fd, const char *original,
                           size_t accepted, size_t *read_cursor)
 {
     unsigned char bytes[8192];
-    ssize_t n;
+    int n;
     while (*read_cursor < accepted) {
         size_t remain = accepted - *read_cursor;
         size_t ask = remain < sizeof(bytes) ? remain : sizeof(bytes);
-        n = recv(fd, bytes, ask, 0);
-        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+        n = recv(fd, (char *)bytes, (int)ask, 0);
+        if (n < 0 && native_tcp_would_block())
             return 0;
         if (n <= 0 || (size_t)n > remain)
             return -1;
@@ -93,7 +53,7 @@ static int drain_receiver(int fd, const char *original,
     return 0;
 }
 
-int main(void)
+static int run_partial_send(void)
 {
     native_io_backend backend = {0};
     native_io_backend_config config = {0};
@@ -106,13 +66,14 @@ int main(void)
     size_t observed_parts = 0u, short_parts = 0u;
     bool started = false, endpoint_attached = false, outstanding = false;
     bool backend_closed = false;
-    int source_fd = -1, target_fd = -1;
+    native_tcp_socket source_fd = NATIVE_TCP_INVALID_SOCKET;
+    native_tcp_socket target_fd = NATIVE_TCP_INVALID_SOCKET;
     int small_buffer = MIN_SEND_BUFFER;
     int rc = 1, status;
 
-    if (connected(&source_fd, &target_fd) != 0) goto done;
+    if (native_tcp_connect_pair(&source_fd, &target_fd) != 0) goto done;
     if (setsockopt(source_fd, SOL_SOCKET, SO_SNDBUF,
-                   &small_buffer, sizeof(small_buffer)) != 0)
+                   (const char *)&small_buffer, (int)sizeof(small_buffer)) != 0)
         goto done;
 
     config = (native_io_backend_config){native_kind(), 1u, 2u, 2u};
@@ -234,8 +195,8 @@ done:
             }
         }
     }
-    if (source_fd >= 0) close(source_fd);
-    if (target_fd >= 0) close(target_fd);
+    native_tcp_close(source_fd);
+    native_tcp_close(target_fd);
     if (endpoint_attached &&
         native_io_backend_release_socket(&backend, endpoint) != SALTS_OK)
         rc = 1;
@@ -249,5 +210,14 @@ done:
     else printf("NativeIO real TCP OS short-send PASS: "
         "retained Core mem_buffer until %zu completions, %zu partial\n",
         observed_parts, short_parts);
+    return rc;
+}
+
+int main(void)
+{
+    int rc;
+    if (native_tcp_startup() != 0) return 2;
+    rc = run_partial_send();
+    native_tcp_shutdown();
     return rc;
 }
