@@ -385,18 +385,16 @@ namespace ttest_cpp__ {
       }                                                                                            \
     } while (0)
 
-  #define check_equal(...)                                                                        \
-    TTEST_EQUAL_OVERLOAD__(__VA_ARGS__, TTEST_CHECK_MEMORY_EQUAL__,                               \
-                           TTEST_CPP_CHECK_EQUAL_VALUE__, TTEST_EQUAL_SENTINEL__)(__VA_ARGS__)
-  #define check_equal_warn(...)                                                                   \
-    TTEST_EQUAL_OVERLOAD__(__VA_ARGS__, TTEST_CHECK_MEMORY_EQUAL_WARN__,                          \
-                           TTEST_CPP_CHECK_EQUAL_VALUE_WARN__, TTEST_EQUAL_SENTINEL__)(__VA_ARGS__)
-  #define check_not_equal(...)                                                                    \
-    TTEST_EQUAL_OVERLOAD__(__VA_ARGS__, TTEST_CHECK_MEMORY_NOT_EQUAL__,                           \
-                           TTEST_CPP_CHECK_NOT_EQUAL_VALUE__, TTEST_EQUAL_SENTINEL__)(__VA_ARGS__)
-  #define check_not_equal_warn(...)                                                               \
-    TTEST_EQUAL_OVERLOAD__(__VA_ARGS__, TTEST_CHECK_MEMORY_NOT_EQUAL_WARN__,                      \
-                           TTEST_CPP_CHECK_NOT_EQUAL_VALUE_WARN__, TTEST_EQUAL_SENTINEL__)(__VA_ARGS__)
+  /* C++ value comparisons are fixed-arity, with no vararg dispatch or
+   * obsolete 3-argument memory-comparison overload. */
+  #define check_equal(actual, expected) \
+    TTEST_CPP_CHECK_EQUAL_VALUE__((actual), (expected))
+  #define check_equal_warn(actual, expected) \
+    TTEST_CPP_CHECK_EQUAL_VALUE_WARN__((actual), (expected))
+  #define check_not_equal(actual, expected) \
+    TTEST_CPP_CHECK_NOT_EQUAL_VALUE__((actual), (expected))
+  #define check_not_equal_warn(actual, expected) \
+    TTEST_CPP_CHECK_NOT_EQUAL_VALUE_WARN__((actual), (expected))
 
   #define check_greater_equal(actual, expected)                                                    \
     do {                                                                                           \
