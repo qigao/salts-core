@@ -15,6 +15,7 @@
 #include <crypto/tls.h>
 #include <crypto/tls_ext.h>
 #include <crypto/cipher_bio.h>
+#include "cnet_crypto_owner_admission.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -312,6 +313,8 @@ static int run_tls_nativeio(uint32_t protocol)
 {
     io_owner owner = {0};
     crypto_tls_session_options options[2];
+    cnet_tls_client_config client_policy = {0};
+    cnet_tls_server_config server_policy = {0};
     native_io_backend_stats stats = {0};
     static const unsigned char payload[] =
         "CNet NativeIO terminal retention and exact Crypto TLS ciphertext";
@@ -346,14 +349,24 @@ static int run_tls_nativeio(uint32_t protocol)
 
     CHECK(crypto_tls_provider_create(CRYPTO_TLS_ABI_VERSION,
                                      &owner.provider) == CRYPTO_TLS_OK);
-    options[0] = (crypto_tls_session_options){
-        sizeof(options[0]), protocol, CRYPTO_TLS_CLIENT, 4u,
-        "localhost", SDK_CA_FILE, NULL, NULL, NULL, 0u
-    };
-    options[1] = (crypto_tls_session_options){
-        sizeof(options[1]), protocol, CRYPTO_TLS_SERVER, 4u,
-        NULL, NULL, SDK_SERVER_CERT_FILE, SDK_SERVER_KEY_FILE, "", 0u
-    };
+    /* This real NativeIO/TLS test now enters through the ACTUAL CNet
+     * public TLS policies and the test-only fail-closed Crypto gate.
+     * The production cnet_tls_state/CNet Owner are not switched here.
+     */
+    client_policy.size = sizeof(client_policy);
+    client_policy.ca_file = SDK_CA_FILE;
+    client_policy.server_name = "localhost";
+    server_policy.size = sizeof(server_policy);
+    server_policy.cert_file = SDK_SERVER_CERT_FILE;
+    server_policy.key_file = SDK_SERVER_KEY_FILE;
+    CHECK(cnet_crypto_owner_admit_client(
+        &client_policy, "localhost", protocol,
+        CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY,
+        CNET_CRYPTO_OWNER_TEST_ONLY, &options[0]) == SALTS_OK);
+    CHECK(cnet_crypto_owner_admit_server(
+        &server_policy, protocol,
+        CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY,
+        CNET_CRYPTO_OWNER_TEST_ONLY, &options[1]) == SALTS_OK);
     for (i = 0u; i < 2u; ++i) {
         io_peer *peer = &owner.peers[i];
         CHECK(crypto_tls_cipher_bio_create(
