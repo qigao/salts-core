@@ -52,6 +52,51 @@ static cnet_crypto_state *get_engine(const cnet_tls_state *state)
     return state != NULL ? (cnet_crypto_state *)state->engine : NULL;
 }
 
+#if defined(CNET_CRYPTO_QUALIFICATION_TRACE)
+#include <stdio.h>
+/* TEST-ONLY numeric state diagnostics, bounded globally; never print
+ * plaintext, records, keys, certificates, peer identity or buffers.
+ */
+static atomic_uint crypto_test_log_remaining = ATOMIC_VAR_INIT(100u);
+static void crypto_test_diag(
+    const char *phase, const cnet_tls_state *state, int result,
+    size_t count)
+{
+    unsigned remaining =
+        atomic_load_explicit(&crypto_test_log_remaining, memory_order_relaxed);
+    while (remaining != 0u &&
+           !atomic_compare_exchange_weak_explicit(
+               &crypto_test_log_remaining, &remaining, remaining - 1u,
+               memory_order_relaxed, memory_order_relaxed)) {}
+    if (remaining != 0u) {
+        const cnet_crypto_state *eng = get_engine(state);
+        crypto_tls_cipher_bio_snapshot snap = {0};
+        int snapshot_ok = 0;
+        if (eng && eng->bio) {
+            snap.struct_size = sizeof(snap);
+            snapshot_ok =
+                crypto_tls_cipher_bio_get_snapshot(eng->bio, &snap)
+                    == CRYPTO_TLS_OK;
+        }
+        fprintf(stderr,
+          "CNET_CRYPTO_TEST_DIAG phase=%s server=%d handshake=%d"
+          " tls_write_pending=%d write_offset=%zu write_total=%zu"
+          " cipher_in=%zu cipher_out=%zu snapshot_ok=%d result=%d count=%zu\\n",
+          phase, state != NULL && state->server,
+          state != NULL && state->handshake_complete,
+          eng != NULL && eng->write_source != NULL,
+          eng ? eng->write_offset : 0u, eng ? eng->write_size : 0u,
+          snapshot_ok ? snap.input_pending : 0u,
+          snapshot_ok ? snap.output_pending : 0u,
+          snapshot_ok, result, count);
+    }
+}
+#define CRYPTO_TEST_DIAG(phase, state, result, count) \\
+    crypto_test_diag((phase), (state), (int)(result), (count))
+#else
+#define CRYPTO_TEST_DIAG(phase, state, result, count) ((void)0)
+#endif
+
 static int crypto_error(crypto_tls_result status)
 {
     /* The additive CipherBIO CAPACITY code is intentionally not in the
@@ -275,6 +320,7 @@ int cnet_tls_handshake(cnet_tls_state *state, bool *out_complete)
     eng->handshake_started = true;
     result = crypto_tls_session_handshake(eng->session);
     if (result == CRYPTO_TLS_OK) {
+        CRYPTO_TEST_DIAG("handshake_complete", state, result, 0u);
         state->handshake_complete = true;
         *out_complete = true;
         return SALTS_OK;
@@ -340,8 +386,12 @@ int cnet_tls_feed_cipher(cnet_tls_state *state, const void *data, size_t size)
     cnet_crypto_state *eng = get_engine(state);
     if (eng == NULL || data == NULL || size == 0u)
         return SALTS_EINVAL;
-    return crypto_error(crypto_tls_cipher_bio_feed_cipher(
-        eng->bio, (const uint8_t *)data, size));
+    {
+        crypto_tls_result result = crypto_tls_cipher_bio_feed_cipher(
+            eng->bio, (const uint8_t *)data, size);
+        CRYPTO_TEST_DIAG("cipher_feed", state, result, size);
+        return crypto_error(result);
+    }
 }
 
 int cnet_tls_take_cipher(cnet_tls_state *state, void *buffer,
@@ -355,6 +405,8 @@ int cnet_tls_take_cipher(cnet_tls_state *state, void *buffer,
         return SALTS_EINVAL;
     result = crypto_tls_cipher_bio_take_cipher(
         eng->bio, (uint8_t *)buffer, capacity, out_size);
+    if (result == CRYPTO_TLS_OK && *out_size != 0u)
+        CRYPTO_TEST_DIAG("cipher_take", state, result, *out_size);
     if (result == CRYPTO_TLS_AGAIN) return SALTS_ENOENT;
     return crypto_error(result);
 }
@@ -368,6 +420,7 @@ int cnet_tls_write(cnet_tls_state *state, const void *data,
     if (eng == NULL || data == NULL || size == 0u) return SALTS_EINVAL;
     if (!state->handshake_complete || state->close_notify_started)
         return SALTS_ENOTCONN;
+    CRYPTO_TEST_DIAG("write_begin", state, 0, size);
     if (eng->write_source == NULL) {
         eng->write_source = (const unsigned char *)data;
         eng->write_size = size;
@@ -381,8 +434,14 @@ int cnet_tls_write(cnet_tls_state *state, const void *data,
         crypto_tls_result result = crypto_tls_session_send(
             eng->session, eng->write_source + eng->write_offset,
             remaining, &accepted);
-        if (result == CRYPTO_TLS_AGAIN) return SALTS_OK;
-        if (result != CRYPTO_TLS_OK) return crypto_error(result);
+        if (result == CRYPTO_TLS_AGAIN) {
+            CRYPTO_TEST_DIAG("write_again", state, result, remaining);
+            return SALTS_OK;
+        }
+        if (result != CRYPTO_TLS_OK) {
+            CRYPTO_TEST_DIAG("write_error", state, result, remaining);
+            return crypto_error(result);
+        }
         if (!accepted || accepted > remaining) return SALTS_EPROTO;
         eng->write_offset += accepted;
     }
@@ -390,6 +449,7 @@ int cnet_tls_write(cnet_tls_state *state, const void *data,
     eng->write_size = 0u;
     eng->write_offset = 0u;
     *out_complete = true;
+    CRYPTO_TEST_DIAG("write_complete", state, 0, size);
     return SALTS_OK;
 }
 
