@@ -14,7 +14,8 @@
 extern "C" {
 #endif
 
-typedef struct { uint64_t id; salts_platform_thread *owner; } thrd_t;
+/* Opaque pointer across TinyCC/LLVM/MSVC; no struct-return ABI hazards. */
+typedef struct salts_c11_thread *thrd_t;
 typedef int (SALTS_CORE_PLATFORM_CALL *thrd_start_t)(void *);
 typedef struct { salts_platform_mutex *owner; int type; } mtx_t;
 typedef struct { salts_platform_condition *owner; } cnd_t;
