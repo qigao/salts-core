@@ -30,6 +30,12 @@ int cnet_crypto_tls_test_server_context(
     uint32_t exact_protocol, size_t cipher_capacity,
     cnet_tls_context **out_context);
 
+/* Returns the retained DNS name (borrowed until test context release).
+ * Used only by the test-only public cnet_tls_client profile glue.
+ */
+const char *cnet_crypto_tls_test_context_server_name(
+    const cnet_tls_context *context);
+
 /* A private test helper for explicitly simulating transport EOF without
  * forging TLS close_notify. Once the buffered BIO ciphertext drains,
  * provider CLOSED is treated as unauthenticated transport shutdown, not
