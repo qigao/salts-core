@@ -222,3 +222,33 @@ if(TARGET SaltsCore::CNet)
     COMMAND saltscore_cnet_tls_ca_san_test)
   set_tests_properties(saltscore.cnet_tls_ca_san PROPERTIES TIMEOUT 65)
 endif()
+
+# M3.9 FAIL-CLOSED qualification of the REAL original CNet client/Owner
+# linked into a second, mutually exclusive TEST-ONLY Crypto-backed DSO.
+# Both applications execute as *separate processes*, never load both CNet
+# DSOs in one address space, and retain the exact same TCP/event/slice tests.
+if(TARGET saltscore_cnet_crypto_qualification)
+  if(NOT TARGET saltscore_runtime_owner_probe)
+    message(FATAL_ERROR "Missing shared Foundation runtime probe for alternate CNet")
+  endif()
+  add_executable(saltscore_cnet_crypto_linked_owner_loopback
+    test_cnet_tcp_loopback.c)
+  target_compile_features(saltscore_cnet_crypto_linked_owner_loopback
+    PRIVATE c_std_11)
+  set_target_properties(saltscore_cnet_crypto_linked_owner_loopback PROPERTIES
+    C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  target_link_libraries(saltscore_cnet_crypto_linked_owner_loopback PRIVATE
+    saltscore_cnet_crypto_qualification saltscore_runtime_owner_probe)
+  if(WIN32)
+    target_link_libraries(saltscore_cnet_crypto_linked_owner_loopback
+      PRIVATE ws2_32)
+  endif()
+  if(MSVC)
+    target_compile_options(saltscore_cnet_crypto_linked_owner_loopback
+      PRIVATE /experimental:c11atomics)
+  endif()
+  add_test(NAME saltscore.cnet_crypto_linked_owner_tcp_loopback
+    COMMAND saltscore_cnet_crypto_linked_owner_loopback)
+  set_tests_properties(saltscore.cnet_crypto_linked_owner_tcp_loopback
+    PROPERTIES TIMEOUT 40)
+endif()
