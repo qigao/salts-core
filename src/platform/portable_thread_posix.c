@@ -3,6 +3,9 @@
 #include <pthread.h>
 #include <sched.h>
 #include <stdlib.h>
+#include <errno.h>
+#include <time.h>
+#include <stdint.h>
 
 /* The worker and caller each hold one reference. Detach drops only the
  * caller's reference; the live worker must never access freed storage.
@@ -64,6 +67,20 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_thread_detach(salts_platform_thread 
     return SALTS_OK;
 }
 void SALTS_CORE_PLATFORM_CALL salts_platform_thread_yield(void) { (void)sched_yield(); }
+int SALTS_CORE_PLATFORM_CALL salts_platform_thread_sleep_ns(uint64_t duration_ns) {
+    const uint64_t seconds = duration_ns / 1000000000ull;
+    struct timespec req, remaining;
+    if (duration_ns > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS ||
+        seconds > (uint64_t)INT64_MAX) return SALTS_EINVAL;
+    req.tv_sec = (time_t)seconds;
+    if (req.tv_sec < 0 || (uint64_t)req.tv_sec != seconds) return SALTS_EINVAL;
+    req.tv_nsec = (long)(duration_ns % 1000000000ull);
+    while (nanosleep(&req, &remaining) != 0) {
+        if (errno != EINTR) return SALTS_EINVAL;
+        req = remaining;
+    }
+    return SALTS_OK;
+}
 
 int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_create(salts_platform_mutex **out) {
     salts_platform_mutex *m;
@@ -91,12 +108,63 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_condition_create(salts_platform_cond
     if (!out || *out) return SALTS_EINVAL;
     c = (salts_platform_condition *)malloc(sizeof(*c));
     if (!c) return SALTS_ENOMEM;
+#if defined(__APPLE__)
     if (pthread_cond_init(&c->native, NULL) != 0) { free(c); return SALTS_EBUSY; }
+#elif defined(CLOCK_MONOTONIC)
+    {
+        pthread_condattr_t attr;
+        int rc = pthread_condattr_init(&attr);
+        if (rc != 0) { free(c); return SALTS_EBUSY; }
+        rc = pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
+        if (rc == 0) rc = pthread_cond_init(&c->native, &attr);
+        (void)pthread_condattr_destroy(&attr);
+        if (rc != 0) { free(c); return SALTS_ENOTSUP; }
+    }
+#else
+    free(c);
+    return SALTS_ENOTSUP;
+#endif
     *out = c; return SALTS_OK;
 }
 int SALTS_CORE_PLATFORM_CALL salts_platform_condition_wait(salts_platform_condition *c, salts_platform_mutex *m) {
     if (!c || !m) return SALTS_EINVAL;
     return pthread_cond_wait(&c->native, &m->native) == 0 ? SALTS_OK : SALTS_EINVAL;
+}
+int SALTS_CORE_PLATFORM_CALL salts_platform_condition_timedwait_ns(
+    salts_platform_condition *c, salts_platform_mutex *m, uint64_t timeout_ns) {
+    const uint64_t seconds = timeout_ns / 1000000000ull;
+    struct timespec deadline;
+    int rc;
+    if (!c || !m || timeout_ns > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS ||
+        seconds > (uint64_t)INT64_MAX) return SALTS_EINVAL;
+#if defined(__APPLE__)
+    deadline.tv_sec = (time_t)seconds;
+    if (deadline.tv_sec < 0 || (uint64_t)deadline.tv_sec != seconds) return SALTS_EINVAL;
+    deadline.tv_nsec = (long)(timeout_ns % 1000000000ull);
+    rc = pthread_cond_timedwait_relative_np(&c->native, &m->native, &deadline);
+#elif defined(CLOCK_MONOTONIC)
+    {
+        uint64_t absolute_seconds;
+        if (clock_gettime(CLOCK_MONOTONIC, &deadline) != 0 || deadline.tv_sec < 0)
+            return SALTS_EINVAL;
+        absolute_seconds = (uint64_t)deadline.tv_sec + seconds;
+        if (absolute_seconds < seconds || absolute_seconds > (uint64_t)INT64_MAX)
+            return SALTS_EINVAL;
+        if (deadline.tv_nsec + (long)(timeout_ns % 1000000000ull) >= 1000000000l) {
+            ++absolute_seconds;
+            deadline.tv_nsec -= 1000000000l;
+        }
+        deadline.tv_nsec += (long)(timeout_ns % 1000000000ull);
+        deadline.tv_sec = (time_t)absolute_seconds;
+        if (deadline.tv_sec < 0 || (uint64_t)deadline.tv_sec != absolute_seconds)
+            return SALTS_EINVAL;
+        rc = pthread_cond_timedwait(&c->native, &m->native, &deadline);
+    }
+#else
+    return SALTS_ENOTSUP;
+#endif
+    if (rc == 0) return SALTS_OK;
+    return rc == ETIMEDOUT ? SALTS_ETIMEDOUT : SALTS_EBUSY;
 }
 int SALTS_CORE_PLATFORM_CALL salts_platform_condition_signal(salts_platform_condition *c) {
     return c && pthread_cond_signal(&c->native) == 0 ? SALTS_OK : SALTS_EINVAL;

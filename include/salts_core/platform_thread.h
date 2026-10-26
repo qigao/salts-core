@@ -22,6 +22,12 @@ SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_thread_creat
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_thread_join(salts_platform_thread **thread, int *result);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_thread_detach(salts_platform_thread **thread);
 SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL salts_platform_thread_yield(void);
+/* Uniform maximum representable relative duration on Windows and POSIX.
+ * No truncation to infinite wait or silent clock-source downgrade.
+ */
+#define SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS 4294967294000000ull
+/* Relative nanoseconds. Win32 rounds positive values up to 1 millisecond. */
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_thread_sleep_ns(uint64_t duration_ns);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_call_once(salts_platform_once *flag, salts_platform_once_fn callback);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_create(salts_platform_mutex **out);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_lock(salts_platform_mutex *mutex);
@@ -29,6 +35,11 @@ SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_unlock
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_destroy(salts_platform_mutex **mutex);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_condition_create(salts_platform_condition **out);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_condition_wait(salts_platform_condition *condition, salts_platform_mutex *mutex);
+/* Relative monotonic wait. Caller must own mutex before and after call;
+ * always re-check predicate, including on successful/spurious wakeup.
+ * SALTS_ETIMEDOUT is distinct from SALTS_EINVAL and SALTS_EBUSY.
+ */
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_condition_timedwait_ns(salts_platform_condition *condition, salts_platform_mutex *mutex, uint64_t timeout_ns);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_condition_signal(salts_platform_condition *condition);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_condition_broadcast(salts_platform_condition *condition);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_condition_destroy(salts_platform_condition **condition);

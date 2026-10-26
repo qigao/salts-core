@@ -79,3 +79,25 @@ declarations are never silently undefined to forge conformance.
 
 There is no legacy runtime fallback; old historical \`cmeta_\` entrypoints
 are outside this new C ABI and are not accepted as substitutes.
+
+
+## M1-A: Monotonic relative timed wait / thread sleep
+
+\`salts_platform_condition_timedwait_ns\` and \`salts_platform_thread_sleep_ns\`
+accept relative nanoseconds, with a **uniform cross-compiler maximum**
+\`SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS\` (the largest non-INFINITE Win32
+millisecond duration). Larger durations fail with \`SALTS_EINVAL\`, rather
+than silently converting to an infinite sleep. Zero-duration condition
+waits return \`SALTS_ETIMEDOUT\` when no signal was admitted.
+
+- Win32 condition waits use \`SleepConditionVariableSRW\`; positive
+  sub-millisecond timeouts round upward to a millisecond.
+- Linux / compatible POSIX use \`CLOCK_MONOTONIC\` condition attributes
+  and absolute monotonic deadlines with overflow checks; unsupported
+  platform clock support refuses \`SALTS_ENOTSUP\` rather than
+  falling back to real-time waits.
+- Apple Darwin uses \`pthread_cond_timedwait_relative_np\` with a relative
+  deadline. POSIX sleep retries a signal-interrupted \`nanosleep\`.
+- All condition waits leave the caller holding its mutex; wakeups
+  may be spurious, so callers must repeat their predicate checks.
+- This is a portable Platform contract, not yet C11 \`cnd_timedwait\`.
