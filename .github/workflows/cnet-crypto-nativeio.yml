@@ -229,7 +229,7 @@ jobs:
             "-DCMAKE_PREFIX_PATH=$sdk" \
             "-DCRYPTO_TEST_FIXTURES=$GITHUB_WORKSPACE/_crypto/providers/gmssl/tests/fixtures"
           cmake --build build-nativeio-iocp --config Release --parallel 2
-          test "$(ctest --test-dir build-nativeio-iocp -C Release -N | sed -n 's/^Total Tests: //p')" = 2
+          test "$(ctest --test-dir build-nativeio-iocp -C Release -N | sed -n 's/^Total Tests: //p')" = 3
           ctest --test-dir build-nativeio-iocp -C Release --no-tests=error \
             --output-on-failure --timeout 120 --repeat until-fail:3
       - name: Check installed physical DLL ownership is single GmSSL
