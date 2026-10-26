@@ -10,6 +10,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #if defined(_WIN32)
 # if !defined(_WIN32_WINNT)
