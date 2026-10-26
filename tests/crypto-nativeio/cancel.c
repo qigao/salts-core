@@ -2,17 +2,16 @@
  * Real NativeIO wake-before-observe/cancel drain, no fake completions.
  * The producer ONLY calls native_io_backend_wake across threads.
  */
+#if !defined(_WIN32)
 #define _POSIX_C_SOURCE 200809L
+#endif
 #include <salts/native_io.h>
 #include <salts/error_codes.h>
-#include <pthread.h>
 #include <stdatomic.h>
-#include <sched.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <fcntl.h>
-#include <unistd.h>
+#if !defined(_WIN32)
+#include <pthread.h>
+#endif
+#include "native_tcp_compat.h"
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -27,62 +26,39 @@ typedef struct producer {
 
 static native_io_backend_kind backend_kind(void)
 {
-#ifdef __linux__
+#if defined(_WIN32)
+    return NATIVE_IO_BACKEND_IOCP;
+#elif defined(__linux__)
     return NATIVE_IO_BACKEND_EPOLL;
 #elif defined(__APPLE__)
     return NATIVE_IO_BACKEND_KQUEUE;
 #else
-#error POSIX qualification requires epoll/kqueue
+#error NativeIO completion/wake test requires IOCP/epoll/kqueue
 #endif
 }
 
-static void *wake_thread(void *arg)
+#if defined(_WIN32)
+#define WAKE_THREAD_RETURN DWORD WINAPI
+#define WAKE_THREAD_DONE 0u
+#else
+#define WAKE_THREAD_RETURN void *
+#define WAKE_THREAD_DONE NULL
+#endif
+static WAKE_THREAD_RETURN wake_thread(void *arg)
 {
     producer *p = (producer *)arg;
     int i;
     for (i = 0; i < MAX_SPINS; ++i) {
         if (atomic_load_explicit(&p->armed, memory_order_acquire)) break;
-        sched_yield();
+        native_tcp_yield();
     }
     if (i == MAX_SPINS) {
         p->result = SALTS_ETIMEDOUT;
-        return NULL;
+        return WAKE_THREAD_DONE;
     }
     atomic_store_explicit(&p->requested, true, memory_order_release);
     p->result = native_io_backend_wake(p->backend);
-    return NULL;
-}
-
-static int sockets(int *out_client, int *out_server)
-{
-    int listener = -1, client = -1, server = -1, flags;
-    struct sockaddr_in address = {0};
-    socklen_t n = sizeof(address);
-    *out_client = *out_server = -1;
-    listener = socket(AF_INET, SOCK_STREAM, 0);
-    if (listener < 0) goto fail;
-    address.sin_family = AF_INET;
-    if (inet_pton(AF_INET, "127.0.0.1", &address.sin_addr) != 1
-        || bind(listener, (struct sockaddr *)&address, sizeof(address)) != 0
-        || getsockname(listener, (struct sockaddr *)&address, &n) != 0
-        || listen(listener, 1) != 0) goto fail;
-    client = socket(AF_INET, SOCK_STREAM, 0);
-    if (client < 0 || connect(client, (struct sockaddr *)&address,
-                              sizeof(address)) != 0) goto fail;
-    server = accept(listener, NULL, NULL);
-    if (server < 0) goto fail;
-    flags = fcntl(server, F_GETFL, 0);
-    if (flags < 0 || fcntl(server, F_SETFL, flags | O_NONBLOCK) != 0)
-        goto fail;
-    close(listener);
-    *out_client = client;
-    *out_server = server;
-    return 0;
-fail:
-    if (listener >= 0) close(listener);
-    if (client >= 0) close(client);
-    if (server >= 0) close(server);
-    return -1;
+    return WAKE_THREAD_DONE;
 }
 
 static int run(unsigned cycle)
@@ -95,15 +71,21 @@ static int run(unsigned cycle)
     const native_io_backend_config config = {backend_kind(),1u,2u,2u};
     unsigned char recv_backing[127];
     producer p;
+#if defined(_WIN32)
+    HANDLE worker = NULL;
+#else
     pthread_t worker;
-    int client = -1, server = -1, rc = 1;
+#endif
+    native_tcp_socket client = NATIVE_TCP_INVALID_SOCKET;
+    native_tcp_socket server = NATIVE_TCP_INVALID_SOCKET;
+    int rc = 1;
     bool started = false, attached = false, request_live = false;
     bool thread_started = false, thread_joined = false, closed = false;
     int status;
     size_t count = 0u, tries;
     memset(recv_backing, 0xa5, sizeof(recv_backing));
 
-    if (sockets(&client, &server) != 0
+    if (native_tcp_connect_pair(&client, &server) != 0
         || native_io_backend_init(&backend, &config) != SALTS_OK) goto done;
     started = true;
     if (native_io_backend_attach_socket(
@@ -122,11 +104,22 @@ static int run(unsigned cycle)
     p.result = SALTS_ETIMEDOUT;
     atomic_init(&p.armed, false);
     atomic_init(&p.requested, false);
+#if defined(_WIN32)
+    worker = CreateThread(NULL, 0, wake_thread, &p, 0, NULL);
+    if (worker == NULL) goto done;
+#else
     if (pthread_create(&worker, NULL, wake_thread, &p) != 0) goto done;
+#endif
     thread_started = true;
     atomic_store_explicit(&p.armed, true, memory_order_release);
     status = native_io_backend_observe(&backend, completion, 2u, 2500u, &count);
+#if defined(_WIN32)
+    if (WaitForSingleObject(worker, INFINITE) != WAIT_OBJECT_0) goto done;
+    (void)CloseHandle(worker);
+    worker = NULL;
+#else
     if (pthread_join(worker, NULL) != 0) goto done;
+#endif
     thread_joined = true;
     if (status != SALTS_OK || count != 0u || p.result != SALTS_OK
         || !atomic_load_explicit(&p.requested, memory_order_acquire))
@@ -161,7 +154,12 @@ static int run(unsigned cycle)
 done:
     if (thread_started && !thread_joined) {
         atomic_store_explicit(&p.armed, true, memory_order_release);
+#if defined(_WIN32)
+        (void)WaitForSingleObject(worker, INFINITE);
+        (void)CloseHandle(worker);
+#else
         (void)pthread_join(worker, NULL);
+#endif
     }
     if (started) {
         if (!closed) (void)native_io_backend_close(&backend);
@@ -183,8 +181,8 @@ done:
             }
         }
     }
-    if (client >= 0) close(client);
-    if (server >= 0) close(server);
+    native_tcp_close(client);
+    native_tcp_close(server);
     if (attached &&
         native_io_backend_release_socket(&backend, endpoint) != SALTS_OK)
         rc = 1;
@@ -195,8 +193,13 @@ done:
 
 int main(void)
 {
-    for (unsigned i = 0u; i < CYCLES; ++i)
-        if (run(i) != 0) return 1;
-    puts("NativeIO actual epoll/kqueue wake-before-observe and cancellation: 64 cycles PASS");
-    return 0;
+    int rc = 0;
+    if (native_tcp_startup() != 0) return 2;
+    for (unsigned i = 0u; i < CYCLES; ++i) {
+        if (run(i) != 0) { rc = 1; break; }
+    }
+    native_tcp_shutdown();
+    if (!rc)
+        puts("NativeIO real IOCP/epoll/kqueue wake-before-observe and cancellation: 64 cycles PASS");
+    return rc;
 }
