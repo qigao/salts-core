@@ -83,8 +83,8 @@ jobs:
             -DSALTSCORE_BUILD_URI=OFF -DSALTSCORE_BUILD_CNET=OFF
           cmake --build build-core --config Release --parallel 2
           cmake --install build-core --config Release --prefix "$sdk"
-          test -s "$sdk/bin/saltscore_native_io.dll"
-          test -s "$sdk/bin/saltscore_core.dll"
+          test -s "$sdk/bin/saltscore_native_io-0.1.dll"
+          test -s "$sdk/bin/saltscore_core-0.1.dll"
           test ! -e "$sdk/include/cnet/cnet.h"
       - name: Build independent Windows IOCP C11 TCP TLS consumer from installed prefixes
         shell: bash
@@ -117,7 +117,7 @@ jobs:
           from pathlib import Path
           import os, re, subprocess, sys
           dll_dir = Path(os.environ["RUNNER_TEMP"])/"cnet-iocp-sdk"/"bin"
-          for name in ("crypto_tls.dll", "saltscore_core.dll", "saltscore_native_io.dll"):
+          for name in ("crypto_tls.dll", "saltscore_core-0.1.dll", "saltscore_native_io-0.1.dll"):
               if not (dll_dir/name).is_file():
                   raise SystemExit(f"Missing exact installed single owner DLL {name}")
           if any(p.name.lower().startswith(("gmssl", "crypto_provider"))
@@ -135,7 +135,7 @@ jobs:
                                check=True, capture_output=True, text=True).stdout
           imported = set(x.lower() for x in re.findall(
               r"(?i)\b[A-Za-z0-9_-]+[.]dll\b", dep))
-          for required in ("crypto_tls.dll", "saltscore_core.dll", "saltscore_native_io.dll"):
+          for required in ("crypto_tls.dll", "saltscore_core-0.1.dll", "saltscore_native_io-0.1.dll"):
               if required not in imported:
                   raise SystemExit(f"Missing installed shared native owner import: {required}")
           if any("gmssl" in x or "crypto_provider" in x for x in imported):
