@@ -119,6 +119,24 @@ jobs:
           ctest --test-dir build-crypto-nativeio-sanitize \
             --no-tests=error --output-on-failure --timeout 120 \
             --repeat until-fail:3
+      - name: Sanitize real CNet private TLS state API over shared Crypto, exact HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$RUNNER_TEMP/nativeio-sanitized-sdk"
+          flags="${{ matrix.flags }}"
+          export LD_LIBRARY_PATH="$sdk/lib:${LD_LIBRARY_PATH:-}"
+          cmake -S tests/cnet-crypto-owner -B build-cnet-crypto-state-sanitize -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            "-DCMAKE_C_FLAGS=$flags" "-DCMAKE_EXE_LINKER_FLAGS=$flags" \
+            "-DCMAKE_PREFIX_PATH=$sdk" \
+            "-DCRYPTO_TEST_FIXTURES=$GITHUB_WORKSPACE/_crypto/providers/gmssl/tests/fixtures"
+          cmake --build build-cnet-crypto-state-sanitize --parallel 2
+          test "$(ctest --test-dir build-cnet-crypto-state-sanitize -N |
+            sed -n 's/^Total Tests: //p')" = 2
+          ctest --test-dir build-cnet-crypto-state-sanitize \
+            --no-tests=error --output-on-failure --timeout 120 \
+            --repeat until-fail:3
       - name: Record only sanitized conformance/provenance evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -127,6 +145,7 @@ jobs:
           path: |
             ${{ runner.temp }}/crypto-nativeio-sanitizer-receipt.json
             build-crypto-nativeio-sanitize/Testing/Temporary/LastTest.log
+            build-cnet-crypto-state-sanitize/Testing/Temporary/LastTest.log
             build-core-sanitize/CMakeCache.txt
             build-crypto-sanitize/CMakeCache.txt
           if-no-files-found: warn

@@ -109,7 +109,7 @@ jobs:
             sed -n 's/^Total Tests: //p')" = 3
           ctest --test-dir build-nativeio-crypto --no-tests=error \
             --output-on-failure --timeout 120 --repeat until-fail:3
-      - name: Reject unsupported production CNet TLS policies against installed Crypto
+      - name: Test actual CNet TLS state signatures and strict policy on installed Crypto
         shell: bash
         run: |
           set -euo pipefail
@@ -120,10 +120,11 @@ jobs:
             export LD_LIBRARY_PATH="$sdk/lib:${LD_LIBRARY_PATH:-}"
           fi
           cmake -S tests/cnet-crypto-owner -B build-cnet-policy -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$sdk"
+            -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$sdk" \
+            "-DCRYPTO_TEST_FIXTURES=$GITHUB_WORKSPACE/_crypto/providers/gmssl/tests/fixtures"
           cmake --build build-cnet-policy --parallel 2
           test "$(ctest --test-dir build-cnet-policy -N |
-            sed -n 's/^Total Tests: //p')" = 1
+            sed -n 's/^Total Tests: //p')" = 2
           ctest --test-dir build-cnet-policy --no-tests=error \
             --output-on-failure --timeout 60 --repeat until-fail:3
           test ! -e "$sdk/include/cnet/cnet.h"
