@@ -1,15 +1,16 @@
 cmake_minimum_required(VERSION 3.21)
-project(SaltsCoreCNetCryptoNativeIOQualification LANGUAGES C)
+project(SaltsCoreCNetCryptoNativeIOQualification LANGUAGES C CXX)
 include(CTest)
 
 # Install-tree consumer only. This must NOT be built using uninstalled
 # providers or through the legacy CNet/GmSSL target graph.
 find_package(SaltsCore 0.1 CONFIG REQUIRED)
 find_package(CryptoTLS 0.1 CONFIG REQUIRED)
+find_package(Crypto 0.1 CONFIG REQUIRED)
 
 foreach(_target IN ITEMS
     SaltsCore::NativeIO SaltsCore::Core
-    Crypto::TLS Crypto::TLSCipherBIO)
+    Crypto::TLS Crypto::TLSCipherBIO Crypto::Provider)
   if(NOT TARGET ${_target})
     message(FATAL_ERROR "Missing exact installed native target: ${_target}")
   endif()
@@ -29,6 +30,16 @@ endif()
 if(NOT WIN32 AND NOT UNIX)
   message(FATAL_ERROR "Only native Windows IOCP/Linux epoll/macOS kqueue are accepted")
 endif()
+# Two installed public Crypto views must import the same single GmSSL DLL.
+get_target_property(_provider_kind Crypto::Provider TYPE)
+get_target_property(_provider_links Crypto::Provider INTERFACE_LINK_LIBRARIES)
+if(NOT _provider_kind STREQUAL "INTERFACE_LIBRARY"
+   OR NOT "Crypto::TLS" IN_LIST _provider_links)
+  message(FATAL_ERROR "Crypto::Provider must be a view over ONE Crypto::TLS shared image")
+endif()
+unset(_provider_kind)
+unset(_provider_links)
+
 if(NOT DEFINED CRYPTO_TEST_FIXTURES)
   message(FATAL_ERROR "CRYPTO_TEST_FIXTURES must be explicit")
 endif()
@@ -117,3 +128,24 @@ set_tests_properties(cnet.crypto_nativeio_cancel_wake_terminal
   PROPERTIES TIMEOUT 120)
 
 endif() # POSIX-only SO_SNDBUF forced partial TCP and pthread wake gates
+
+# The same externally installed SDK must be consumable from a real C++17
+# binary on Windows/MSVC, macOS/AppleClang and Linux/GCC without pulling a
+# second GmSSL static archive or a private Salts runtime.
+add_executable(saltscore_crypto_nativeio_cpp17_owner owner_cpp17.cpp)
+set_target_properties(saltscore_crypto_nativeio_cpp17_owner PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+target_link_libraries(saltscore_crypto_nativeio_cpp17_owner PRIVATE
+  SaltsCore::Core SaltsCore::NativeIO Crypto::Provider
+  Crypto::TLS Crypto::TLSCipherBIO)
+if(WIN32)
+  if(MSVC)
+    target_compile_options(saltscore_crypto_nativeio_cpp17_owner PRIVATE /W4 /WX)
+  endif()
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+  target_compile_options(saltscore_crypto_nativeio_cpp17_owner PRIVATE
+    -Wall -Wextra -Werror)
+endif()
+add_test(NAME cnet.crypto_nativeio_cpp17_one_owner
+  COMMAND saltscore_crypto_nativeio_cpp17_owner)
+set_tests_properties(cnet.crypto_nativeio_cpp17_one_owner PROPERTIES TIMEOUT 60)
