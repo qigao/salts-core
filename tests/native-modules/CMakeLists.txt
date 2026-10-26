@@ -38,6 +38,13 @@ if(SALTSCORE_BUILD_CSERDE)
     PRIVATE saltscore_cserde_recording_support)
 endif()
 
+
+if(SALTSCORE_BUILD_ASN1)
+  foreach(_case IN ITEMS asn1_reader_test asn1_value_test asn1_crypto_test)
+    saltscore_native_case("${_case}" "asn1/tests/${_case}.c" Salts::ASN1)
+  endforeach()
+endif()
+
 if(SALTSCORE_BUILD_UNICODE)
   foreach(_name IN ITEMS test_salts_unicode test_salts_unicode_normalize
       test_salts_unicode_casefold test_salts_unicode_combined_abi
@@ -81,7 +88,8 @@ if(SALTSCORE_NATIVE_CPP_CONFORMANCE)
   enable_language(CXX)
   foreach(_pair IN ITEMS
       "CSerde;cserde_header_cpp_test;cserde/tests/cserde_header_cpp_test.cpp"
-      "Unicode;test_salts_unicode_header_cpp;unicode/test/test_salts_unicode_header_cpp.cpp")
+      "Unicode;test_salts_unicode_header_cpp;unicode/test/test_salts_unicode_header_cpp.cpp"
+      "ASN1;asn1_header_cpp_test;asn1/tests/asn1_header_cpp_test.cpp")
     list(GET _pair 0 _module)
     list(GET _pair 1 _name)
     list(GET _pair 2 _file)
