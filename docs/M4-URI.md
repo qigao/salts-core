@@ -13,7 +13,7 @@ It needs no CMeta, CFlow, CSTL, TLS provider or networking library.
 - re2c regenerates the original `uri_lexer.re` as a private build source
   with the same `-o` option as the original Salts generator. It is **build-time
   only** and is absent from the installed SDK runtime.
-- Independent installed CMake target: `SaltsCore::URI`. Its C11 `uri_t`
+- Independent installed CMake target: `Salts::URI`. Its C11 `uri_t`
   structure and `uri_parse` ABI do not depend on legacy Core or new
   Buffer/NativeIO.
 - Other Core targets remain available without re2c or URI.

@@ -14,6 +14,14 @@ foreach(_owner IN ITEMS Core Platform Concurrency Coroutine NativeIO)
   endif()
 endforeach()
 
+# Obsolete names are forbidden, never provided as aliases.
+set(_forbidden_ns "SaltsCore")
+foreach(_owner IN ITEMS Core Platform Concurrency Coroutine NativeIO)
+  if(TARGET "${_forbidden_ns}::${_owner}")
+    message(FATAL_ERROR "Unexpected noncanonical imported target for ${_owner}")
+  endif()
+endforeach()
+
 add_executable(consumer_c consumer.c)
 target_compile_features(consumer_c PRIVATE c_std_11)
 target_link_libraries(consumer_c PRIVATE

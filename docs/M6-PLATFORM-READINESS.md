@@ -7,7 +7,7 @@ Six Git blobs (public `readiness.h`, private `readiness_internal.h`,
 state engine `readiness.c`, and the poll, kqueue and epoll
 implementations) have exactly the same SHA as the source repository.
 
-`SaltsCore::Platform` now owns readiness registration, callback
+`Salts::Platform` now owns readiness registration, callback
 delivery, terminal reservation, generation/handle admission, cancellation,
 shutdown and thread/DSO lifetime. The original CFlow/ACE consumer is not
 allowed to embed any of these source objects into itself.
@@ -23,7 +23,7 @@ allowed to embed any of these source objects into itself.
   unsupported POSIX reactor backend is pretended. Explicit selections
   must reject `SALTS_ENOTSUP`.
 - The original C11 memory/thread Platform owner remains a single
-  shared `SaltsCore::Platform` binary with ABI/SONAME 0.1.
+  shared `Salts::Platform` binary with ABI/SONAME 0.1.
 
 Source CTest exercises real pipe readiness callback, bounded quiescent
 close/shutdown/destroy, stats and backend selection where supported.

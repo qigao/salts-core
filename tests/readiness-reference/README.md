@@ -5,7 +5,7 @@ This independent C11 harness checks out qigao/salts at exact revision
 its **original** Readiness test translations and test-only TinyTest.
 No old Salts Core/Platform/NativeIO binaries are built or linked;
 all Readiness state, callbacks, backend ops and resource owners resolve
-from installed **shared** `SaltsCore::Platform`.
+from installed **shared** `Salts::Platform`.
 
 The independent source conformance checks original state-model and
 complete fake-backend contract, including failed register/arm/unarm,

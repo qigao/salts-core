@@ -31,12 +31,12 @@ latest stable re2c version.
 
 ## Runtime tests
 
-- Complete Provider-backed `SaltsCore::CNet` DLL build with its pinned
+- Complete Provider-backed `Salts::CNet` DLL build with its pinned
   GmSSL/KCP/c-ares/SIMDe libraries, and NativeIO IOCP support.
 - All source CTests, including explicit real loopback TCP
   retained-buffer/send/receive/close and real TLS positive/negative CA/SAN
   paths, GmSSL external I/O ABI and ShangMi provider-side crypto KATs.
-- Install `SaltsCore::CNet`, then compile/link/run external C11/C++17
+- Install `Salts::CNet`, then compile/link/run external C11/C++17
   consumers against only the installed SDK and resolved provider DLLs.
 - Check CNet public headers, DLL and imported target actually exist.
 

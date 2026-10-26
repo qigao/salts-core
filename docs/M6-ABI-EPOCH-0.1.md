@@ -40,5 +40,5 @@ Windows PE/COFF has no SONAME concept: **both DLL and import-library
 filenames** are therefore versioned with `-0.1`, not just CMake target
 properties. The installed binary auditor rejects an unversioned Windows
 runtime DLL or an incorrect ELF/Mach-O ABI ID, even when link/run smoke
-passes. The imported CMake target names remain stable `SaltsCore::Core`,
+passes. The imported CMake target names remain stable `Salts::Core`,
 etc., but never create unversioned binary aliases.
