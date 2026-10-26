@@ -40,6 +40,11 @@ foreach(_fixture IN ITEMS
   endif()
 endforeach()
 
+# Native Windows paths contain backslashes. Do not feed them into C string
+# macros as MSVC escape sequences (\s, \a, etc), or TLS CA loading fails.
+# Forward-slash paths work with Win32 CRT, GmSSL, and POSIX alike.
+file(TO_CMAKE_PATH "${CRYPTO_TEST_FIXTURES}" _native_fixture_path)
+
 add_executable(saltscore_crypto_nativeio_real_tcp_tls owner.c)
 set_target_properties(saltscore_crypto_nativeio_real_tcp_tls PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
@@ -52,9 +57,9 @@ if(WIN32)
     _WIN32_WINNT=0x0600 WIN32_LEAN_AND_MEAN)
 endif()
 target_compile_definitions(saltscore_crypto_nativeio_real_tcp_tls PRIVATE
-  "SDK_CA_FILE=\"${CRYPTO_TEST_FIXTURES}/external-io-ca-cert.pem\""
-  "SDK_SERVER_CERT_FILE=\"${CRYPTO_TEST_FIXTURES}/external-io-server-cert.pem\""
-  "SDK_SERVER_KEY_FILE=\"${CRYPTO_TEST_FIXTURES}/external-io-server-key.pem\"")
+  "SDK_CA_FILE=\"${_native_fixture_path}/external-io-ca-cert.pem\""
+  "SDK_SERVER_CERT_FILE=\"${_native_fixture_path}/external-io-server-cert.pem\""
+  "SDK_SERVER_KEY_FILE=\"${_native_fixture_path}/external-io-server-key.pem\"")
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(saltscore_crypto_nativeio_real_tcp_tls
     PRIVATE -Wall -Wextra -Werror)
