@@ -110,12 +110,13 @@ jobs:
           cmake -S tests/crypto-nativeio -B build-crypto-nativeio-sanitize -G Ninja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             "-DCMAKE_C_FLAGS=$flags" \
+            "-DCMAKE_CXX_FLAGS=$flags" \
             "-DCMAKE_EXE_LINKER_FLAGS=$flags" \
             "-DCMAKE_PREFIX_PATH=$sdk" \
             "-DCRYPTO_TEST_FIXTURES=$GITHUB_WORKSPACE/_crypto/providers/gmssl/tests/fixtures"
           cmake --build build-crypto-nativeio-sanitize --parallel 2
           test "$(ctest --test-dir build-crypto-nativeio-sanitize -N |
-            sed -n 's/^Total Tests: //p')" = 3
+            sed -n 's/^Total Tests: //p')" = 4
           ctest --test-dir build-crypto-nativeio-sanitize \
             --no-tests=error --output-on-failure --timeout 120 \
             --repeat until-fail:3
