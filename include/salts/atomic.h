@@ -46,7 +46,7 @@ static inline bool cmeta_atomic_cas_orders_valid(
 }
 
 /*
- * Finite typed atomic declaration owned by SaltsCore::Concurrency.
+ * Finite typed atomic declaration owned by Salts::Concurrency.
  *
  * This is a direct C11 atomic wrapper, not a Reflection/type-metadata facility.
  * Storage must never be copied while live. Callers supply every memory order.

@@ -1,5 +1,5 @@
 /* Failure-atomic fake Readiness backend against the real copied state
- * machine in the single SaltsCore::Platform shared owner. No OS descriptor,
+ * machine in the single Salts::Platform shared owner. No OS descriptor,
  * old Salts library, test adapter or provider fallback is involved.
  */
 #include "../src/platform/readiness_internal.h"

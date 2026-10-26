@@ -2,7 +2,7 @@
 #define SALTS_API_H
 
 /* Core linkage markers. Build-system producer/consumer state is supplied by
- * the SaltsCore::Core target; this header does not inspect CMake internals. */
+ * the Salts::Core target; this header does not inspect CMake internals. */
 #ifndef SALTS_API
   #if !defined(_WIN32) && defined(__GNUC__) && __GNUC__ >= 4
     #define SALTS_API __attribute__((visibility("default")))

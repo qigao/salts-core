@@ -54,7 +54,7 @@ typedef void (*cmeta_thread_cb)(void *arg);
 const void *cmeta_thread_current_token(void);
 
 /*
- * Address-stable thread-affinity state owned by SaltsCore::Platform.
+ * Address-stable thread-affinity state owned by Salts::Platform.
  * This carries no value lifecycle callbacks and owns no payload.
  */
 typedef struct cmeta_thread_affine_state {
