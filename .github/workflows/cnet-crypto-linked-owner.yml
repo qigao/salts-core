@@ -110,10 +110,12 @@ jobs:
             -DVCPKG_TARGET_TRIPLET=x64-linux -DVCPKG_MANIFEST_FEATURES=cnet \
             -DSALTSCORE_BUILD_URI=ON -DSALTSCORE_BUILD_CNET=ON \
             -DSALTSCORE_CNET_BUILD_CRYPTO_TEST_DSO=ON \
-            "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/crypto-linked-owner-sdk"
+            "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/crypto-linked-owner-sdk" \
+            "-DSALTSCORE_CRYPTO_TEST_FIXTURES=$GITHUB_WORKSPACE/_crypto/providers/gmssl/tests/fixtures"
           cmake --build build-cnet-linked \
             --target saltscore_cnet_crypto_qualification \
                      saltscore_cnet_crypto_linked_owner_loopback \
+                     saltscore_cnet_crypto_original_owner_tls \
                      saltscore_cnet_tcp_loopback_test --parallel 2
       - name: Execute original CNet Owner TCP/retained-slice app against BOTH DSOs in separate processes
         shell: bash
@@ -121,7 +123,8 @@ jobs:
           set -euo pipefail
           export LD_LIBRARY_PATH="$RUNNER_TEMP/crypto-linked-owner-sdk/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:${LD_LIBRARY_PATH:-}"
           for testname in saltscore.cnet_tcp_loopback \
-                          saltscore.cnet_crypto_linked_owner_tcp_loopback; do
+                          saltscore.cnet_crypto_linked_owner_tcp_loopback \
+                          saltscore.cnet_crypto_original_owner_tls12_tls13; do
             ctest --test-dir build-cnet-linked --output-on-failure \
               -R "^$testname$" --no-tests=error --repeat until-fail:3
           done
