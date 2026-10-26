@@ -304,4 +304,11 @@ install(EXPORT SaltsCoreTargets FILE SaltsCoreTargets.cmake
 
 if(BUILD_TESTING)
   add_subdirectory(tests)
+  if(SALTSCORE_BUILD_UNICODE OR SALTSCORE_BUILD_IDNA OR
+     SALTSCORE_BUILD_CSERDE OR SALTSCORE_BUILD_TINYTEST)
+    if(NOT SALTSCORE_BUILD_TINYTEST)
+      message(FATAL_ERROR "Native conformance requires SALTSCORE_BUILD_TINYTEST=ON")
+    endif()
+    add_subdirectory(tests/native-modules)
+  endif()
 endif()

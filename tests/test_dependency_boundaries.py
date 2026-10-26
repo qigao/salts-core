@@ -32,6 +32,11 @@ class DependencyGateTest(unittest.TestCase):
                    "target_link_libraries(app PRIVATE Salts::Core Salts::NativeIO)\n")
         self.assertEqual(self.check_text(content, ".cmake"), [])
 
+    def test_owned_native_extra_targets_allowed_without_old_aliases(self):
+        content = ("add_library(Salts::Unicode ALIAS saltscore_unicode)\n"
+                   "target_link_libraries(app PRIVATE Salts::IDNA Salts::CSerde Salts::TinyTest)\n")
+        self.assertEqual(self.check_text(content, ".cmake"), [])
+
     def test_alternate_namespaces_rejected(self):
         content = ("target_link_libraries(a PRIVATE SaltsCore::Platform)\n"
                    "target_link_libraries(b PRIVATE Crypto::TLS)\n"
