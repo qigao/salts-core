@@ -123,3 +123,14 @@ if(TARGET Salts::ASN1)
   target_link_libraries(asn1_installed_cpp17 PRIVATE Salts::ASN1)
   add_test(NAME sdk.asn1_cpp17 COMMAND asn1_installed_cpp17)
 endif()
+
+# Installed client must use ONLY Salts::Platform (not CMeta, stdatomic, or old Salts).
+add_executable(portable_concurrency_consumer_c portable_concurrency_consumer.c)
+target_compile_features(portable_concurrency_consumer_c PRIVATE c_std_11)
+target_link_libraries(portable_concurrency_consumer_c PRIVATE Salts::Platform)
+add_test(NAME sdk.portable_concurrency_c COMMAND portable_concurrency_consumer_c)
+
+add_executable(portable_concurrency_consumer_cpp portable_concurrency_consumer.cpp)
+target_compile_features(portable_concurrency_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(portable_concurrency_consumer_cpp PRIVATE Salts::Platform)
+add_test(NAME sdk.portable_concurrency_cpp COMMAND portable_concurrency_consumer_cpp)

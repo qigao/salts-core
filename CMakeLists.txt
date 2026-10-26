@@ -43,11 +43,14 @@ if(SALTSCORE_ENABLE_EPOLL_READINESS AND
   message(FATAL_ERROR "epoll readiness is available only on Linux")
 endif()
 set(_saltscore_platform_sources
-    src/platform/clock.c src/platform/random.c src/platform/readiness.c)
+    src/platform/clock.c src/platform/random.c src/platform/readiness.c
+    src/platform/portable_atomic.c src/platform/portable_once.c)
 if(WIN32)
-  list(APPEND _saltscore_platform_sources src/platform/thread_win32.c)
+  list(APPEND _saltscore_platform_sources
+    src/platform/thread_win32.c src/platform/portable_thread_win32.c)
 else()
-  list(APPEND _saltscore_platform_sources src/platform/thread_posix.c)
+  list(APPEND _saltscore_platform_sources
+    src/platform/thread_posix.c src/platform/portable_thread_posix.c)
 endif()
 if(UNIX)
   list(APPEND _saltscore_platform_sources src/platform/readiness_poll.c)
@@ -65,6 +68,8 @@ set_target_properties(saltscore_platform PROPERTIES
   C_VISIBILITY_PRESET default WINDOWS_EXPORT_ALL_SYMBOLS ON
   VERSION "${PROJECT_VERSION}" SOVERSION "${SALTSCORE_NATIVE_SOVERSION}")
 target_compile_features(saltscore_platform PUBLIC c_std_11)
+# Export one owner-controlled C ABI to TinyCC, MSVC, and llvm-mingw clients.
+target_compile_definitions(saltscore_platform PRIVATE SALTS_CORE_PLATFORM_BUILD=1)
 target_include_directories(saltscore_platform PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)

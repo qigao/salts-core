@@ -1,0 +1,196 @@
+name: Portable Atomic Thread compiler ABI
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  win-llvm-tinycc:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pin llvm-mingw and TinyCC by SHA256
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function FetchPinned([string]$url, [string]$path, [string]$hash) {
+            for ($n=1; $n -le 3; $n++) {
+              try {
+                Invoke-WebRequest -Uri $url -OutFile $path
+                $observed = (Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()
+                if ($observed -ne $hash) { throw "Pinned archive mismatch: $observed" }
+                return
+              } catch {
+                if ($n -eq 3) { throw }
+                Start-Sleep -Seconds (2 * $n)
+              }
+            }
+          }
+          FetchPinned 'https://github.com/mstorsjo/llvm-mingw/releases/download/20261020/llvm-mingw-20261020-ucrt-x86_64.zip' llvm.zip 'fd5462b7f5d93b2ff981fcd3f9c7e427e47f3203c64ea91c27bcc444eebd74cd'
+          Expand-Archive llvm.zip -DestinationPath tools/llvm -Force
+          FetchPinned 'https://github.com/DosX-dev/TinyCC-builder/releases/download/2026-10-22/tinycc-windows-2026-10-22.zip' tinycc.zip '19990b71f401068306ad699aa80af4afaf7f1a7a0110e791022b99da4cbd92e0'
+          Expand-Archive tinycc.zip -DestinationPath tools/tinycc-win -Force
+      - name: llvm-mingw provider DLL and real TinyCC C callback runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $clang = Get-ChildItem tools/llvm -Recurse -Filter x86_64-w64-mingw32-clang.exe | Select-Object -First 1
+          $tcc = Get-ChildItem tools/tinycc-win -Recurse -Filter tcc.exe | Select-Object -First 1
+          if (-not $clang -or -not $tcc) { throw 'Pinned compiler binaries absent' }
+          New-Item -ItemType Directory -Force build-portable | Out-Null
+          $dll = 'build-portable/salts_portable.dll'
+          $exe = 'build-portable/tcc_portable.exe'
+          & $clang.FullName '-std=c11' '-O2' '-shared' '-DSALTS_CORE_PLATFORM_BUILD=1' '-D_WIN32_WINNT=0x0601' '-Iinclude' 'src/platform/portable_atomic.c' 'src/platform/portable_thread_win32.c' 'src/platform/portable_once.c' '-o' $dll
+          if ($LASTEXITCODE -ne 0) { throw 'Portable Platform provider failed to compile/link with llvm-mingw' }
+          & $tcc.FullName '-std=c11' '-Iinclude' 'tests/portable_tcc_windows_client.c' '-o' $exe
+          if ($LASTEXITCODE -ne 0) { throw 'TinyCC portable consumer compile failed' }
+          $provider = (Resolve-Path $dll).Path
+          for ($i=1; $i -le 10; $i++) {
+            & (Resolve-Path $exe).Path $provider
+            if ($LASTEXITCODE -ne 0) { throw "TinyCC/llvm-mingw Atomic+Thread ABI failed ($i)" }
+          }
+          # The same provider source must work for real i686 processes
+          # and produce a genuine ARM64 PE for native Windows ARM64 hardware.
+          $pairs = @(
+            @{ triple='i686'; tiny='i386-win32-tcc.exe'; suffix='x86'; machine=0x014c },
+            @{ triple='aarch64'; tiny='arm64-win32-tcc.exe'; suffix='arm64'; machine=0xaa64 }
+          )
+          foreach ($pair in $pairs) {
+            $ll = Join-Path $clang.Directory.FullName "$($pair.triple)-w64-mingw32-clang.exe"
+            $tt = Get-ChildItem tools/tinycc-win -Recurse -Filter $pair.tiny | Select-Object -First 1
+            if (-not (Test-Path $ll) -or -not $tt) { throw "Compiler missing for $($pair.suffix)" }
+            $d = "build-portable/salts_portable_$($pair.suffix).dll"
+            $e = "build-portable/tcc_portable_$($pair.suffix).exe"
+            & $ll '-std=c11' '-O2' '-shared' '-DSALTS_CORE_PLATFORM_BUILD=1' '-D_WIN32_WINNT=0x0601' '-Iinclude' 'src/platform/portable_atomic.c' 'src/platform/portable_thread_win32.c' 'src/platform/portable_once.c' '-o' $d
+            if ($LASTEXITCODE -ne 0) { throw "llvm-mingw provider build failed for $($pair.suffix)" }
+            & $tt.FullName '-std=c11' '-Iinclude' 'tests/portable_tcc_windows_client.c' '-o' $e
+            if ($LASTEXITCODE -ne 0) { throw "TinyCC consumer build failed for $($pair.suffix)" }
+            foreach ($path in @($d,$e)) {
+              [byte[]]$bytes = [IO.File]::ReadAllBytes((Resolve-Path $path).Path)
+              if ($bytes.Length -lt 128 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) {
+                throw "Not PE/MZ: $path"
+              }
+              $pe = [BitConverter]::ToInt32($bytes, 0x3c)
+              if ($pe -lt 64 -or $pe + 6 -gt $bytes.Length -or
+                  [BitConverter]::ToUInt16($bytes, $pe + 4) -ne $pair.machine) {
+                throw "Wrong machine type: $path"
+              }
+            }
+            if ($pair.suffix -eq 'x86') {
+              for ($i=1; $i -le 10; $i++) {
+                & (Resolve-Path $e).Path (Resolve-Path $d).Path
+                if ($LASTEXITCODE -ne 0) { throw "Native Win32 x86 TinyCC callback ABI failed $i" }
+              }
+            }
+          }
+          $sealed = @{}
+          foreach ($name in @('salts_portable_arm64.dll','tcc_portable_arm64.exe')) {
+            $sealed[$name] = (Get-FileHash "build-portable/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+          }
+          $sealed | ConvertTo-Json -Depth 3 | Set-Content build-portable/arm64-manifest.json -Encoding utf8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: salts-portable-arm64-compiler-abi
+          path: |
+            build-portable/salts_portable_arm64.dll
+            build-portable/tcc_portable_arm64.exe
+            build-portable/arm64-manifest.json
+          if-no-files-found: error
+
+  win-arm64-native-tinycc:
+    needs: win-llvm-tinycc
+    runs-on: windows-11-vs2026-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: salts-portable-arm64-compiler-abi
+          path: native-arm64
+      - name: Require genuine ARM64 Windows execution with SHA-pinned PE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString() -ne 'Arm64') {
+            throw 'Native Windows ARM64 hardware is required'
+          }
+          $manifest = Get-Content native-arm64/arm64-manifest.json -Raw | ConvertFrom-Json -AsHashtable
+          foreach ($name in @('salts_portable_arm64.dll','tcc_portable_arm64.exe')) {
+            $path = (Resolve-Path "native-arm64/$name").Path
+            [byte[]]$data = [IO.File]::ReadAllBytes($path)
+            $pe = [BitConverter]::ToInt32($data, 0x3c)
+            if ($pe -lt 64 -or [BitConverter]::ToUInt16($data, $pe + 4) -ne 0xaa64) {
+              throw "Wrong PE machine type: $name"
+            }
+            if ((Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant() -ne $manifest[$name]) {
+              throw "ARM64 provenance mismatch: $name"
+            }
+          }
+          $provider = (Resolve-Path native-arm64/salts_portable_arm64.dll).Path
+          $client = (Resolve-Path native-arm64/tcc_portable_arm64.exe).Path
+          for ($i=1; $i -le 10; $i++) {
+            & $client $provider
+            if ($LASTEXITCODE -ne 0) { throw "Native ARM64 TinyCC callback ABI failed $i" }
+          }
+  linux-native-tinycc:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build immutable native TinyCC source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/TinyCC/tinycc.git tools/tcc-src
+          git -C tools/tcc-src checkout --detach e23dabed154a8495f3ac1ff3cc9d04fa1c207893
+          cd tools/tcc-src
+          ./configure --prefix="$GITHUB_WORKSPACE/tools/tcc-installed"
+          make -j2
+          make install
+      - name: Real TinyCC C consumer of GCC platform Atomic/Thread DSO
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build-portable
+          gcc -std=c11 -O2 -pthread -fPIC -shared -DSALTS_CORE_PLATFORM_BUILD=1 -Iinclude \
+            src/platform/portable_atomic.c src/platform/portable_thread_posix.c \
+            src/platform/portable_once.c -o build-portable/libsalts_portable.so
+          "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -Iinclude \
+            tests/test_portable_concurrency.c -Lbuild-portable -lsalts_portable \
+            -o build-portable/tcc_platform_consumer
+          export LD_LIBRARY_PATH="$PWD/build-portable:$(printenv LD_LIBRARY_PATH || true)"
+          for i in 1 2 3 4 5; do ./build-portable/tcc_platform_consumer; done
+
+  macos-native-tinycc:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15-intel, macos-15]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build pinned native Darwin TinyCC
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/TinyCC/tinycc.git tools/tcc-src
+          git -C tools/tcc-src checkout --detach e23dabed154a8495f3ac1ff3cc9d04fa1c207893
+          cd tools/tcc-src
+          ./configure --prefix="$GITHUB_WORKSPACE/tools/tcc-installed"
+          make -j2
+          make install
+      - name: TinyCC C consumer against native Clang shared Platform
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build-portable
+          clang -std=c11 -O2 -fPIC -pthread -dynamiclib \
+            -DSALTS_CORE_PLATFORM_BUILD=1 -Iinclude \
+            src/platform/portable_atomic.c src/platform/portable_thread_posix.c \
+            src/platform/portable_once.c -o build-portable/libsalts_portable.dylib
+          "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -Iinclude \
+            tests/test_portable_concurrency.c -Lbuild-portable -lsalts_portable \
+            -o build-portable/tcc_platform_consumer
+          export DYLD_LIBRARY_PATH="$PWD/build-portable:$(printenv DYLD_LIBRARY_PATH || true)"
+          for i in 1 2 3 4 5; do ./build-portable/tcc_platform_consumer; done
