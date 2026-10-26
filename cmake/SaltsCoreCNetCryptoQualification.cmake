@@ -70,4 +70,41 @@ if(SALTSCORE_CNET_BUILD_CRYPTO_TEST_DSO)
   endif()
   # Deliberately NOT installed/exported. Only an explicitly configured
   # standalone test executable can load/link this candidate.
+  if(BUILD_TESTING)
+    if(NOT DEFINED SALTSCORE_CRYPTO_TEST_FIXTURES)
+      message(FATAL_ERROR "Exact pinned Crypto TLS cert fixtures required")
+    endif()
+    foreach(_fixture IN ITEMS
+        external-io-ca-cert.pem external-io-server-cert.pem
+        external-io-server-key.pem)
+      if(NOT EXISTS "${SALTSCORE_CRYPTO_TEST_FIXTURES}/${_fixture}")
+        message(FATAL_ERROR "Missing real Crypto TLS fixture: ${_fixture}")
+      endif()
+    endforeach()
+    file(TO_CMAKE_PATH "${SALTSCORE_CRYPTO_TEST_FIXTURES}" _crypto_fixtures)
+    add_executable(saltscore_cnet_crypto_original_owner_tls
+      tests/cnet-crypto-owner/linked_tls_owner.c)
+    set_target_properties(saltscore_cnet_crypto_original_owner_tls PROPERTIES
+      C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    target_include_directories(saltscore_cnet_crypto_original_owner_tls
+      PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/tests/cnet-crypto-owner")
+    target_link_libraries(saltscore_cnet_crypto_original_owner_tls
+      PRIVATE saltscore_cnet_crypto_qualification Crypto::TLS)
+    target_compile_definitions(saltscore_cnet_crypto_original_owner_tls
+      PRIVATE
+        "SDK_CA_FILE=\"${_crypto_fixtures}/external-io-ca-cert.pem\""
+        "SDK_SERVER_CERT_FILE=\"${_crypto_fixtures}/external-io-server-cert.pem\""
+        "SDK_SERVER_KEY_FILE=\"${_crypto_fixtures}/external-io-server-key.pem\"")
+    if(MSVC)
+      target_compile_options(saltscore_cnet_crypto_original_owner_tls
+        PRIVATE /experimental:c11atomics)
+    elseif(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+      target_compile_options(saltscore_cnet_crypto_original_owner_tls
+        PRIVATE -Wall -Wextra -Werror)
+    endif()
+    add_test(NAME saltscore.cnet_crypto_original_owner_tls12_tls13
+      COMMAND saltscore_cnet_crypto_original_owner_tls)
+    set_tests_properties(saltscore.cnet_crypto_original_owner_tls12_tls13
+      PROPERTIES TIMEOUT 90)
+  endif()
 endif()
