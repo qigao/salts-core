@@ -1,0 +1,89 @@
+name: SaltsCore independent native ASN1 BER DER conformance
+on:
+  pull_request:
+    paths:
+      - "asn1/**"
+      - "cmake/SaltsCoreExtraModules.cmake"
+      - "CMakeLists.txt"
+      - "tests/native-modules/**"
+      - "tests/installed/**"
+      - "tools/audit_native_asn1_import.py"
+      - "tools/check_dependency_boundaries.py"
+      - ".github/workflows/native-asn1.yml"
+  push:
+    paths:
+      - "asn1/**"
+      - "cmake/SaltsCoreExtraModules.cmake"
+      - "tests/native-modules/**"
+      - "tests/installed/**"
+      - "tools/audit_native_asn1_import.py"
+      - ".github/workflows/native-asn1.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-codec:
+    name: "ASN1 native source + installed SDK / ${{ matrix.os }}"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Source provenance and no Salts/CMeta/CFlow dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/audit_native_asn1_import.py
+          python3 tools/check_dependency_boundaries.py
+          python3 -m unittest discover -s tests -p 'test_dependency_boundaries.py'
+      - name: Original C11 codec tests and C++17 headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            generator=(-G 'Visual Studio 18 2026' -A x64)
+          else
+            generator=(-G Ninja)
+          fi
+          cmake -S . -B build-asn1 "${generator[@]}" \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DSALTSCORE_BUILD_ASN1=ON -DSALTSCORE_BUILD_TINYTEST=ON \
+            -DSALTSCORE_NATIVE_CPP_CONFORMANCE=ON \
+            "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/core-asn1-sdk"
+          cmake --build build-asn1 --config Release --parallel 2
+          ctest --test-dir build-asn1 -C Release --no-tests=error \
+            --output-on-failure --timeout 120
+          cmake --install build-asn1 --config Release
+      - name: Real installed C11 and C++17, no old SaltsConfig
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            generator=(-G 'Visual Studio 18 2026' -A x64)
+            export PATH="$(cygpath -u "$RUNNER_TEMP")/core-asn1-sdk/bin:$PATH"
+          elif [[ "$RUNNER_OS" == macOS ]]; then
+            generator=(-G Ninja)
+            export DYLD_LIBRARY_PATH="$RUNNER_TEMP/core-asn1-sdk/lib:${DYLD_LIBRARY_PATH:-}"
+          else
+            generator=(-G Ninja)
+            export LD_LIBRARY_PATH="$RUNNER_TEMP/core-asn1-sdk/lib:${LD_LIBRARY_PATH:-}"
+          fi
+          cmake -S tests/installed -B build-installed "${generator[@]}" \
+            -DCMAKE_BUILD_TYPE=Release \
+            "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/core-asn1-sdk"
+          cmake --build build-installed --config Release --parallel 2
+          ctest --test-dir build-installed -C Release --no-tests=error \
+            --output-on-failure --timeout 120
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-asn1-evidence-${{ matrix.os }}
+          path: |
+            build-asn1/Testing/Temporary/LastTest.log
+            build-installed/Testing/Temporary/LastTest.log
+          if-no-files-found: warn

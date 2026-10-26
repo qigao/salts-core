@@ -21,5 +21,10 @@ if(SALTSCORE_BUILD_IDNA)
   add_subdirectory(idna)
 endif()
 
+option(SALTSCORE_BUILD_ASN1 "Build standalone bounded C11 ASN.1 BER/DER codec" OFF)
+if(SALTSCORE_BUILD_ASN1)
+  add_subdirectory(asn1)
+endif()
+
 option(SALTSCORE_NATIVE_CPP_CONFORMANCE
   "Compile original native C++17 source contract against standalone Core" OFF)
