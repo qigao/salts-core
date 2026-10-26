@@ -46,6 +46,12 @@ if(WIN32)
 else()
   set(_crypto_nativeio_owner_source owner.c)
 endif()
+# Normalize fixture paths for MSVC C string literal correctness. Raw
+# Windows backslash paths would introduce unrecognized \s, \a escapes.
+file(TO_CMAKE_PATH "${CRYPTO_TEST_FIXTURES}/external-io-ca-cert.pem" _crypto_ca_path)
+file(TO_CMAKE_PATH "${CRYPTO_TEST_FIXTURES}/external-io-server-cert.pem" _crypto_cert_path)
+file(TO_CMAKE_PATH "${CRYPTO_TEST_FIXTURES}/external-io-server-key.pem" _crypto_key_path)
+
 add_executable(saltscore_crypto_nativeio_real_tcp_tls
   ${_crypto_nativeio_owner_source})
 set_target_properties(saltscore_crypto_nativeio_real_tcp_tls PROPERTIES
@@ -62,9 +68,9 @@ if(WIN32)
   endif()
 endif()
 target_compile_definitions(saltscore_crypto_nativeio_real_tcp_tls PRIVATE
-  "SDK_CA_FILE=\"${CRYPTO_TEST_FIXTURES}/external-io-ca-cert.pem\""
-  "SDK_SERVER_CERT_FILE=\"${CRYPTO_TEST_FIXTURES}/external-io-server-cert.pem\""
-  "SDK_SERVER_KEY_FILE=\"${CRYPTO_TEST_FIXTURES}/external-io-server-key.pem\"")
+  "SDK_CA_FILE=\"${_crypto_ca_path}\""
+  "SDK_SERVER_CERT_FILE=\"${_crypto_cert_path}\""
+  "SDK_SERVER_KEY_FILE=\"${_crypto_key_path}\"")
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(saltscore_crypto_nativeio_real_tcp_tls
     PRIVATE -Wall -Wextra -Werror)
