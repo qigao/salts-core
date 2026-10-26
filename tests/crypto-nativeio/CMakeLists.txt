@@ -26,10 +26,8 @@ if(NOT _core_type STREQUAL "SHARED_LIBRARY" OR
   message(FATAL_ERROR "NativeIO/Crypto must preserve one shared foundation and one private GmSSL owner")
 endif()
 
-if(NOT UNIX OR WIN32)
-  message(FATAL_ERROR
-    "Initial real TCP NativeIO handoff uses Linux epoll/macOS kqueue. "
-    "Windows IOCP is a separately required follow-on.")
+if(NOT WIN32 AND NOT CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$")
+  message(FATAL_ERROR "NativeIO real TCP qualification requires IOCP/epoll/kqueue")
 endif()
 if(NOT DEFINED CRYPTO_TEST_FIXTURES)
   message(FATAL_ERROR "CRYPTO_TEST_FIXTURES must be explicit")
@@ -48,6 +46,11 @@ set_target_properties(saltscore_crypto_nativeio_real_tcp_tls PROPERTIES
 target_link_libraries(saltscore_crypto_nativeio_real_tcp_tls PRIVATE
   SaltsCore::NativeIO SaltsCore::Core
   Crypto::TLS Crypto::TLSCipherBIO)
+if(WIN32)
+  target_link_libraries(saltscore_crypto_nativeio_real_tcp_tls PRIVATE Ws2_32)
+  target_compile_definitions(saltscore_crypto_nativeio_real_tcp_tls PRIVATE
+    _WIN32_WINNT=0x0600 WIN32_LEAN_AND_MEAN)
+endif()
 target_compile_definitions(saltscore_crypto_nativeio_real_tcp_tls PRIVATE
   "SDK_CA_FILE=\"${CRYPTO_TEST_FIXTURES}/external-io-ca-cert.pem\""
   "SDK_SERVER_CERT_FILE=\"${CRYPTO_TEST_FIXTURES}/external-io-server-cert.pem\""
@@ -61,6 +64,7 @@ add_test(NAME cnet.crypto_nativeio_real_tcp_tls12_tls13
 set_tests_properties(cnet.crypto_nativeio_real_tcp_tls12_tls13
   PROPERTIES TIMEOUT 120)
 
+if(NOT WIN32)
 # This cannot be simulated by deliberately small Crypto transport chunks:
 # require a genuine OS-generated partial TCP_SEND terminal completion on a
 # real loopback socket with constrained SO_SNDBUF, then resubmit its prefix.
@@ -95,3 +99,16 @@ add_test(NAME cnet.crypto_nativeio_cancel_wake_terminal
   COMMAND saltscore_crypto_nativeio_cancel_wake)
 set_tests_properties(cnet.crypto_nativeio_cancel_wake_terminal
   PROPERTIES TIMEOUT 120)
+endif() # existing POSIX OS-short-send and pthread-wake tests
+
+if(WIN32)
+  enable_language(CXX)
+  add_executable(saltscore_crypto_nativeio_installed_cpp17 installed-cpp17.cpp)
+  set_target_properties(saltscore_crypto_nativeio_installed_cpp17 PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+  target_link_libraries(saltscore_crypto_nativeio_installed_cpp17 PRIVATE
+    SaltsCore::NativeIO SaltsCore::Core Crypto::TLS Crypto::TLSCipherBIO)
+  add_test(NAME cnet.crypto_nativeio_windows_cpp17_sdk
+    COMMAND saltscore_crypto_nativeio_installed_cpp17)
+  set_tests_properties(cnet.crypto_nativeio_windows_cpp17_sdk PROPERTIES TIMEOUT 60)
+endif()
