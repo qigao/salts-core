@@ -258,6 +258,8 @@ if(SALTSCORE_BUILD_CNET)
   include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsCoreCNet.cmake")
 endif()
 
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsCoreExtraModules.cmake")
+
 # PE/COFF does not honor ELF/Mach-O SOVERSION. Encode the pre-stable 0.1 ABI
 # epoch in each Windows DLL and its import library, without a filename alias.
 # A future 0.2 DLL must not replace an older consumer's 0.1 dependency.
@@ -282,7 +284,7 @@ install(FILES include/coro.h include/coro_pool.h include/coro_executor.h
 install(FILES vendor/minicoro/LICENSE
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/minicoro)
 
-install(FILES include/cmeta_api.h include/cmeta_buffer.h include/ring_buffer.h
+install(FILES include/vstr.h include/cmeta_api.h include/cmeta_buffer.h include/ring_buffer.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 set(_saltscore_package_dir "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsCore")
@@ -302,4 +304,11 @@ install(EXPORT SaltsCoreTargets FILE SaltsCoreTargets.cmake
 
 if(BUILD_TESTING)
   add_subdirectory(tests)
+  if(SALTSCORE_BUILD_UNICODE OR SALTSCORE_BUILD_IDNA OR
+     SALTSCORE_BUILD_CSERDE OR SALTSCORE_BUILD_TINYTEST)
+    if(NOT SALTSCORE_BUILD_TINYTEST)
+      message(FATAL_ERROR "Native conformance requires SALTSCORE_BUILD_TINYTEST=ON")
+    endif()
+    add_subdirectory(tests/native-modules)
+  endif()
 endif()

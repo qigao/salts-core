@@ -73,3 +73,41 @@ if(TARGET Salts::CNet)
     Salts::CNet Salts::Core Salts::Platform owner_probe_installed)
   add_test(NAME sdk.abi_owner_consumer COMMAND abi_owner_consumer)
 endif()
+
+# Source-independent consumers. CMake package and all native targets come from
+# this installed Core prefix; there is no Salts package or reflected adapter.
+add_executable(vstr_consumer_c vstr_consumer.c)
+target_compile_features(vstr_consumer_c PRIVATE c_std_11)
+target_link_libraries(vstr_consumer_c PRIVATE Salts::Core)
+add_test(NAME sdk.vstr_c11 COMMAND vstr_consumer_c)
+
+add_executable(vstr_consumer_cpp vstr_consumer.cpp)
+target_compile_features(vstr_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(vstr_consumer_cpp PRIVATE Salts::Core)
+add_test(NAME sdk.vstr_cpp17 COMMAND vstr_consumer_cpp)
+
+if(TARGET Salts::CSerde)
+  add_executable(cserde_consumer_c cserde_consumer.c)
+  target_compile_features(cserde_consumer_c PRIVATE c_std_11)
+  target_link_libraries(cserde_consumer_c PRIVATE Salts::CSerde)
+  add_test(NAME sdk.cserde_c11 COMMAND cserde_consumer_c)
+
+  if(TARGET Salts::TinyTest)
+    add_executable(cserde_consumer_cpp ../../cserde/tests/cserde_header_cpp_test.cpp)
+    target_compile_features(cserde_consumer_cpp PRIVATE cxx_std_17)
+    target_link_libraries(cserde_consumer_cpp PRIVATE Salts::CSerde Salts::TinyTest)
+    add_test(NAME sdk.cserde_cpp17 COMMAND cserde_consumer_cpp)
+  endif()
+endif()
+
+if(TARGET Salts::Unicode AND TARGET Salts::IDNA)
+  add_executable(unicode_idna_consumer_c ../../unicode/test/install_consumer/main.c)
+  target_compile_features(unicode_idna_consumer_c PRIVATE c_std_11)
+  target_link_libraries(unicode_idna_consumer_c PRIVATE Salts::Unicode Salts::IDNA)
+  add_test(NAME sdk.unicode_idna_c11 COMMAND unicode_idna_consumer_c)
+
+  add_executable(unicode_idna_consumer_cpp ../../unicode/test/install_consumer/main.cpp)
+  target_compile_features(unicode_idna_consumer_cpp PRIVATE cxx_std_17)
+  target_link_libraries(unicode_idna_consumer_cpp PRIVATE Salts::Unicode Salts::IDNA)
+  add_test(NAME sdk.unicode_idna_cpp17 COMMAND unicode_idna_consumer_cpp)
+endif()
