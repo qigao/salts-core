@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/cnet-crypto-nativeio-sanitizers.yml"
       - "tests/crypto-nativeio/**"
+      - "tests/cnet-crypto-owner/**"
   workflow_dispatch:
 
 permissions:
@@ -115,7 +116,7 @@ jobs:
             "-DCRYPTO_TEST_FIXTURES=$GITHUB_WORKSPACE/_crypto/providers/gmssl/tests/fixtures"
           cmake --build build-crypto-nativeio-sanitize --parallel 2
           test "$(ctest --test-dir build-crypto-nativeio-sanitize -N |
-            sed -n 's/^Total Tests: //p')" = 3
+            sed -n 's/^Total Tests: //p')" = 4
           ctest --test-dir build-crypto-nativeio-sanitize \
             --no-tests=error --output-on-failure --timeout 120 \
             --repeat until-fail:3

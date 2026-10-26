@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/cnet-crypto-iocp.yml"
       - "tests/crypto-nativeio/**"
+      - "tests/cnet-crypto-owner/**"
   workflow_dispatch:
 
 permissions:
@@ -85,7 +86,8 @@ jobs:
           test -s build-iocp/Release/saltscore_crypto_nativeio_partial_send.exe
           test -s build-iocp/Release/saltscore_crypto_nativeio_cancel_wake.exe
           test -s build-iocp/Release/saltscore_crypto_nativeio_installed_cpp17.exe
-          test "$(ctest --test-dir build-iocp -C Release -N | sed -n 's/^Total Tests: //p')" = 4
+          test -s build-iocp/Release/saltscore_cnet_crypto_candidate_policy.exe
+          test "$(ctest --test-dir build-iocp -C Release -N | sed -n 's/^Total Tests: //p')" = 5
           export PATH="$sdk/bin:$PATH"
           ctest --test-dir build-iocp -C Release --no-tests=error             --output-on-failure --timeout 150 --repeat until-fail:3
       - name: Audit Windows PE imports and one physical Crypto/Core runtime
