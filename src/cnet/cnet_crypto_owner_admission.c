@@ -2,6 +2,7 @@
  * CNet-facing PRIVATE qualification admission: no production TLS cutover.
  */
 #include "cnet_crypto_owner_admission.h"
+#include "cnet_tls.h" /* canonical private CNet hostname capacity */
 #include <salts/error_codes.h>
 #include <stdbool.h>
 #include <stddef.h>
