@@ -126,6 +126,7 @@ static int client_contract(void)
         REQUIRE(cnet_crypto_candidate_prepare_client(
             &p, "example.test", CRYPTO_TLS_1_2, &opt) == SALTS_ENOTSUP);
     }
+    p.ca_file = "explicit-ca.pem"; /* avoid retaining a pointer to a stack local */
     REQUIRE(cnet_crypto_candidate_prepare_client(
         &p, "example.test", CRYPTO_TLS_1_2, NULL) == SALTS_EINVAL);
     return 0;
@@ -151,6 +152,10 @@ static int server_contract(void)
         &p, CRYPTO_TLS_1_3, &opt) == SALTS_OK);
     REQUIRE(opt.protocol == CRYPTO_TLS_1_3);
     p.key_password = "nonempty";
+    REQUIRE(cnet_crypto_candidate_prepare_server(
+        &p, CRYPTO_TLS_1_2, &opt) == SALTS_OK);
+    REQUIRE(opt.private_key_password == p.key_password);
+    p.key_password = "";
     REQUIRE(cnet_crypto_candidate_prepare_server(
         &p, CRYPTO_TLS_1_2, &opt) == SALTS_OK);
     REQUIRE(opt.private_key_password == p.key_password);
