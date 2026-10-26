@@ -13,8 +13,10 @@ extern "C" {
 typedef struct salts_platform_thread salts_platform_thread;
 typedef struct salts_platform_mutex salts_platform_mutex;
 typedef struct salts_platform_condition salts_platform_condition;
+typedef struct salts_platform_tss salts_platform_tss;
 typedef int (SALTS_CORE_PLATFORM_CALL *salts_platform_thread_fn)(void *arg);
 typedef void (SALTS_CORE_PLATFORM_CALL *salts_platform_once_fn)(void);
+typedef void (SALTS_CORE_PLATFORM_CALL *salts_platform_tss_destructor)(void *value);
 typedef struct salts_platform_once { salts_atomic32 state; } salts_platform_once;
 #define SALTS_PLATFORM_ONCE_INIT { {0u} }
 
@@ -43,6 +45,17 @@ SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_condition_ti
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_condition_signal(salts_platform_condition *condition);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_condition_broadcast(salts_platform_condition *condition);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_condition_destroy(salts_platform_condition **condition);
+/* Opaque provider-owned TSS key. Values are borrowed pointers; set(NULL)
+ * clears the current thread's value without invoking its destructor.
+ * Thread exit invokes the C-cdecl callback before releasing its reference.
+ * Destroy returns BUSY while non-NULL values/callbacks remain active.
+ * Key destroy versus concurrent set/get requires caller-side quiescence.
+ * Recursive same-key destructor registration is not yet qualified.
+ */
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_tss_create(salts_platform_tss **out, salts_platform_tss_destructor destructor);
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_tss_set(salts_platform_tss *key, void *value);
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_tss_get(salts_platform_tss *key, void **out);
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_tss_destroy(salts_platform_tss **key);
 #ifdef __cplusplus
 }
 #endif

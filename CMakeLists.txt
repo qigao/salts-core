@@ -47,10 +47,10 @@ set(_saltscore_platform_sources
     src/platform/portable_atomic.c src/platform/portable_once.c)
 if(WIN32)
   list(APPEND _saltscore_platform_sources
-    src/platform/thread_win32.c src/platform/portable_thread_win32.c)
+    src/platform/thread_win32.c src/platform/portable_thread_win32.c src/platform/portable_tss_win32.c)
 else()
   list(APPEND _saltscore_platform_sources
-    src/platform/thread_posix.c src/platform/portable_thread_posix.c)
+    src/platform/thread_posix.c src/platform/portable_thread_posix.c src/platform/portable_tss_posix.c)
 endif()
 if(UNIX)
   list(APPEND _saltscore_platform_sources src/platform/readiness_poll.c)

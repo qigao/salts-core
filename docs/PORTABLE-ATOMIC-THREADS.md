@@ -101,3 +101,26 @@ waits return \`SALTS_ETIMEDOUT\` when no signal was admitted.
 - All condition waits leave the caller holding its mutex; wakeups
   may be spurious, so callers must repeat their predicate checks.
 - This is a portable Platform contract, not yet C11 \`cnd_timedwait\`.
+
+
+## M1-B: Portable thread-specific storage (TSS)
+
+Provider-owned opaque \`salts_platform_tss\` keys use \`pthread_key_create\`
+on POSIX and \`FlsAlloc\` on Windows. Each active thread receives a
+private heap-owned slot wrapper; the pointed-to user value remains borrowed.
+On thread exit the provider invokes the user destructor (C cdecl, **not**
+the x86 \`WINAPI\` FLS calling convention), and only then retires the active
+slot count. Thus a key cannot be destroyed while any live non-NULL value
+or in-progress destructor remains; destruction returns \`SALTS_EBUSY\`.
+\`tss_set(NULL)\` removes the current thread's wrapper without calling the
+user destructor. A deterministic six-worker test holds real slots live,
+proves busy-destroy denial, then joins threads and requires exactly one
+destructor per worker.
+
+Current ownership contract: caller serializes key destruction against
+new set/get activity, and keeps the code module implementing destructor
+callbacks loaded until all relevant threads have fully exited. Callback
+re-registration on the *same* key, explicit thread cancellation and
+adversarial simultaneous key-destroy/set are **not** claimed qualified;
+these require additional native fault tests before exposing full
+\`<threads.h>\` semantics.
