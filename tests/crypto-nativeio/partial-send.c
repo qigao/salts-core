@@ -124,8 +124,14 @@ static int run_partial_send(void)
      * backing. Remove real TCP backpressure by consuming and verifying
      * bytes through Winsock recv (not a synthetic NativeIO completion).
      * An actual IOCP terminal is still required before buffer release.
+     * Bound diagnosis by wall time: Windows 1ms GQCS can sleep longer
+     * than 1ms, so a large iteration budget alone can exceed CTest.
      */
+    const ULONGLONG started_ms = GetTickCount64();
+    const ULONGLONG deadline_ms = started_ms + 6000u;
+    ULONGLONG next_diagnostic_ms = started_ms + 1000u;
     for (step = 0u; step < MAX_STEPS &&
+                    GetTickCount64() < deadline_ms &&
                     (outstanding || accepted != PAYLOAD_SIZE ||
                      read_cursor != PAYLOAD_SIZE); ++step) {
         size_t count = 0u;
@@ -144,6 +150,15 @@ static int run_partial_send(void)
             &backend, events, OBSERVE_BATCH, 1u, &count);
         if (status != SALTS_OK && status != SALTS_ETIMEDOUT)
             goto done;
+        if (GetTickCount64() >= next_diagnostic_ms) {
+            fprintf(stderr,
+                "IOCP WSASend progress: ms=%llu peer_received=%zu "
+                "completed_bytes=%zu pending=%d terminals=%zu short=%zu\\n",
+                (unsigned long long)(GetTickCount64() - started_ms),
+                read_cursor, accepted, outstanding ? 1 : 0,
+                observed_parts, short_parts);
+            next_diagnostic_ms += 1000u;
+        }
         if (count) {
             const size_t remaining = PAYLOAD_SIZE - accepted;
             if (count != 1u || !outstanding
@@ -161,8 +176,14 @@ static int run_partial_send(void)
         }
     }
     if (outstanding || accepted != PAYLOAD_SIZE ||
-        read_cursor != PAYLOAD_SIZE || observed_parts == 0u)
+        read_cursor != PAYLOAD_SIZE || observed_parts == 0u) {
+        fprintf(stderr,
+            "IOCP WSASend deadline: peer_received=%zu/%u "
+            "completed_bytes=%zu/%u pending=%d terminals=%zu short=%zu\\n",
+            read_cursor, PAYLOAD_SIZE, accepted, PAYLOAD_SIZE,
+            outstanding ? 1 : 0, observed_parts, short_parts);
         goto done;
+    }
 #else
     for (step = 0u; step < MAX_STEPS; ++step) {
         size_t count = 0u;
