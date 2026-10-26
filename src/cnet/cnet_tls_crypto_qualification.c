@@ -54,6 +54,11 @@ static cnet_crypto_state *get_engine(const cnet_tls_state *state)
 
 static int crypto_error(crypto_tls_result status)
 {
+    /* The additive CipherBIO CAPACITY code is intentionally not in the
+     * original Crypto TLS enum. Avoid a non-enumerator switch case under
+     * strict -Werror=switch while preserving all-or-nothing backpressure.
+     */
+    if (status == CRYPTO_TLS_BIO_CAPACITY) return SALTS_ENOBUFS;
     switch (status) {
     case CRYPTO_TLS_OK: return SALTS_OK;
     case CRYPTO_TLS_AGAIN: return SALTS_OK;
@@ -62,7 +67,6 @@ static int crypto_error(crypto_tls_result status)
     case CRYPTO_TLS_INVALID_ARGUMENT: return SALTS_EINVAL;
     case CRYPTO_TLS_OUT_OF_MEMORY: return SALTS_ENOMEM;
     case CRYPTO_TLS_CLOSED: return SALTS_ECONNABORTED;
-    case CRYPTO_TLS_BIO_CAPACITY: return SALTS_ENOBUFS;
     default: return SALTS_EPROTO;
     }
 }
@@ -535,7 +539,11 @@ int cnet_tls_state_negotiated_version(const cnet_tls_state *state,
     crypto_tls_session_info_v1_1 info;
     const char *name;
     int status = inspected(state, &info);
-    if (status != SALTS_OK) return copy_name(state, NULL, buffer, capacity, out_size);
+    if (status != SALTS_OK) {
+        if (out_size != NULL) *out_size = 0u;
+        if (buffer != NULL && capacity != 0u) buffer[0] = '\0';
+        return status; /* never downgrade unsupported ABI to ENOENT */
+    }
     name = info.protocol == CRYPTO_TLS_1_2 ? "TLSv1.2" :
            info.protocol == CRYPTO_TLS_1_3 ? "TLSv1.3" : NULL;
     return name == NULL ? SALTS_EPROTO :
@@ -548,7 +556,11 @@ int cnet_tls_state_negotiated_cipher(const cnet_tls_state *state,
 {
     crypto_tls_session_info_v1_1 info;
     int status = inspected(state, &info);
-    if (status != SALTS_OK) return copy_name(state, NULL, buffer, capacity, out_size);
+    if (status != SALTS_OK) {
+        if (out_size != NULL) *out_size = 0u;
+        if (buffer != NULL && capacity != 0u) buffer[0] = '\0';
+        return status; /* never downgrade unsupported ABI to ENOENT */
+    }
     return copy_name(state, info.cipher_name, buffer, capacity, out_size);
 }
 
