@@ -135,3 +135,23 @@ if(WIN32)
     COMMAND saltscore_crypto_nativeio_installed_cpp17)
   set_tests_properties(cnet.crypto_nativeio_windows_cpp17_sdk PROPERTIES TIMEOUT 60)
 endif()
+
+
+# M4 candidate admission only: compiles the REAL current CNet public TLS
+# configuration structs but does NOT link the incumbent GmSSL CNet DSO.
+# Linking Crypto and incumbent GmSSL in one process would manufacture a
+# forbidden second private GmSSL physical owner.
+add_executable(saltscore_cnet_crypto_candidate_policy
+  ../cnet-crypto-owner/policy.c
+  ../cnet-crypto-owner/test_policy.c)
+set_target_properties(saltscore_cnet_crypto_candidate_policy PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+target_include_directories(saltscore_cnet_crypto_candidate_policy PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../include"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../cnet-crypto-owner")
+target_link_libraries(saltscore_cnet_crypto_candidate_policy PRIVATE
+  SaltsCore::Core Crypto::TLS)
+add_test(NAME cnet.crypto_candidate_policy_fail_closed
+  COMMAND saltscore_cnet_crypto_candidate_policy)
+set_tests_properties(cnet.crypto_candidate_policy_fail_closed PROPERTIES
+  TIMEOUT 30)
