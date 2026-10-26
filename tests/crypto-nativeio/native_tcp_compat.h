@@ -96,7 +96,7 @@ static inline int native_tcp_connect_pair(native_tcp_socket *out_client,
     *out_client = *out_server = NATIVE_TCP_INVALID_SOCKET;
     memset(&address, 0, sizeof(address));
     address.sin_family = AF_INET;
-    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    address.sin_addr.s_addr = htonl(UINT32_C(0x7f000001));
     address.sin_port = htons(0u);
     listener = native_tcp_open_stream();
     if (listener == NATIVE_TCP_INVALID_SOCKET
