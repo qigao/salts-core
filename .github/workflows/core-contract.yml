@@ -1,0 +1,62 @@
+name: SaltsCore standalone SDK contract
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  sdk:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove no legacy Salts/CMeta/CFlow/CSTL dependency
+        shell: bash
+        run: |
+          python3 tools/check_ci_ctest_regex.py .github/workflows/cnet-sanitizers.yml
+          python3 tools/check_ci_ctest_regex.py .github/workflows/readiness-reference-sanitizers.yml
+          python3 tools/check_dependency_boundaries.py
+          python3 -m unittest discover -s tests -p 'test_dependency_boundaries.py'
+      - name: Configure, compile, test, and install
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/saltscore-sdk"
+          cmake --build build --config Release --parallel 2
+          ctest --test-dir build --output-on-failure -C Release
+          cmake --install build --config Release
+      - name: Installed C11 and C++17 consumer
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Shared foundation must be found from the clean installed prefix,
+          # not from build-tree archives or an already installed legacy Salts.
+          case "$RUNNER_OS" in
+            Windows) export PATH="$(cygpath -u "$RUNNER_TEMP")/saltscore-sdk/bin:$PATH" ;;
+            macOS) export DYLD_LIBRARY_PATH="$RUNNER_TEMP/saltscore-sdk/lib:${DYLD_LIBRARY_PATH:-}" ;;
+            Linux) export LD_LIBRARY_PATH="$RUNNER_TEMP/saltscore-sdk/lib:${LD_LIBRARY_PATH:-}" ;;
+          esac
+          cmake -S tests/installed -B build-installed -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/saltscore-sdk"
+          cmake --build build-installed --config Release --parallel 2
+          ctest --test-dir build-installed --output-on-failure -C Release
+      - name: Prove future minor ABI 0.2 cannot load installed 0.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Requested 0.2 must fail against installed 0.1; an extra cache
+          # entry or a matching major-zero package is not an ABI waiver.
+          if cmake -S tests/abi-version-mismatch -B build-abi-version-mismatch \
+                "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/saltscore-sdk"; then
+            echo "ABI violation: find_package(SaltsCore 0.2) accepted 0.1" >&2
+            exit 1
+          fi
+          echo "Expected rejection: 0.2 consumer cannot resolve 0.1 ABI"
+      - name: Verify future 0.2 cannot satisfy older 0.1 ABI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/test_abi_minor_compat.py \
+            --version-file "$RUNNER_TEMP/saltscore-sdk/lib/cmake/SaltsCore/SaltsCoreConfigVersion.cmake"

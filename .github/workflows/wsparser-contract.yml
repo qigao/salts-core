@@ -1,0 +1,53 @@
+name: SaltsCore WebSocket frame parser contract
+on:
+  push:
+    paths:
+      - "src/cnet/wsparser/**"
+      - "tests/test_wsparser.c"
+      - "tests/CMakeLists.txt"
+      - "CMakeLists.txt"
+      - ".github/workflows/wsparser-contract.yml"
+  pull_request:
+    paths:
+      - "src/cnet/wsparser/**"
+      - "tests/test_wsparser.c"
+      - "tests/CMakeLists.txt"
+      - "CMakeLists.txt"
+      - ".github/workflows/wsparser-contract.yml"
+permissions:
+  contents: read
+jobs:
+  frame-contract:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check standalone dependency boundaries
+        shell: bash
+        run: |
+          python3 tools/check_dependency_boundaries.py
+          python3 -m unittest discover -s tests -p test_dependency_boundaries.py
+      - name: Build and exercise opt-in frame parser
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-ws -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DSALTSCORE_BUILD_WEBSOCKET_PARSER=ON "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/saltscore-sdk"
+          cmake --build build-ws --config Release --parallel 2
+          ctest --test-dir build-ws --output-on-failure -C Release
+          cmake --install build-ws --config Release
+          test ! -f "$RUNNER_TEMP/saltscore-sdk/include/websocket_frame_parser.h"
+      - name: Check standalone installed SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$RUNNER_OS" in
+            Windows) export PATH="$(cygpath -u "$RUNNER_TEMP")/saltscore-sdk/bin:$PATH" ;;
+            macOS) export DYLD_LIBRARY_PATH="$RUNNER_TEMP/saltscore-sdk/lib:${DYLD_LIBRARY_PATH:-}" ;;
+            Linux) export LD_LIBRARY_PATH="$RUNNER_TEMP/saltscore-sdk/lib:${LD_LIBRARY_PATH:-}" ;;
+          esac
+          cmake -S tests/installed -B build-installed -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/saltscore-sdk"
+          cmake --build build-installed --config Release --parallel 2
+          ctest --test-dir build-installed --output-on-failure -C Release
