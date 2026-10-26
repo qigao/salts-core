@@ -134,3 +134,7 @@ install(FILES vendor/cnet/reed/LICENSE
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/reed)
 install(FILES vendor/cnet/monocypher/UPSTREAM.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/monocypher)
+
+# Test-only mutually exclusive native CNet Owner variant. OFF by default;
+# production CNet and GmSSL::GmSSL graph above are never rewritten.
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsCoreCNetCryptoQualification.cmake")
