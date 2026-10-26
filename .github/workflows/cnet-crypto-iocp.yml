@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: nativeio-m35-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   nativeio-overlapped-iocp:
     name: Windows-2025 MSVC real IOCP TLS and installed SDK
@@ -78,8 +82,10 @@ jobs:
           cmake -S tests/crypto-nativeio -B build-iocp -G 'Visual Studio 18 2026' -A x64             "-DCMAKE_PREFIX_PATH=$sdk"             "-DCRYPTO_TEST_FIXTURES=$GITHUB_WORKSPACE/_crypto/providers/gmssl/tests/fixtures"
           cmake --build build-iocp --config Release --parallel 2
           test -s build-iocp/Release/saltscore_crypto_nativeio_real_tcp_tls.exe
+          test -s build-iocp/Release/saltscore_crypto_nativeio_partial_send.exe
+          test -s build-iocp/Release/saltscore_crypto_nativeio_cancel_wake.exe
           test -s build-iocp/Release/saltscore_crypto_nativeio_installed_cpp17.exe
-          test "$(ctest --test-dir build-iocp -C Release -N | sed -n 's/^Total Tests: //p')" = 2
+          test "$(ctest --test-dir build-iocp -C Release -N | sed -n 's/^Total Tests: //p')" = 4
           export PATH="$sdk/bin:$PATH"
           ctest --test-dir build-iocp -C Release --no-tests=error             --output-on-failure --timeout 150 --repeat until-fail:3
       - name: Audit Windows PE imports and one physical Crypto/Core runtime
