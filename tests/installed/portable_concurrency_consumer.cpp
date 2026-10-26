@@ -21,5 +21,15 @@ int main() {
         observed != 42) return 2;
     if (salts_platform_thread_create(&thread, worker, &value) ||
         salts_platform_thread_join(&thread, &result) || result != 42 || thread) return 3;
+    /* C++ consumes the exact same C ABI, never std::atomic storage. */
+    salts_platform_tss *key = nullptr;
+    void *got = nullptr;
+    if (salts_platform_tss_create(&key, nullptr) ||
+        salts_platform_tss_set(key, &value) ||
+        salts_platform_tss_get(key, &got) || got != &value ||
+        salts_platform_tss_set(key, nullptr) ||
+        salts_platform_tss_destroy(&key) || key ||
+        salts_platform_thread_sleep_ns(0))
+        return 4;
     return 0;
 }

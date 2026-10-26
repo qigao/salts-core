@@ -19,5 +19,20 @@ int main(void) {
     if (salts_platform_thread_create(&thread, worker, &value) ||
         salts_platform_thread_join(&thread, &result) || result != 42 || thread)
         return 3;
+    /* This is an actual Installed SDK caller, not a source-tree provider. */
+    {
+        salts_platform_tss *key = NULL;
+        void *stored = NULL;
+        if (salts_platform_tss_create(&key, NULL) ||
+            salts_platform_tss_set(key, &value) ||
+            salts_platform_tss_get(key, &stored) || stored != &value ||
+            salts_platform_tss_destroy(&key) != SALTS_EBUSY ||
+            salts_platform_tss_set(key, NULL) ||
+            salts_platform_tss_destroy(&key) || key)
+            return 4;
+        if (salts_platform_thread_sleep_ns(0) ||
+            salts_platform_thread_sleep_ns(UINT64_MAX) != SALTS_EINVAL)
+            return 5;
+    }
     return 0;
 }
