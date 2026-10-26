@@ -124,3 +124,27 @@ re-registration on the *same* key, explicit thread cancellation and
 adversarial simultaneous key-destroy/set are **not** claimed qualified;
 these require additional native fault tests before exposing full
 \`<threads.h>\` semantics.
+
+
+## M1-C: monotonic timed mutex (additive)
+
+\`salts_platform_mutex_timedlock_ns\` uses the same **relative** nanosecond
+API and maximum timeout as the earlier timed condition/sleep primitives.
+A held mutex with duration 0 returns \`SALTS_ETIMEDOUT\` after one try-lock.
+Invalid/null inputs and a duration exceeding
+\`SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS\` return \`SALTS_EINVAL\`.
+On success the caller owns the mutex until an explicit unlock.
+
+The Linux/macOS backend retries \`pthread_mutex_trylock\` with a bounded
+1 millisecond \`nanosleep\` and a \`CLOCK_MONOTONIC\` elapsed-time check;
+it intentionally does **not** call \`pthread_mutex_timedlock\` (which
+commonly uses CLOCK_REALTIME). The Windows backend retries the native
+SRWLOCK \`TryAcquireSRWLockExclusive\` against \`GetTickCount64\`,
+rounding positive durations up to a millisecond and yielding to the OS
+rather than spinning with raw volatile reads.
+
+This is an additive portable C ABI, not a claim of C11 \`mtx_timedlock\`
+(which specifies an absolute UTC deadline). Recursive locking remains
+invalid. Pointer lifetime, shutdown and destruction races still require
+external quiescence, as with the base mutex API. See \`Issue #42\`
+for complete \`threads.h\` admission and owner-drain handling.

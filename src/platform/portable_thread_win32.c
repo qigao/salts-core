@@ -89,6 +89,28 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_lock(salts_platform_mutex *m) 
     if (!m) return SALTS_EINVAL;
     AcquireSRWLockExclusive(&m->native); return SALTS_OK;
 }
+/* GetTickCount64 is monotonic and independent of wall clock adjustments.
+ * Positive fractional milliseconds round up, as with timed condition wait.
+ * SRWLOCK has no timed-wait primitive, so retry with bounded OS yielding.
+ */
+int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_timedlock_ns(
+    salts_platform_mutex *m, uint64_t timeout_ns) {
+    ULONGLONG start, elapsed, requested_ms;
+    if (!m || timeout_ns > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS)
+        return SALTS_EINVAL;
+    if (TryAcquireSRWLockExclusive(&m->native)) return SALTS_OK;
+    if (timeout_ns == 0) return SALTS_ETIMEDOUT;
+    requested_ms = (ULONGLONG)((timeout_ns + 999999ull) / 1000000ull);
+    start = GetTickCount64();
+    for (;;) {
+        elapsed = GetTickCount64() - start;
+        if (elapsed >= requested_ms) return SALTS_ETIMEDOUT;
+        if (requested_ms - elapsed > 2ull) Sleep(1);
+        else (void)SwitchToThread();
+        if (GetTickCount64() - start >= requested_ms) return SALTS_ETIMEDOUT;
+        if (TryAcquireSRWLockExclusive(&m->native)) return SALTS_OK;
+    }
+}
 int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_unlock(salts_platform_mutex *m) {
     if (!m) return SALTS_EINVAL;
     ReleaseSRWLockExclusive(&m->native); return SALTS_OK;

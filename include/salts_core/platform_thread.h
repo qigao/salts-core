@@ -33,6 +33,13 @@ SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_thread_sleep
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_call_once(salts_platform_once *flag, salts_platform_once_fn callback);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_create(salts_platform_mutex **out);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_lock(salts_platform_mutex *mutex);
+/* Relative MONOTONIC timeout, not C11's absolute UTC mtx_timedlock.
+ * 0 = one nonblocking acquisition attempt; a held lock times out.
+ * The existing platform owner must remain alive for every entrant.
+ * Recursive acquisition of the same native mutex is unsupported.
+ * Valid timeout <= SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS.
+ */
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_timedlock_ns(salts_platform_mutex *mutex, uint64_t timeout_ns);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_unlock(salts_platform_mutex *mutex);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_destroy(salts_platform_mutex **mutex);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_condition_create(salts_platform_condition **out);

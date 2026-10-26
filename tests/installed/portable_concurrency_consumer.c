@@ -34,5 +34,13 @@ int main(void) {
             salts_platform_thread_sleep_ns(UINT64_MAX) != SALTS_EINVAL)
             return 5;
     }
+    {
+        salts_platform_mutex *m = NULL;
+        if (salts_platform_mutex_create(&m) ||
+            salts_platform_mutex_timedlock_ns(m, 0) ||
+            salts_platform_mutex_unlock(m) ||
+            salts_platform_mutex_timedlock_ns(m, UINT64_MAX) != SALTS_EINVAL ||
+            salts_platform_mutex_destroy(&m) || m) return 6;
+    }
     return 0;
 }
