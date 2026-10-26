@@ -564,7 +564,9 @@ int cnet_tls_shutdown(cnet_tls_state *state, bool *out_notify_generated)
     if (eng == NULL) return SALTS_EINVAL;
     if (!state->handshake_complete) return SALTS_ENOTCONN;
     if (eng->write_source != NULL) return SALTS_EBUSY;
+    CRYPTO_TEST_DIAG("shutdown_begin", state, 0, state->close_notify_started);
     result = crypto_tls_session_shutdown(eng->session);
+    CRYPTO_TEST_DIAG("shutdown_result", state, result, state->close_notify_started);
     if (result == CRYPTO_TLS_AGAIN) return SALTS_OK;
     if (result != CRYPTO_TLS_OK) return crypto_error(result);
     state->close_notify_started = true;
