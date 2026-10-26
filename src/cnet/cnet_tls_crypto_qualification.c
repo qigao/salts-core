@@ -52,6 +52,50 @@ static cnet_crypto_state *get_engine(const cnet_tls_state *state)
     return state != NULL ? (cnet_crypto_state *)state->engine : NULL;
 }
 
+#if defined(CNET_CRYPTO_QUALIFICATION_TRACE)
+#include <stdio.h>
+/* TEST-ONLY numeric state diagnostics, bounded globally; never print
+ * plaintext, records, keys, certificates, peer identity or buffers.
+ */
+static atomic_uint crypto_test_log_remaining = ATOMIC_VAR_INIT(100u);
+static void crypto_test_diag(
+    const char *phase, const cnet_tls_state *state, int result,
+    size_t count)
+{
+    unsigned remaining =
+        atomic_load_explicit(&crypto_test_log_remaining, memory_order_relaxed);
+    while (remaining != 0u &&
+           !atomic_compare_exchange_weak_explicit(
+               &crypto_test_log_remaining, &remaining, remaining - 1u,
+               memory_order_relaxed, memory_order_relaxed)) {}
+    if (remaining != 0u) {
+        const cnet_crypto_state *eng = get_engine(state);
+        crypto_tls_cipher_bio_snapshot snap = {0};
+        int snapshot_ok = 0;
+        if (eng && eng->bio) {
+            snap.struct_size = sizeof(snap);
+            snapshot_ok =
+                crypto_tls_cipher_bio_get_snapshot(eng->bio, &snap)
+                    == CRYPTO_TLS_OK;
+        }
+        fprintf(stderr,
+          "CNET_CRYPTO_TEST_DIAG phase=%s server=%d handshake=%d"
+          " tls_write_pending=%d write_offset=%zu write_total=%zu"
+          " cipher_in=%zu cipher_out=%zu snapshot_ok=%d result=%d count=%zu\n",
+          phase, state != NULL && state->server,
+          state != NULL && state->handshake_complete,
+          eng != NULL && eng->write_source != NULL,
+          eng ? eng->write_offset : 0u, eng ? eng->write_size : 0u,
+          snapshot_ok ? snap.input_pending : 0u,
+          snapshot_ok ? snap.output_pending : 0u,
+          snapshot_ok, result, count);
+    }
+}
+#define CRYPTO_TEST_DIAG(phase, state, result, count) crypto_test_diag((phase), (state), (int)(result), (count))
+#else
+#define CRYPTO_TEST_DIAG(phase, state, result, count) ((void)0)
+#endif
+
 static int crypto_error(crypto_tls_result status)
 {
     /* The additive CipherBIO CAPACITY code is intentionally not in the
@@ -148,6 +192,13 @@ int cnet_crypto_tls_test_server_context(
         CNET_CRYPTO_OWNER_TEST_ONLY, &options);
     if (status != SALTS_OK) return status;
     return new_context(provider, &options, cipher_capacity, out_context);
+}
+
+const char *cnet_crypto_tls_test_context_server_name(
+    const cnet_tls_context *ctx)
+{
+    return ctx != NULL && !ctx->server && ctx->options.hostname != NULL
+        ? ctx->options.hostname : NULL;
 }
 
 void cnet_tls_context_retain(cnet_tls_context *ctx)
@@ -268,6 +319,7 @@ int cnet_tls_handshake(cnet_tls_state *state, bool *out_complete)
     eng->handshake_started = true;
     result = crypto_tls_session_handshake(eng->session);
     if (result == CRYPTO_TLS_OK) {
+        CRYPTO_TEST_DIAG("handshake_complete", state, result, 0u);
         state->handshake_complete = true;
         *out_complete = true;
         return SALTS_OK;
@@ -333,8 +385,12 @@ int cnet_tls_feed_cipher(cnet_tls_state *state, const void *data, size_t size)
     cnet_crypto_state *eng = get_engine(state);
     if (eng == NULL || data == NULL || size == 0u)
         return SALTS_EINVAL;
-    return crypto_error(crypto_tls_cipher_bio_feed_cipher(
-        eng->bio, (const uint8_t *)data, size));
+    {
+        crypto_tls_result result = crypto_tls_cipher_bio_feed_cipher(
+            eng->bio, (const uint8_t *)data, size);
+        CRYPTO_TEST_DIAG("cipher_feed", state, result, size);
+        return crypto_error(result);
+    }
 }
 
 int cnet_tls_take_cipher(cnet_tls_state *state, void *buffer,
@@ -348,6 +404,8 @@ int cnet_tls_take_cipher(cnet_tls_state *state, void *buffer,
         return SALTS_EINVAL;
     result = crypto_tls_cipher_bio_take_cipher(
         eng->bio, (uint8_t *)buffer, capacity, out_size);
+    if (result == CRYPTO_TLS_OK && *out_size != 0u)
+        CRYPTO_TEST_DIAG("cipher_take", state, result, *out_size);
     if (result == CRYPTO_TLS_AGAIN) return SALTS_ENOENT;
     return crypto_error(result);
 }
@@ -361,6 +419,7 @@ int cnet_tls_write(cnet_tls_state *state, const void *data,
     if (eng == NULL || data == NULL || size == 0u) return SALTS_EINVAL;
     if (!state->handshake_complete || state->close_notify_started)
         return SALTS_ENOTCONN;
+    CRYPTO_TEST_DIAG("write_begin", state, 0, size);
     if (eng->write_source == NULL) {
         eng->write_source = (const unsigned char *)data;
         eng->write_size = size;
@@ -374,8 +433,14 @@ int cnet_tls_write(cnet_tls_state *state, const void *data,
         crypto_tls_result result = crypto_tls_session_send(
             eng->session, eng->write_source + eng->write_offset,
             remaining, &accepted);
-        if (result == CRYPTO_TLS_AGAIN) return SALTS_OK;
-        if (result != CRYPTO_TLS_OK) return crypto_error(result);
+        if (result == CRYPTO_TLS_AGAIN) {
+            CRYPTO_TEST_DIAG("write_again", state, result, remaining);
+            return SALTS_OK;
+        }
+        if (result != CRYPTO_TLS_OK) {
+            CRYPTO_TEST_DIAG("write_error", state, result, remaining);
+            return crypto_error(result);
+        }
         if (!accepted || accepted > remaining) return SALTS_EPROTO;
         eng->write_offset += accepted;
     }
@@ -383,6 +448,7 @@ int cnet_tls_write(cnet_tls_state *state, const void *data,
     eng->write_size = 0u;
     eng->write_offset = 0u;
     *out_complete = true;
+    CRYPTO_TEST_DIAG("write_complete", state, 0, size);
     return SALTS_OK;
 }
 
@@ -406,8 +472,32 @@ static int consume_plaintext(cnet_crypto_state *eng, void *data,
 
 static int refill_plaintext(cnet_crypto_state *eng)
 {
+    crypto_tls_cipher_bio_snapshot snapshot = {0};
     size_t received = 0u;
-    crypto_tls_result result = crypto_tls_session_receive(
+    crypto_tls_result result;
+
+    /* A CNet Owner no-demand probe is NOT permission to begin a new
+     * underlying GmSSL receive when the input BIO has zero ciphertext.
+     * GmSSL TLS1.2 forbids starting a send while its recv_state is pending.
+     * Entering recv on an empty ring would leave that state waiting for
+     * input from a peer that is itself waiting for our application send.
+     *
+     * Private plaintext scratch is >= 17KiB, exceeding one complete TLS
+     * application record's 16KiB plaintext budget. A previous successful
+     * refill consumes that complete record into eng->plaintext before any
+     * no-input return here, so this guard does not discard plaintext.
+     * If a partial TLS ciphertext record was already consumed internally,
+     * the next NativeIO receive completion will add input and re-drive it.
+     */
+    snapshot.struct_size = (uint32_t)sizeof(snapshot);
+    if (crypto_tls_cipher_bio_get_snapshot(eng->bio, &snapshot)
+        != CRYPTO_TLS_OK || snapshot.input_pending > snapshot.capacity)
+        return SALTS_EPROTO;
+    if (snapshot.input_pending == 0u) {
+        CRYPTO_TEST_DIAG("probe_no_cipher", NULL, CRYPTO_TLS_AGAIN, 0u);
+        return SALTS_ENOENT;
+    }
+    result = crypto_tls_session_receive(
         eng->session, eng->plaintext, eng->plaintext_capacity, &received);
     if (result == CRYPTO_TLS_AGAIN) return SALTS_ENOENT;
     /* Crypto TLS's CLOSED may mean raw transport closure; it is not
@@ -468,18 +558,67 @@ int cnet_tls_probe_peer_close(cnet_tls_state *state, bool *out_peer_closed,
 int cnet_tls_shutdown(cnet_tls_state *state, bool *out_notify_generated)
 {
     cnet_crypto_state *eng = get_engine(state);
+    crypto_tls_cipher_bio_snapshot before = {0}, after = {0};
     crypto_tls_result result;
     if (out_notify_generated == NULL) return SALTS_EINVAL;
-    *out_notify_generated = false;
+    *out_notify_generated = state != NULL && state->close_notify_started;
     if (eng == NULL) return SALTS_EINVAL;
     if (!state->handshake_complete) return SALTS_ENOTCONN;
     if (eng->write_source != NULL) return SALTS_EBUSY;
+
+    /* CNet's close contract is "close_notify ciphertext was generated",
+     * NOT "GmSSL has received the peer close_notify". The backend can
+     * successfully enqueue the complete outbound alert and then return
+     * CRYPTO_TLS_AGAIN while awaiting the peer's reciprocal alert.
+     *
+     * Once queued, the CNet Owner holds the exact ciphertext via NativeIO
+     * until a real matching write terminal, then finalizes the session.
+     * The sticky flag prevents a second tls_shutdown from waiting for a
+     * peer alert after that write has completed.
+     */
+    if (state->close_notify_started) {
+        CRYPTO_TEST_DIAG("shutdown_sticky", state, 0, 1u);
+        return SALTS_OK;
+    }
+
+    before.struct_size = (uint32_t)sizeof(before);
+    if (crypto_tls_cipher_bio_get_snapshot(eng->bio, &before) != CRYPTO_TLS_OK
+        || before.output_pending > before.capacity)
+        return SALTS_EPROTO;
+    if (before.output_pending != 0u) {
+        /* Drain pre-existing application ciphertext FIRST. Otherwise a
+         * partially admitted close_notify could masquerade as a complete
+         * fatal/close Alert when the bounded BIO has little free space.
+         */
+        CRYPTO_TEST_DIAG("shutdown_drain_prior_cipher", state, 0,
+                         before.output_pending);
+        return SALTS_OK;
+    }
+
+    CRYPTO_TEST_DIAG("shutdown_begin", state, 0, 0u);
     result = crypto_tls_session_shutdown(eng->session);
-    if (result == CRYPTO_TLS_AGAIN) return SALTS_OK;
-    if (result != CRYPTO_TLS_OK) return crypto_error(result);
-    state->close_notify_started = true;
-    *out_notify_generated = true;
-    return SALTS_OK;
+    after.struct_size = (uint32_t)sizeof(after);
+    if (crypto_tls_cipher_bio_get_snapshot(eng->bio, &after) != CRYPTO_TLS_OK
+        || after.output_pending > after.capacity)
+        return SALTS_EPROTO;
+    /* A genuine TLS close_notify record was enqueued into the EMPTY,
+     * >=17 KiB output BIO. We never infer authenticated peer closure
+     * from TCP EOF or from CRYPTO_TLS_CLOSED.
+     */
+    if (after.output_pending > before.output_pending)
+        state->close_notify_started = true;
+    *out_notify_generated = state->close_notify_started;
+    CRYPTO_TEST_DIAG("shutdown_result", state, result,
+                     after.output_pending);
+
+    if (result == CRYPTO_TLS_AGAIN)
+        return SALTS_OK; /* alert is queued; peer's alert may be pending */
+    if (result == CRYPTO_TLS_OK && state->close_notify_started)
+        return SALTS_OK;
+    /* Do not report successful terminal close if the backend generated
+     * no TLS alert, even if its internal shutdown says "complete".
+     */
+    return result == CRYPTO_TLS_OK ? SALTS_EPROTO : crypto_error(result);
 }
 
 int cnet_crypto_tls_test_transport_eof(cnet_tls_state *state)

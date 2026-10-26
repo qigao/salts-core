@@ -8,6 +8,9 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(CNET_CRYPTO_QUALIFICATION_TRACE)
+#include <stdio.h>
+#endif
 
 #if defined(_WIN32)
   #include <winsock2.h>
@@ -61,6 +64,30 @@ typedef struct cnet_owner_session {
   bool preserve_send_on_eof;
   cmeta_deadline_id connect_deadline;
 } cnet_owner_session;
+
+#if defined(CNET_CRYPTO_QUALIFICATION_TRACE)
+/* Exactly one CNet Owner thread drives this candidate-only DSO. Bounded
+ * numeric lifecycle metadata only; no TLS record, plaintext, cert or keys.
+ */
+static unsigned cnet_crypto_owner_trace_count = 0u;
+static void cnet_crypto_owner_close_diag(
+    const char *phase, const cnet_owner_session *session,
+    int result, size_t amount)
+{
+    if (!session || cnet_crypto_owner_trace_count++ >= 100u) return;
+    fprintf(stderr,
+        "CNET_CRYPTO_OWNER_CLOSE phase=%s closed=%d read_active=%d"
+        " write_active=%d shutdown_after_flush=%d active_requests=%zu"
+        " count=%zu status=%d\n",
+        phase, session->close_requested, session->read_active,
+        session->write_active, session->tls_shutdown_after_flush,
+        session->active_requests, amount, result);
+}
+#define CRYPTO_OWNER_CLOSE_DIAG(phase, session, result, count) \
+    cnet_crypto_owner_close_diag((phase), (session), (result), (count))
+#else
+#define CRYPTO_OWNER_CLOSE_DIAG(phase, session, result, count) ((void)0)
+#endif
 
 typedef struct cnet_owner_request {
   cnet_owner_impl *owner;
@@ -1119,6 +1146,8 @@ static int cnet_owner_tls_start_write(cnet_owner_impl *impl, cnet_owner_session 
                                     .length = size};
   status = cnet_owner_start_request(impl, session, NULL, NULL, CNET_OWNER_REQUEST_TLS_WRITE, &operation,
                                     false, false);
+  if (session->close_requested)
+    CRYPTO_OWNER_CLOSE_DIAG("send_submit", session, status, size);
   if (status == SALTS_OK) {
 #if defined(CNET_INTERNAL_PROFILING)
     if (impl->profile_active) {
@@ -1452,13 +1481,17 @@ static int cnet_owner_tls_pump_impl(cnet_owner_impl *impl, cnet_owner_session *s
 
   if (session->close_requested && !cnet_write_handle_valid(session->tls_send_write.handle)) {
     bool notify_generated = false;
+    CRYPTO_OWNER_CLOSE_DIAG("shutdown_before", session, 0, 0u);
     status = cnet_tls_shutdown(&session->tls, &notify_generated);
+    CRYPTO_OWNER_CLOSE_DIAG("shutdown_after", session, status, (size_t)notify_generated);
     if (status != SALTS_OK) return status;
     if (notify_generated) session->tls_shutdown_after_flush = true;
     status = cnet_owner_tls_start_write(impl, session, &started);
     if (status != SALTS_OK) return status;
-    if (session->tls_shutdown_after_flush && !session->write_active && !started)
+    if (session->tls_shutdown_after_flush && !session->write_active && !started) {
+      CRYPTO_OWNER_CLOSE_DIAG("finalize", session, 0, 0u);
       return cnet_owner_finalize_session(impl, session);
+    }
   }
   return SALTS_OK;
 }
@@ -2016,6 +2049,9 @@ static int cnet_owner_complete(cnet_owner_impl *impl, cnet_owner_request *reques
   }
 
   if (role == CNET_OWNER_REQUEST_TLS_READ) {
+    if (session->close_requested)
+      CRYPTO_OWNER_CLOSE_DIAG(
+          "read_terminal", session, completion->kind, completion->bytes);
     if (completion->kind == NATIVE_IO_COMPLETION_OK) {
       if (completion->bytes == 0u || completion->bytes > cnet_tls_state_io_buffer_bytes(&session->tls))
         return cnet_owner_fail_session(impl, session, SALTS_EIO, request_stage);
@@ -2053,6 +2089,9 @@ static int cnet_owner_complete(cnet_owner_impl *impl, cnet_owner_request *reques
   }
 
   if (role == CNET_OWNER_REQUEST_TLS_WRITE) {
+    if (session->close_requested)
+      CRYPTO_OWNER_CLOSE_DIAG(
+          "write_terminal", session, completion->kind, completion->bytes);
     if (completion->kind == NATIVE_IO_COMPLETION_OK) {
       status = cnet_owner_tls_pump(impl, session);
       if (status == SALTS_OK && session->occupied && !session->close_requested &&

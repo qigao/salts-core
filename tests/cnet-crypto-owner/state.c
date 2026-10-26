@@ -173,6 +173,20 @@ static int run_one(crypto_tls_provider *provider, uint32_t protocol)
      * bytes into private bounded engine storage but MUST retain them
      * until the application's CNet read consumes their exact prefix.
      */
+    /* Regression for real original CNet Owner M3.9: after handshake,
+     * polling a connection with no inbound ciphertext must NOT put the
+     * private GmSSL backend into a pending read that prevents the
+     * first application send. The original CNet idle owner does exactly
+     * this no-demand peer-close probe before a queued application write.
+     */
+    {
+        bool no_data_closed = true, no_data_pending = true;
+        CHECK(cnet_tls_cipher_input_capacity(&client) == capacity);
+        CHECK(cnet_tls_probe_peer_close(
+            &client, &no_data_closed, &no_data_pending) == SALTS_OK);
+        CHECK(!no_data_closed && !no_data_pending);
+    }
+
     for (steps = 0u; steps < MAX_STEPS; ++steps) {
         bool closed = false, pending = false, written = false;
         if (delivered != sizeof(payload)) {
@@ -217,6 +231,29 @@ static int run_one(crypto_tls_provider *provider, uint32_t protocol)
         if (client_shutdown && server_shutdown) break;
     }
     CHECK(client_shutdown && server_shutdown && moved > 0u);
+
+    /* Shutdown is successful once the complete TLS close_notify has
+     * entered the bounded outbound BIO; Crypto itself can report AGAIN
+     * because the peer's own notify has not yet arrived. A second CNet
+     * shutdown call MUST preserve the already generated flag and MUST
+     * NOT enqueue a duplicate encrypted alert (CNet Owner finalizes
+     * only after the matching NativeIO write terminal).
+     */
+    {
+        bool repeated_client = false, repeated_server = false;
+        unsigned char unexpected_cipher[128] = {0};
+        size_t unexpected_count = SIZE_MAX;
+        CHECK(cnet_tls_shutdown(&client, &repeated_client) == SALTS_OK);
+        CHECK(cnet_tls_shutdown(&server, &repeated_server) == SALTS_OK);
+        CHECK(repeated_client && repeated_server);
+        CHECK(cnet_tls_take_cipher(
+            &client, unexpected_cipher, sizeof(unexpected_cipher),
+            &unexpected_count) == SALTS_ENOENT && unexpected_count == 0u);
+        unexpected_count = SIZE_MAX;
+        CHECK(cnet_tls_take_cipher(
+            &server, unexpected_cipher, sizeof(unexpected_cipher),
+            &unexpected_count) == SALTS_ENOENT && unexpected_count == 0u);
+    }
 
     /* A CNet boolean peer_close_notify cannot be honestly synthesized
      * from Crypto CLOSED: no separate authenticated-shutdown inquiry.
