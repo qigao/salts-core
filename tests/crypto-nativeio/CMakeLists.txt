@@ -82,10 +82,9 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     -Wall -Wextra -Werror)
 endif()
 if(WIN32)
-  # An overlapped WSASend may not produce a positive short completion:
-  # demand kernel backpressure while send backing is retained, then
-  # require actual IOCP terminal and exact byte-for-byte peer delivery.
-  set(_tcp_send_test cnet.crypto_nativeio_iocp_backpressure_send)
+  # IOCP may report full completion before peer reads, or remain pending:
+  # require matching terminal ownership and exact byte-for-byte delivery.
+  set(_tcp_send_test cnet.crypto_nativeio_iocp_retained_tcp_send)
 else()
   # POSIX must still report at least one positive short-send terminal.
   set(_tcp_send_test cnet.crypto_nativeio_real_partial_tcp_send)
