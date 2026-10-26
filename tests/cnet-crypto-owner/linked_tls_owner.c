@@ -155,7 +155,7 @@ static int run_protocol(uint32_t protocol)
     unsigned char client_binding[CNET_TLS_CHANNEL_BINDING_BYTES] = {0};
     unsigned char server_binding[CNET_TLS_CHANNEL_BINDING_BYTES] = {0};
     uint16_t port = 0u;
-    size_t name_size = 0u, events = 0u;
+    size_t name_size = 0u;
     uint64_t deadline;
     int listener_live = 0, dialer_live = 0, acceptor_live = 0;
     int rc = 1, listener_ready = 0, poll_rc, status;
