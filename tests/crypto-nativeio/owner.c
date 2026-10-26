@@ -6,7 +6,9 @@
  *
  * The production CNet TLS backend is deliberately UNCHANGED.
  */
+#if !defined(_WIN32)
 #define _POSIX_C_SOURCE 200809L
+#endif
 #include <salts/native_io.h>
 #include <salts/error_codes.h>
 #include <cmeta_buffer.h>
@@ -14,19 +16,16 @@
 #include <crypto/tls_ext.h>
 #include <crypto/cipher_bio.h>
 
-#include <arpa/inet.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <signal.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#if !defined(_WIN32)
+#include <signal.h>
+#endif
+#include "native_tcp_compat.h"
 
 #ifndef SDK_CA_FILE
 #error SDK_CA_FILE required
@@ -48,7 +47,7 @@ enum {
 
 typedef struct io_peer {
     native_io_endpoint endpoint;
-    int socket_fd;
+    native_tcp_socket socket_fd;
     crypto_tls_cipher_bio *bio;
     crypto_tls_session *session;
     crypto_tls_io callbacks;
@@ -86,54 +85,15 @@ typedef struct io_owner {
 
 static native_io_backend_kind selected_backend(void)
 {
-#if defined(__linux__)
+#if defined(_WIN32)
+    return NATIVE_IO_BACKEND_IOCP;
+#elif defined(__linux__)
     return NATIVE_IO_BACKEND_EPOLL;
 #elif defined(__APPLE__)
     return NATIVE_IO_BACKEND_KQUEUE;
 #else
-#error This first real NativeIO ciphertext handoff gate is POSIX Linux/macOS
+#error This NativeIO ciphertext handoff gate requires Windows IOCP or POSIX epoll/kqueue
 #endif
-}
-
-static int set_nonblocking(int fd)
-{
-    const int flags = fcntl(fd, F_GETFL, 0);
-    if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) != 0) return -1;
-    return 0;
-}
-
-/* Actual loopback TCP sockets. No fake completion queue or socketpair alias. */
-static int make_connected_tcp(int *out_client, int *out_server)
-{
-    struct sockaddr_in address;
-    socklen_t address_len = (socklen_t)sizeof(address);
-    int listener = -1, client = -1, server = -1;
-    memset(&address, 0, sizeof(address));
-    *out_client = *out_server = -1;
-    listener = socket(AF_INET, SOCK_STREAM, 0);
-    if (listener < 0) goto fail;
-    address.sin_family = AF_INET;
-    address.sin_port = 0;
-    if (inet_pton(AF_INET, "127.0.0.1", &address.sin_addr) != 1
-        || bind(listener, (struct sockaddr *)&address, sizeof(address)) != 0
-        || getsockname(listener, (struct sockaddr *)&address,
-                       &address_len) != 0
-        || listen(listener, 2) != 0) goto fail;
-    client = socket(AF_INET, SOCK_STREAM, 0);
-    if (client < 0 || connect(client, (struct sockaddr *)&address,
-                              sizeof(address)) != 0) goto fail;
-    server = accept(listener, NULL, NULL);
-    if (server < 0 || set_nonblocking(client) != 0
-        || set_nonblocking(server) != 0) goto fail;
-    close(listener);
-    *out_client = client;
-    *out_server = server;
-    return 0;
-fail:
-    if (server >= 0) close(server);
-    if (client >= 0) close(client);
-    if (listener >= 0) close(listener);
-    return -1;
 }
 
 static int observe_completions(io_owner *owner, uint32_t timeout)
@@ -350,17 +310,27 @@ static int run_tls_nativeio(uint32_t protocol)
     size_t received = 0u, total_cipher = 0u, i, got;
     bool sent = false, ready = false, shutdown_done[2] = {false,false};
     crypto_tls_result status;
-    int rc = 1, sockets[2] = {-1, -1}, remaining = 0;
+    native_tcp_socket sockets[2] = {NATIVE_TCP_INVALID_SOCKET, NATIVE_TCP_INVALID_SOCKET};
+    int rc = 1, remaining = 0;
 
+#if !defined(_WIN32)
     (void)signal(SIGPIPE, SIG_IGN);
+#endif
     owner.config = (native_io_backend_config){
         selected_backend(), 2u, 8u, COMPLETION_CAPACITY
     };
-    for (i = 0u; i < 2u; ++i) owner.peers[i].socket_fd = -1;
-    CHECK(make_connected_tcp(&sockets[0], &sockets[1]) == 0);
+    for (i = 0u; i < 2u; ++i)
+        owner.peers[i].socket_fd = NATIVE_TCP_INVALID_SOCKET;
+    CHECK(native_tcp_connect_pair(&sockets[0], &sockets[1]) == 0);
     owner.peers[0].socket_fd = sockets[0];
     owner.peers[1].socket_fd = sockets[1];
     CHECK(native_io_backend_kind_supported(owner.config.kind)
+          && native_io_backend_kind_model(owner.config.kind) ==
+#if defined(_WIN32)
+              NATIVE_IO_MODEL_COMPLETION
+#else
+              NATIVE_IO_MODEL_READINESS
+#endif
           && native_io_backend_init(&owner.backend, &owner.config) == SALTS_OK);
     owner.backend_initialized = true;
     for (i = 0u; i < 2u; ++i) {
@@ -515,9 +485,9 @@ cleanup:
     if (owner.backend_initialized) {
         for (i = 0u; i < 2u; ++i) {
             io_peer *peer = &owner.peers[i];
-            if (peer->socket_fd >= 0) {
-                (void)close(peer->socket_fd);
-                peer->socket_fd = -1;
+            if (peer->socket_fd != NATIVE_TCP_INVALID_SOCKET) {
+                native_tcp_close(peer->socket_fd);
+                peer->socket_fd = NATIVE_TCP_INVALID_SOCKET;
             }
             if (native_io_endpoint_valid(peer->endpoint) &&
                 native_io_backend_release_socket(
@@ -528,8 +498,8 @@ cleanup:
             rc = 1;
     } else {
         for (i = 0u; i < 2u; ++i)
-            if (owner.peers[i].socket_fd >= 0)
-                (void)close(owner.peers[i].socket_fd);
+            if (owner.peers[i].socket_fd != NATIVE_TCP_INVALID_SOCKET)
+                native_tcp_close(owner.peers[i].socket_fd);
     }
     if (rc) {
         fprintf(stderr, "Crypto NativeIO real TLS %u failed; "
@@ -548,9 +518,14 @@ cleanup:
 
 int main(void)
 {
+    int rc = 0;
+    if (native_tcp_startup() != 0) return 4;
     if (crypto_tls_abi_version() != CRYPTO_TLS_ABI_VERSION)
-        return 3;
-    if (run_tls_nativeio(CRYPTO_TLS_1_2) != 0) return 1;
-    if (run_tls_nativeio(CRYPTO_TLS_1_3) != 0) return 2;
-    return 0;
+        rc = 3;
+    else if (run_tls_nativeio(CRYPTO_TLS_1_2) != 0)
+        rc = 1;
+    else if (run_tls_nativeio(CRYPTO_TLS_1_3) != 0)
+        rc = 2;
+    native_tcp_shutdown();
+    return rc;
 }
