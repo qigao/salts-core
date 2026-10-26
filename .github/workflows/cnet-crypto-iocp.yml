@@ -129,8 +129,14 @@ jobs:
             $imports = (& $dumpbin.FullName /DEPENDENTS $bin | Out-String)
             if ($LASTEXITCODE -ne 0) { throw "dumpbin failed: $bin" }
             $imports | Add-Content $out
-            if ($imports -match '(?i)(^|[^a-z])(?:lib)?gmssl[.]dll|crypto_provider[.]dll|salts[.]dll') {
+            if ($imports -match '(?i)(^|[^a-z])(?:lib)?gmssl[.]dll|crypto_provider[.]dll|salts[.]dll|saltscore_cnet-.*[.]dll') {
               throw "Unexpected second GmSSL / legacy Salts provider: $bin"
+            }
+          }
+          $policyImports = & $dumpbin.FullName /DEPENDENTS $files[2] | Out-String
+          foreach ($dependency in @('crypto_tls[.]dll', 'saltscore_core-.*[.]dll')) {
+            if ($policyImports -notmatch "(?i)$dependency") {
+              throw "CNet policy test did not physically import required shared DLL: $dependency"
             }
           }
           $mainImports = & $dumpbin.FullName /DEPENDENTS $files[0] | Out-String
