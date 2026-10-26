@@ -28,3 +28,9 @@ endif()
 
 option(SALTSCORE_NATIVE_CPP_CONFORMANCE
   "Compile original native C++17 source contract against standalone Core" OFF)
+
+# Native OS filesystem syscalls, secure retained root handles and bounded IO.
+option(SALTSCORE_BUILD_FS "Build canonical standalone C11 FS owner" OFF)
+if(SALTSCORE_BUILD_FS)
+  add_subdirectory(fs)
+endif()
