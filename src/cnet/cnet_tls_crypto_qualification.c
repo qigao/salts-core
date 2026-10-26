@@ -150,6 +150,13 @@ int cnet_crypto_tls_test_server_context(
     return new_context(provider, &options, cipher_capacity, out_context);
 }
 
+const char *cnet_crypto_tls_test_context_server_name(
+    const cnet_tls_context *ctx)
+{
+    return ctx != NULL && !ctx->server && ctx->options.hostname != NULL
+        ? ctx->options.hostname : NULL;
+}
+
 void cnet_tls_context_retain(cnet_tls_context *ctx)
 {
     if (ctx != NULL)
