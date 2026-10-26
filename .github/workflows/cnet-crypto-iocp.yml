@@ -88,6 +88,21 @@ jobs:
           test "$(ctest --test-dir build-iocp -C Release -N | sed -n 's/^Total Tests: //p')" = 4
           export PATH="$sdk/bin:$PATH"
           ctest --test-dir build-iocp -C Release --no-tests=error             --output-on-failure --timeout 150 --repeat until-fail:3
+      - name: Prove CNet public TLS feature-policy refusal under installed Windows Crypto
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$GITHUB_WORKSPACE/_m35-installed"
+          cmake -S tests/cnet-crypto-owner -B build-cnet-policy \
+            -G 'Visual Studio 18 2026' -A x64 "-DCMAKE_PREFIX_PATH=$sdk"
+          cmake --build build-cnet-policy --config Release --parallel 2
+          test -s build-cnet-policy/Release/cnet_crypto_owner_admission.exe
+          test "$(ctest --test-dir build-cnet-policy -C Release -N |
+            sed -n 's/^Total Tests: //p')" = 1
+          export PATH="$sdk/bin:$PATH"
+          ctest --test-dir build-cnet-policy -C Release --no-tests=error \
+            --output-on-failure --timeout 60 --repeat until-fail:3
+          test ! -e "$sdk/include/cnet/cnet.h"
       - name: Audit Windows PE imports and one physical Crypto/Core runtime
         shell: pwsh
         run: |
@@ -96,6 +111,7 @@ jobs:
           $files = @(
             (Join-Path $env:GITHUB_WORKSPACE 'build-iocp/Release/saltscore_crypto_nativeio_real_tcp_tls.exe'),
             (Join-Path $env:GITHUB_WORKSPACE 'build-iocp/Release/saltscore_crypto_nativeio_installed_cpp17.exe'),
+            (Join-Path $env:GITHUB_WORKSPACE 'build-cnet-policy/Release/cnet_crypto_owner_admission.exe'),
             (Join-Path $prefix 'bin/crypto_tls.dll')
           )
           $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
@@ -113,8 +129,14 @@ jobs:
             $imports = (& $dumpbin.FullName /DEPENDENTS $bin | Out-String)
             if ($LASTEXITCODE -ne 0) { throw "dumpbin failed: $bin" }
             $imports | Add-Content $out
-            if ($imports -match '(?i)(^|[^a-z])(?:lib)?gmssl[.]dll|crypto_provider[.]dll|salts[.]dll') {
+            if ($imports -match '(?i)(^|[^a-z])(?:lib)?gmssl[.]dll|crypto_provider[.]dll|salts[.]dll|saltscore_cnet-.*[.]dll') {
               throw "Unexpected second GmSSL / legacy Salts provider: $bin"
+            }
+          }
+          $policyImports = & $dumpbin.FullName /DEPENDENTS $files[2] | Out-String
+          foreach ($dependency in @('crypto_tls[.]dll', 'saltscore_core-.*[.]dll')) {
+            if ($policyImports -notmatch "(?i)$dependency") {
+              throw "CNet policy test did not physically import required shared DLL: $dependency"
             }
           }
           $mainImports = & $dumpbin.FullName /DEPENDENTS $files[0] | Out-String
@@ -138,6 +160,7 @@ jobs:
             ${{ runner.temp }}/m35-gmssl-receipt.json
             ${{ runner.temp }}/m35-iocp-pe-dependents.txt
             build-iocp/Testing/Temporary/LastTest.log
+            build-cnet-policy/Testing/Temporary/LastTest.log
             build-iocp/CMakeCache.txt
             build-core/CMakeCache.txt
             build-crypto/CMakeCache.txt

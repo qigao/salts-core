@@ -45,7 +45,19 @@ endforeach()
 # Forward-slash paths work with Win32 CRT, GmSSL, and POSIX alike.
 file(TO_CMAKE_PATH "${CRYPTO_TEST_FIXTURES}" _native_fixture_path)
 
-add_executable(saltscore_crypto_nativeio_real_tcp_tls owner.c)
+# This is a source-level CNet policy seam only: stage exact public
+# CNet TLS structs from the checked-out HEAD without linking the legacy
+# saltscore_cnet/GmSSL DSO or installing a second native owner.
+get_filename_component(_cnet_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/cnet-private/cnet")
+configure_file("${_cnet_root}/include/cnet/cnet.h"
+  "${CMAKE_CURRENT_BINARY_DIR}/cnet-private/cnet/cnet.h" COPYONLY)
+
+add_executable(saltscore_crypto_nativeio_real_tcp_tls
+  owner.c "${_cnet_root}/src/cnet/cnet_crypto_owner_admission.c")
+target_include_directories(saltscore_crypto_nativeio_real_tcp_tls PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}/cnet-private"
+  "${_cnet_root}/src/cnet")
 set_target_properties(saltscore_crypto_nativeio_real_tcp_tls PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
 target_link_libraries(saltscore_crypto_nativeio_real_tcp_tls PRIVATE
