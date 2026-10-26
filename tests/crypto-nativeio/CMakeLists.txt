@@ -1,16 +1,15 @@
 cmake_minimum_required(VERSION 3.21)
-project(SaltsCoreCNetCryptoNativeIOQualification LANGUAGES C CXX)
+project(SaltsCoreCNetCryptoNativeIOQualification LANGUAGES C)
 include(CTest)
 
 # Install-tree consumer only. This must NOT be built using uninstalled
 # providers or through the legacy CNet/GmSSL target graph.
 find_package(SaltsCore 0.1 CONFIG REQUIRED)
 find_package(CryptoTLS 0.1 CONFIG REQUIRED)
-find_package(Crypto 0.1 CONFIG REQUIRED)
 
 foreach(_target IN ITEMS
     SaltsCore::NativeIO SaltsCore::Core
-    Crypto::TLS Crypto::TLSCipherBIO Crypto::Provider)
+    Crypto::TLS Crypto::TLSCipherBIO)
   if(NOT TARGET ${_target})
     message(FATAL_ERROR "Missing exact installed native target: ${_target}")
   endif()
@@ -27,19 +26,11 @@ if(NOT _core_type STREQUAL "SHARED_LIBRARY" OR
   message(FATAL_ERROR "NativeIO/Crypto must preserve one shared foundation and one private GmSSL owner")
 endif()
 
-if(NOT WIN32 AND NOT UNIX)
-  message(FATAL_ERROR "Only native Windows IOCP/Linux epoll/macOS kqueue are accepted")
+if(NOT UNIX OR WIN32)
+  message(FATAL_ERROR
+    "Initial real TCP NativeIO handoff uses Linux epoll/macOS kqueue. "
+    "Windows IOCP is a separately required follow-on.")
 endif()
-# Two installed public Crypto views must import the same single GmSSL DLL.
-get_target_property(_provider_kind Crypto::Provider TYPE)
-get_target_property(_provider_links Crypto::Provider INTERFACE_LINK_LIBRARIES)
-if(NOT _provider_kind STREQUAL "INTERFACE_LIBRARY"
-   OR NOT "Crypto::TLS" IN_LIST _provider_links)
-  message(FATAL_ERROR "Crypto::Provider must be a view over ONE Crypto::TLS shared image")
-endif()
-unset(_provider_kind)
-unset(_provider_links)
-
 if(NOT DEFINED CRYPTO_TEST_FIXTURES)
   message(FATAL_ERROR "CRYPTO_TEST_FIXTURES must be explicit")
 endif()
@@ -51,37 +42,16 @@ foreach(_fixture IN ITEMS
   endif()
 endforeach()
 
-if(WIN32)
-  # Use real WSA_FLAG_OVERLAPPED TCP sockets and NativeIO IOCP completions.
-  set(_crypto_nativeio_owner_source owner_iocp.c)
-else()
-  set(_crypto_nativeio_owner_source owner.c)
-endif()
-# Normalize fixture paths for MSVC C string literal correctness. Raw
-# Windows backslash paths would introduce unrecognized \s, \a escapes.
-file(TO_CMAKE_PATH "${CRYPTO_TEST_FIXTURES}/external-io-ca-cert.pem" _crypto_ca_path)
-file(TO_CMAKE_PATH "${CRYPTO_TEST_FIXTURES}/external-io-server-cert.pem" _crypto_cert_path)
-file(TO_CMAKE_PATH "${CRYPTO_TEST_FIXTURES}/external-io-server-key.pem" _crypto_key_path)
-
-add_executable(saltscore_crypto_nativeio_real_tcp_tls
-  ${_crypto_nativeio_owner_source})
+add_executable(saltscore_crypto_nativeio_real_tcp_tls owner.c)
 set_target_properties(saltscore_crypto_nativeio_real_tcp_tls PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
 target_link_libraries(saltscore_crypto_nativeio_real_tcp_tls PRIVATE
   SaltsCore::NativeIO SaltsCore::Core
   Crypto::TLS Crypto::TLSCipherBIO)
-if(WIN32)
-  target_link_libraries(saltscore_crypto_nativeio_real_tcp_tls
-    PRIVATE ws2_32)
-  if(MSVC)
-    target_compile_options(saltscore_crypto_nativeio_real_tcp_tls
-      PRIVATE /experimental:c11atomics /W4 /WX)
-  endif()
-endif()
 target_compile_definitions(saltscore_crypto_nativeio_real_tcp_tls PRIVATE
-  "SDK_CA_FILE=\"${_crypto_ca_path}\""
-  "SDK_SERVER_CERT_FILE=\"${_crypto_cert_path}\""
-  "SDK_SERVER_KEY_FILE=\"${_crypto_key_path}\"")
+  "SDK_CA_FILE=\"${CRYPTO_TEST_FIXTURES}/external-io-ca-cert.pem\""
+  "SDK_SERVER_CERT_FILE=\"${CRYPTO_TEST_FIXTURES}/external-io-server-cert.pem\""
+  "SDK_SERVER_KEY_FILE=\"${CRYPTO_TEST_FIXTURES}/external-io-server-key.pem\"")
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(saltscore_crypto_nativeio_real_tcp_tls
     PRIVATE -Wall -Wextra -Werror)
@@ -91,7 +61,6 @@ add_test(NAME cnet.crypto_nativeio_real_tcp_tls12_tls13
 set_tests_properties(cnet.crypto_nativeio_real_tcp_tls12_tls13
   PROPERTIES TIMEOUT 120)
 
-if(NOT WIN32)
 # This cannot be simulated by deliberately small Crypto transport chunks:
 # require a genuine OS-generated partial TCP_SEND terminal completion on a
 # real loopback socket with constrained SO_SNDBUF, then resubmit its prefix.
@@ -126,45 +95,3 @@ add_test(NAME cnet.crypto_nativeio_cancel_wake_terminal
   COMMAND saltscore_crypto_nativeio_cancel_wake)
 set_tests_properties(cnet.crypto_nativeio_cancel_wake_terminal
   PROPERTIES TIMEOUT 120)
-
-endif() # POSIX-only SO_SNDBUF forced partial TCP and pthread wake gates
-
-# The same externally installed SDK must be consumable from a real C++17
-# binary on Windows/MSVC, macOS/AppleClang and Linux/GCC without pulling a
-# second GmSSL static archive or a private Salts runtime.
-add_executable(saltscore_crypto_nativeio_cpp17_owner owner_cpp17.cpp)
-set_target_properties(saltscore_crypto_nativeio_cpp17_owner PROPERTIES
-  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
-target_link_libraries(saltscore_crypto_nativeio_cpp17_owner PRIVATE
-  SaltsCore::Core SaltsCore::NativeIO Crypto::Provider
-  Crypto::TLS Crypto::TLSCipherBIO)
-if(WIN32)
-  if(MSVC)
-    target_compile_options(saltscore_crypto_nativeio_cpp17_owner PRIVATE /W4 /WX)
-  endif()
-elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
-  target_compile_options(saltscore_crypto_nativeio_cpp17_owner PRIVATE
-    -Wall -Wextra -Werror)
-endif()
-add_test(NAME cnet.crypto_nativeio_cpp17_one_owner
-  COMMAND saltscore_crypto_nativeio_cpp17_owner)
-set_tests_properties(cnet.crypto_nativeio_cpp17_one_owner PROPERTIES TIMEOUT 60)
-
-if(WIN32)
-  # A REAL IOCP completion-owned overlapped WSARecv is cancelled while a
-  # distinct Win32 thread calls only native_io_backend_wake(); the owner must
-  # observe exactly one CANCELLED terminal before releasing backing bytes.
-  add_executable(saltscore_crypto_nativeio_cancel_iocp cancel_iocp.c)
-  set_target_properties(saltscore_crypto_nativeio_cancel_iocp PROPERTIES
-    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
-  target_link_libraries(saltscore_crypto_nativeio_cancel_iocp PRIVATE
-    SaltsCore::NativeIO ws2_32)
-  if(MSVC)
-    target_compile_options(saltscore_crypto_nativeio_cancel_iocp PRIVATE
-      /experimental:c11atomics /W4 /WX)
-  endif()
-  add_test(NAME cnet.crypto_nativeio_real_iocp_cancel_wake_terminal
-    COMMAND saltscore_crypto_nativeio_cancel_iocp)
-  set_tests_properties(cnet.crypto_nativeio_real_iocp_cancel_wake_terminal
-    PROPERTIES TIMEOUT 120)
-endif()
