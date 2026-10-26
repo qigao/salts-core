@@ -40,6 +40,12 @@ foreach(_fixture IN ITEMS
   endif()
 endforeach()
 
+# Windows CMake paths may contain backslashes; use stable forward slashes in
+# literal C11 macros so MSVC cannot reinterpret \\s or \\a escape sequences.
+file(TO_CMAKE_PATH "${CRYPTO_TEST_FIXTURES}/external-io-ca-cert.pem" _ca)
+file(TO_CMAKE_PATH "${CRYPTO_TEST_FIXTURES}/external-io-server-cert.pem" _cert)
+file(TO_CMAKE_PATH "${CRYPTO_TEST_FIXTURES}/external-io-server-key.pem" _key)
+
 add_executable(saltscore_crypto_nativeio_real_tcp_tls owner.c)
 set_target_properties(saltscore_crypto_nativeio_real_tcp_tls PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
@@ -58,9 +64,9 @@ if(WIN32)
     COMMAND_EXPAND_LISTS VERBATIM)
 endif()
 target_compile_definitions(saltscore_crypto_nativeio_real_tcp_tls PRIVATE
-  "SDK_CA_FILE=\"${CRYPTO_TEST_FIXTURES}/external-io-ca-cert.pem\""
-  "SDK_SERVER_CERT_FILE=\"${CRYPTO_TEST_FIXTURES}/external-io-server-cert.pem\""
-  "SDK_SERVER_KEY_FILE=\"${CRYPTO_TEST_FIXTURES}/external-io-server-key.pem\"")
+  "SDK_CA_FILE=\"${_ca}\""
+  "SDK_SERVER_CERT_FILE=\"${_cert}\""
+  "SDK_SERVER_KEY_FILE=\"${_key}\"")
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(saltscore_crypto_nativeio_real_tcp_tls
     PRIVATE -Wall -Wextra -Werror)
