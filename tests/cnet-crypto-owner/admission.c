@@ -5,6 +5,7 @@
  */
 #include "cnet_crypto_owner_admission.h"
 #include <salts/error_codes.h>
+#include <salts_core/runtime_abi.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -34,6 +35,11 @@ int main(void)
     const char *const alpn[] = {"h2"};
     char oversized_identity[300];
 
+    /* Force a physical shared SaltsCore Core import in the same process
+     * as the single Crypto::TLS image. Headers-only linkage is not proof.
+     */
+    salts_core_runtime_abi_0_1_required();
+    REQUIRE(salts_core_runtime_abi_version() == SALTS_CORE_RUNTIME_ABI_VERSION);
     REQUIRE(crypto_tls_abi_version() == CRYPTO_TLS_ABI_VERSION);
     client.size = sizeof(client);
     client.ca_file = "explicit-ca.pem";
