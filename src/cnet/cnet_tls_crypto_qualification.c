@@ -472,8 +472,32 @@ static int consume_plaintext(cnet_crypto_state *eng, void *data,
 
 static int refill_plaintext(cnet_crypto_state *eng)
 {
+    crypto_tls_cipher_bio_snapshot snapshot = {0};
     size_t received = 0u;
-    crypto_tls_result result = crypto_tls_session_receive(
+    crypto_tls_result result;
+
+    /* A CNet Owner no-demand probe is NOT permission to begin a new
+     * underlying GmSSL receive when the input BIO has zero ciphertext.
+     * GmSSL TLS1.2 forbids starting a send while its recv_state is pending.
+     * Entering recv on an empty ring would leave that state waiting for
+     * input from a peer that is itself waiting for our application send.
+     *
+     * Private plaintext scratch is >= 17KiB, exceeding one complete TLS
+     * application record's 16KiB plaintext budget. A previous successful
+     * refill consumes that complete record into eng->plaintext before any
+     * no-input return here, so this guard does not discard plaintext.
+     * If a partial TLS ciphertext record was already consumed internally,
+     * the next NativeIO receive completion will add input and re-drive it.
+     */
+    snapshot.struct_size = (uint32_t)sizeof(snapshot);
+    if (crypto_tls_cipher_bio_get_snapshot(eng->bio, &snapshot)
+        != CRYPTO_TLS_OK || snapshot.input_pending > snapshot.capacity)
+        return SALTS_EPROTO;
+    if (snapshot.input_pending == 0u) {
+        CRYPTO_TEST_DIAG("probe_no_cipher", NULL, CRYPTO_TLS_AGAIN, 0u);
+        return SALTS_ENOENT;
+    }
+    result = crypto_tls_session_receive(
         eng->session, eng->plaintext, eng->plaintext_capacity, &received);
     if (result == CRYPTO_TLS_AGAIN) return SALTS_ENOENT;
     /* Crypto TLS's CLOSED may mean raw transport closure; it is not
