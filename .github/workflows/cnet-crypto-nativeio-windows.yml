@@ -123,8 +123,24 @@ jobs:
           if any(p.name.lower().startswith(("gmssl", "crypto_provider"))
                  for p in dll_dir.glob("*.dll")):
               raise SystemExit("Unexpected duplicate native GmSSL Provider DLL in SDK")
-          candidates = sorted(Path("C:/Program Files/Microsoft Visual Studio").glob(
-              "**/VC/Tools/MSVC/*/bin/Hostx64/x64/dumpbin.exe"), reverse=True)
+          # Resolve the actual MSVC installation directly with vswhere,
+          # rather than recursively scanning all of Program Files (slow).
+          vswhere = Path("C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe")
+          if not vswhere.is_file():
+              raise SystemExit("MSVC vswhere.exe unavailable: cannot verify actual linker imports")
+          result = subprocess.run([
+              str(vswhere), "-latest", "-products", "*",
+              "-property", "installationPath"
+          ], check=True, capture_output=True, text=True)
+          installation = Path(result.stdout.strip())
+          if not installation.is_dir():
+              raise SystemExit("vswhere did not resolve a real MSVC installation")
+          candidates = sorted(
+              (installation / "VC" / "Tools" / "MSVC").glob(
+                  "*/bin/Hostx64/x64/dumpbin.exe"
+              ),
+              reverse=True
+          )
           if not candidates:
               raise SystemExit("MSVC dumpbin.exe unavailable: cannot substitute linker assumptions")
           bins = list(Path("build-crypto-iocp").rglob(
