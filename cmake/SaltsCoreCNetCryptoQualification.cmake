@@ -46,6 +46,10 @@ if(SALTSCORE_CNET_BUILD_CRYPTO_TEST_DSO)
       "${CMAKE_CURRENT_SOURCE_DIR}/src/native-io"
       "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/monocypher"
       "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/reed")
+  # These metadata-only counters are enabled in this uninstalled candidate
+  # DSO only. Production SaltsCore::CNet and default ABI have no trace.
+  target_compile_definitions(saltscore_cnet_crypto_qualification
+    PRIVATE CNET_CRYPTO_QUALIFICATION_TRACE=1)
   target_link_libraries(saltscore_cnet_crypto_qualification
     PUBLIC SaltsCore::Core SaltsCore::NativeIO SaltsCore::Concurrency
     PRIVATE
