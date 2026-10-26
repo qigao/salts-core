@@ -238,3 +238,17 @@ set_target_properties(saltscore_portable_concurrency_test PROPERTIES
 target_link_libraries(saltscore_portable_concurrency_test PRIVATE Salts::Platform)
 add_test(NAME saltscore.portable_concurrency COMMAND saltscore_portable_concurrency_test)
 set_tests_properties(saltscore.portable_concurrency PROPERTIES TIMEOUT 45)
+
+# M1: relative monotonic timed wait / sleep, same C ABI across compilers.
+add_executable(saltscore_portable_timing_test test_portable_timing.c)
+target_compile_features(saltscore_portable_timing_test PRIVATE c_std_11)
+target_link_libraries(saltscore_portable_timing_test PRIVATE Salts::Platform)
+add_test(NAME saltscore.portable_timing COMMAND saltscore_portable_timing_test)
+set_tests_properties(saltscore.portable_timing PROPERTIES TIMEOUT 30)
+
+# M1: provider-owned thread-specific keys and destructor lifetime barriers.
+add_executable(saltscore_portable_tss_test test_portable_tss.c)
+target_compile_features(saltscore_portable_tss_test PRIVATE c_std_11)
+target_link_libraries(saltscore_portable_tss_test PRIVATE Salts::Platform)
+add_test(NAME saltscore.portable_tss COMMAND saltscore_portable_tss_test)
+set_tests_properties(saltscore.portable_tss PROPERTIES TIMEOUT 30)

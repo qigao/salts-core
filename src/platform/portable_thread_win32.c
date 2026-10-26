@@ -72,6 +72,11 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_thread_detach(salts_platform_thread 
     return SALTS_OK;
 }
 void SALTS_CORE_PLATFORM_CALL salts_platform_thread_yield(void) { (void)SwitchToThread(); }
+int SALTS_CORE_PLATFORM_CALL salts_platform_thread_sleep_ns(uint64_t duration_ns) {
+    if (duration_ns > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS) return SALTS_EINVAL;
+    Sleep((DWORD)((duration_ns + 999999ull) / 1000000ull));
+    return SALTS_OK;
+}
 int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_create(salts_platform_mutex **out) {
     salts_platform_mutex *m;
     if (!out || *out) return SALTS_EINVAL;
@@ -109,6 +114,16 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_condition_create(salts_platform_cond
 int SALTS_CORE_PLATFORM_CALL salts_platform_condition_wait(salts_platform_condition *c, salts_platform_mutex *m) {
     if (!c || !m) return SALTS_EINVAL;
     return SleepConditionVariableSRW(&c->native, &m->native, INFINITE, 0) ? SALTS_OK : SALTS_EBUSY;
+}
+int SALTS_CORE_PLATFORM_CALL salts_platform_condition_timedwait_ns(
+    salts_platform_condition *c, salts_platform_mutex *m, uint64_t timeout_ns) {
+    DWORD milliseconds;
+    if (!c || !m || timeout_ns > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS)
+        return SALTS_EINVAL;
+    milliseconds = (DWORD)((timeout_ns + 999999ull) / 1000000ull);
+    if (SleepConditionVariableSRW(&c->native, &m->native, milliseconds, 0))
+        return SALTS_OK;
+    return GetLastError() == ERROR_TIMEOUT ? SALTS_ETIMEDOUT : SALTS_EBUSY;
 }
 int SALTS_CORE_PLATFORM_CALL salts_platform_condition_signal(salts_platform_condition *c) {
     if (!c) return SALTS_EINVAL;

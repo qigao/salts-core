@@ -41,7 +41,7 @@ jobs:
           New-Item -ItemType Directory -Force build-portable | Out-Null
           $dll = 'build-portable/salts_portable.dll'
           $exe = 'build-portable/tcc_portable.exe'
-          & $clang.FullName '-std=c11' '-O2' '-shared' '-DSALTS_CORE_PLATFORM_BUILD=1' '-D_WIN32_WINNT=0x0601' '-Iinclude' 'src/platform/portable_atomic.c' 'src/platform/portable_thread_win32.c' 'src/platform/portable_once.c' '-o' $dll
+          & $clang.FullName '-std=c11' '-O2' '-shared' '-DSALTS_CORE_PLATFORM_BUILD=1' '-D_WIN32_WINNT=0x0601' '-Iinclude' 'src/platform/portable_atomic.c' 'src/platform/portable_thread_win32.c' 'src/platform/portable_tss_win32.c' 'src/platform/portable_once.c' '-o' $dll
           if ($LASTEXITCODE -ne 0) { throw 'Portable Platform provider failed to compile/link with llvm-mingw' }
           & $tcc.FullName '-std=c11' '-Iinclude' 'tests/portable_tcc_windows_client.c' '-o' $exe
           if ($LASTEXITCODE -ne 0) { throw 'TinyCC portable consumer compile failed' }
@@ -49,6 +49,13 @@ jobs:
           for ($i=1; $i -le 10; $i++) {
             & (Resolve-Path $exe).Path $provider
             if ($LASTEXITCODE -ne 0) { throw "TinyCC/llvm-mingw Atomic+Thread ABI failed ($i)" }
+          }
+          $tssExe = 'build-portable/tcc_portable_tss.exe'
+          & $tcc.FullName '-std=c11' '-Iinclude' 'tests/portable_tcc_tss_windows.c' '-o' $tssExe
+          if ($LASTEXITCODE -ne 0) { throw 'TinyCC FLS/timed C client did not compile' }
+          for ($i=1; $i -le 10; $i++) {
+            & (Resolve-Path $tssExe).Path $provider
+            if ($LASTEXITCODE -ne 0) { throw "TinyCC x64 timed/TSS callback failed $i" }
           }
           # The same provider source must work for real i686 processes
           # and produce a genuine ARM64 PE for native Windows ARM64 hardware.
@@ -62,11 +69,14 @@ jobs:
             if (-not (Test-Path $ll) -or -not $tt) { throw "Compiler missing for $($pair.suffix)" }
             $d = "build-portable/salts_portable_$($pair.suffix).dll"
             $e = "build-portable/tcc_portable_$($pair.suffix).exe"
-            & $ll '-std=c11' '-O2' '-shared' '-DSALTS_CORE_PLATFORM_BUILD=1' '-D_WIN32_WINNT=0x0601' '-Iinclude' 'src/platform/portable_atomic.c' 'src/platform/portable_thread_win32.c' 'src/platform/portable_once.c' '-o' $d
+            $te = "build-portable/tcc_portable_tss_$($pair.suffix).exe"
+            & $ll '-std=c11' '-O2' '-shared' '-DSALTS_CORE_PLATFORM_BUILD=1' '-D_WIN32_WINNT=0x0601' '-Iinclude' 'src/platform/portable_atomic.c' 'src/platform/portable_thread_win32.c' 'src/platform/portable_tss_win32.c' 'src/platform/portable_once.c' '-o' $d
             if ($LASTEXITCODE -ne 0) { throw "llvm-mingw provider build failed for $($pair.suffix)" }
             & $tt.FullName '-std=c11' '-Iinclude' 'tests/portable_tcc_windows_client.c' '-o' $e
             if ($LASTEXITCODE -ne 0) { throw "TinyCC consumer build failed for $($pair.suffix)" }
-            foreach ($path in @($d,$e)) {
+            & $tt.FullName '-std=c11' '-Iinclude' 'tests/portable_tcc_tss_windows.c' '-o' $te
+            if ($LASTEXITCODE -ne 0) { throw "TinyCC TSS consumer build failed for $($pair.suffix)" }
+            foreach ($path in @($d,$e,$te)) {
               [byte[]]$bytes = [IO.File]::ReadAllBytes((Resolve-Path $path).Path)
               if ($bytes.Length -lt 128 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) {
                 throw "Not PE/MZ: $path"
@@ -81,11 +91,13 @@ jobs:
               for ($i=1; $i -le 10; $i++) {
                 & (Resolve-Path $e).Path (Resolve-Path $d).Path
                 if ($LASTEXITCODE -ne 0) { throw "Native Win32 x86 TinyCC callback ABI failed $i" }
+                & (Resolve-Path $te).Path (Resolve-Path $d).Path
+                if ($LASTEXITCODE -ne 0) { throw "Native Win32 x86 TinyCC TSS callback failed $i" }
               }
             }
           }
           $sealed = @{}
-          foreach ($name in @('salts_portable_arm64.dll','tcc_portable_arm64.exe')) {
+          foreach ($name in @('salts_portable_arm64.dll','tcc_portable_arm64.exe','tcc_portable_tss_arm64.exe')) {
             $sealed[$name] = (Get-FileHash "build-portable/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
           }
           $sealed | ConvertTo-Json -Depth 3 | Set-Content build-portable/arm64-manifest.json -Encoding utf8
@@ -95,6 +107,7 @@ jobs:
           path: |
             build-portable/salts_portable_arm64.dll
             build-portable/tcc_portable_arm64.exe
+            build-portable/tcc_portable_tss_arm64.exe
             build-portable/arm64-manifest.json
           if-no-files-found: error
 
@@ -115,7 +128,7 @@ jobs:
             throw 'Native Windows ARM64 hardware is required'
           }
           $manifest = Get-Content native-arm64/arm64-manifest.json -Raw | ConvertFrom-Json -AsHashtable
-          foreach ($name in @('salts_portable_arm64.dll','tcc_portable_arm64.exe')) {
+          foreach ($name in @('salts_portable_arm64.dll','tcc_portable_arm64.exe','tcc_portable_tss_arm64.exe')) {
             $path = (Resolve-Path "native-arm64/$name").Path
             [byte[]]$data = [IO.File]::ReadAllBytes($path)
             $pe = [BitConverter]::ToInt32($data, 0x3c)
@@ -131,6 +144,11 @@ jobs:
           for ($i=1; $i -le 10; $i++) {
             & $client $provider
             if ($LASTEXITCODE -ne 0) { throw "Native ARM64 TinyCC callback ABI failed $i" }
+          }
+          $tssClient = (Resolve-Path native-arm64/tcc_portable_tss_arm64.exe).Path
+          for ($i=1; $i -le 10; $i++) {
+            & $tssClient $provider
+            if ($LASTEXITCODE -ne 0) { throw "Native ARM64 TinyCC TSS callback ABI failed $i" }
           }
   linux-native-tinycc:
     runs-on: ubuntu-22.04
@@ -154,12 +172,24 @@ jobs:
           mkdir -p build-portable
           gcc -std=c11 -O2 -pthread -fPIC -shared -DSALTS_CORE_PLATFORM_BUILD=1 -Iinclude \
             src/platform/portable_atomic.c src/platform/portable_thread_posix.c \
-            src/platform/portable_once.c -o build-portable/libsalts_portable.so
+            src/platform/portable_tss_posix.c src/platform/portable_once.c -o build-portable/libsalts_portable.so
           "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -Iinclude \
             tests/test_portable_concurrency.c -Lbuild-portable -lsalts_portable \
             -o build-portable/tcc_platform_consumer
           export LD_LIBRARY_PATH="$PWD/build-portable:$(printenv LD_LIBRARY_PATH || true)"
           for i in 1 2 3 4 5; do ./build-portable/tcc_platform_consumer; done
+          for fixture in test_portable_timing test_portable_tss; do
+            "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -Iinclude \
+              "tests/$fixture.c" -Lbuild-portable -lsalts_portable \
+              -o "build-portable/$fixture"
+            for i in 1 2 3 4 5; do "./build-portable/$fixture"; done
+          done
+          for fixture in test_portable_timing test_portable_tss; do
+            "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -Iinclude \
+              "tests/$fixture.c" -Lbuild-portable -lsalts_portable \
+              -o "build-portable/$fixture"
+            for i in 1 2 3 4 5; do "./build-portable/$fixture"; done
+          done
 
   macos-native-tinycc:
     strategy:
@@ -188,9 +218,37 @@ jobs:
           clang -std=c11 -O2 -fPIC -pthread -dynamiclib \
             -DSALTS_CORE_PLATFORM_BUILD=1 -Iinclude \
             src/platform/portable_atomic.c src/platform/portable_thread_posix.c \
-            src/platform/portable_once.c -o build-portable/libsalts_portable.dylib
+            src/platform/portable_tss_posix.c src/platform/portable_once.c -o build-portable/libsalts_portable.dylib
           "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -Iinclude \
             tests/test_portable_concurrency.c -Lbuild-portable -lsalts_portable \
             -o build-portable/tcc_platform_consumer
           export DYLD_LIBRARY_PATH="$PWD/build-portable:$(printenv DYLD_LIBRARY_PATH || true)"
           for i in 1 2 3 4 5; do ./build-portable/tcc_platform_consumer; done
+
+
+  portable-thread-sanitizers:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc
+            flags: -fsanitize=thread
+          - compiler: clang
+            flags: -fsanitize=address,undefined
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instrument actual portable TSS / timed tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-sanitize -G Ninja \
+            -DCMAKE_C_COMPILER=${{ matrix.compiler }} \
+            "-DCMAKE_C_FLAGS=${{ matrix.flags }} -fno-omit-frame-pointer -g -O1" \
+            -DBUILD_TESTING=ON
+          cmake --build build-sanitize \
+            --target saltscore_portable_timing_test saltscore_portable_tss_test \
+            --parallel 2
+          ctest --test-dir build-sanitize --output-on-failure \
+            --repeat until-fail:10 -R '^saltscore\.portable_(timing|tss)$'
