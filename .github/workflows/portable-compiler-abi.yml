@@ -224,3 +224,31 @@ jobs:
             -o build-portable/tcc_platform_consumer
           export DYLD_LIBRARY_PATH="$PWD/build-portable:$(printenv DYLD_LIBRARY_PATH || true)"
           for i in 1 2 3 4 5; do ./build-portable/tcc_platform_consumer; done
+
+
+  portable-thread-sanitizers:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc
+            flags: -fsanitize=thread
+          - compiler: clang
+            flags: -fsanitize=address,undefined
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instrument actual portable TSS / timed tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-sanitize -G Ninja \
+            -DCMAKE_C_COMPILER=${{ matrix.compiler }} \
+            "-DCMAKE_C_FLAGS=${{ matrix.flags }} -fno-omit-frame-pointer -g -O1" \
+            -DBUILD_TESTING=ON
+          cmake --build build-sanitize \
+            --target saltscore_portable_timing_test saltscore_portable_tss_test \
+            --parallel 2
+          ctest --test-dir build-sanitize --output-on-failure \
+            --repeat until-fail:10 -R '^saltscore\.portable_(timing|tss)$'
