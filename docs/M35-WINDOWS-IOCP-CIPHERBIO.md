@@ -44,13 +44,15 @@ destroyed only after the NativeIO terminal drain barrier.
 - **Windows IOCP:** `WSASend` may retain an overlapped operation
   without returning a short prefix. Waiting for a positive partial
   completion *before* reading the peer deadlocks under backpressure.
-  Here the test first requires 64 genuine IOCP observe polls without a
-  send terminal while the peer does not read. Then the peer consumes
-  and checks actual WinSock TCP bytes, allowing the outstanding send
-  to finish. It must observe a matching IOCP terminal (short or full);
-  if short, it resubmits precisely the remaining prefix. All bytes
-  must match. This is strict **real pending/terminal backpressure**
-  evidence, *not* a claim of positive-short Windows completion.
+  The test polls up to 64 times without peer reads; **a real early IOCP
+  completion is allowed and retired exactly once**, because Windows
+  may buffer the entire overlapped request even with a small
+  `SO_SNDBUF`. When it remains pending, the peer consumes and verifies
+  actual WinSock TCP bytes to unblock it. In both cases, matching
+  observed IOCP terminal(s) must account for every transmitted byte;
+  if short, the exact remaining prefix is resubmitted. All 256 KiB must
+  match. This qualifies real **IOCP send completion/borrow retention**,
+  not a claimed positive-short or necessarily pending Windows send.
 - **Wake/cancel:** 64 independent Winsock/IOCP rounds, a distinct
   worker calling only `native_io_backend_wake`, an Owner-only
   cancellation, a real matching CANCELLED terminal, and no premature
