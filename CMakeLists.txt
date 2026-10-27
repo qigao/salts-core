@@ -223,9 +223,9 @@ if(SALTSCORE_BUILD_URI)
   add_custom_command(
     OUTPUT "${_saltscore_uri_generated}"
     COMMAND "${SALTSCORE_RE2C_EXECUTABLE}" -o "${_saltscore_uri_generated}"
-      "${CMAKE_CURRENT_SOURCE_DIR}/uri/src/parser/uri_lexer.re"
-    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/uri/src/parser/uri_lexer.re"
-            "${CMAKE_CURRENT_SOURCE_DIR}/uri/src/parser/uri_parser_internal.h"
+      "${CMAKE_CURRENT_SOURCE_DIR}/uri/parser/uri_lexer.re"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/uri/parser/uri_lexer.re"
+            "${CMAKE_CURRENT_SOURCE_DIR}/uri/parser/uri_parser_internal.h"
             "${SALTSCORE_RE2C_EXECUTABLE}"
     COMMENT "Generating source-compatible URI lexer with re2c"
     VERBATIM)
@@ -239,7 +239,7 @@ if(SALTSCORE_BUILD_URI)
   target_include_directories(saltscore_uri
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/uri/include>
            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/uri/src/parser")
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/uri/parser")
   install(TARGETS saltscore_uri EXPORT SaltsCoreTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
