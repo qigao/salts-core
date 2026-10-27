@@ -15,7 +15,7 @@ include(CTest)
 find_package(Threads REQUIRED)
 
 # Keep the minimal foundation target usable without platform/transport providers.
-add_library(saltscore_core SHARED utils/src/bytes.c)
+add_library(saltscore_core SHARED core/src/bytes.c)
 add_library(Salts::Core ALIAS saltscore_core)
 target_compile_features(saltscore_core PUBLIC c_std_11)
 set_target_properties(saltscore_core PROPERTIES
@@ -111,8 +111,8 @@ endif()
 # Core-owned buffer/pool, byte utility and sole native Base64 implementation.
 # No third-party Base64 DSO, vcpkg port or alternate codec is required.
 target_sources(saltscore_core PRIVATE
-  utils/src/cmeta_buffer.c utils/src/ring_buffer.c utils/src/base64_utils.c
-  utils/src/runtime_abi.c utils/src/utf8.c)
+  core/src/cmeta_buffer.c core/src/ring_buffer.c core/src/base64_utils.c
+  core/src/runtime_abi.c core/src/utf8.c)
 target_link_libraries(saltscore_core PUBLIC Salts::Platform)
 
 # The original bounded primitives have no Reflection/CFlow dependency.
@@ -313,11 +313,11 @@ install(TARGETS saltscore_core saltscore_platform saltscore_concurrency saltscor
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # Each module owns its headers; the installed SDK retains one flat include ABI.
-install(DIRECTORY utils/include/salts_core platform/include/salts_core
+install(DIRECTORY core/include/salts_core platform/include/salts_core
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.h")
 install(DIRECTORY platform/include/salts concurrency/include/salts
-                  native-io/include/salts cflow-fs/include/salts cflow-process/include/salts
+                  native-io/include/salts fs/include/salts process/include/salts
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.h")
 
@@ -326,7 +326,7 @@ install(FILES coroutine/include/coro.h coroutine/include/coro_pool.h coroutine/i
 install(FILES vendor/minicoro/LICENSE
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/minicoro)
 
-install(FILES utils/include/base64_utils.h utils/include/vstr.h utils/include/cmeta_api.h utils/include/cmeta_buffer.h utils/include/ring_buffer.h
+install(FILES core/include/base64_utils.h core/include/vstr.h core/include/cmeta_api.h core/include/cmeta_buffer.h core/include/ring_buffer.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 set(_saltscore_package_dir "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsCore")
