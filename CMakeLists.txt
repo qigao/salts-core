@@ -23,7 +23,7 @@ set_target_properties(saltscore_core PROPERTIES
   C_VISIBILITY_PRESET default WINDOWS_EXPORT_ALL_SYMBOLS ON
   VERSION "${PROJECT_VERSION}" SOVERSION "${SALTSCORE_NATIVE_SOVERSION}")
 target_include_directories(saltscore_core PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/core/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/utils/include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 # Public mem_pool_t and mem_buffer_t contain C11 atomic fields on MSVC.
@@ -105,7 +105,7 @@ endif()
 # Core-owned buffer/pool, byte utility and sole native Base64 implementation.
 # No third-party Base64 DSO, vcpkg port or alternate codec is required.
 target_sources(saltscore_core PRIVATE
-  src/core/cmeta_buffer.c src/core/ring_buffer.c core/src/base64_utils.c
+  src/core/cmeta_buffer.c src/core/ring_buffer.c utils/src/base64_utils.c
   src/runtime_abi.c src/utf8.c)
 target_link_libraries(saltscore_core PUBLIC Salts::Platform)
 
@@ -314,7 +314,7 @@ install(FILES include/coro.h include/coro_pool.h include/coro_executor.h
 install(FILES vendor/minicoro/LICENSE
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/minicoro)
 
-install(FILES core/include/base64_utils.h include/vstr.h include/cmeta_api.h include/cmeta_buffer.h include/ring_buffer.h
+install(FILES utils/include/base64_utils.h include/vstr.h include/cmeta_api.h include/cmeta_buffer.h include/ring_buffer.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 set(_saltscore_package_dir "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsCore")
