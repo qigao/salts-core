@@ -1,0 +1,65 @@
+name: SaltsCore standalone Process with no CMeta
+on:
+  pull_request:
+    paths:
+      - "src/process/**"
+      - "include/salts/process.h"
+      - "cmake/SaltsCoreProcess.cmake"
+      - "cmake/SaltsCoreExtraModules.cmake"
+      - "tests/test_process.c"
+      - "tests/process-installed/**"
+      - ".github/workflows/native-process.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-process:
+    name: "Native Process and installed C11 C++17 / ${{ matrix.os }}"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Reject old Process, vstr/tstr and CMeta dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/check_dependency_boundaries.py
+          if grep -nE 'cmeta_process|tstr_|vstr_|SALTS_C_API|#include "cmeta_|#include "platform.h"' \
+            src/process/process.c include/salts/process.h; then exit 1; fi
+      - name: Compile real native child process owner and execute
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER_OS" == Windows ]]; then gen=(-G 'Visual Studio 18 2026' -A x64); else gen=(-G Ninja); fi
+          cmake -S . -B build-process "${gen[@]}" -DBUILD_TESTING=ON \
+            -DSALTSCORE_BUILD_PROCESS=ON -DCMAKE_BUILD_TYPE=Release \
+            "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/process-native-sdk"
+          cmake --build build-process --config Release --parallel 2
+          ctest --test-dir build-process -C Release -R '^saltscore[.]process_' \
+            --no-tests=error --output-on-failure --timeout 40
+          cmake --install build-process --config Release
+      - name: Independent installed C11 C++17 child-process consumers
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            gen=(-G 'Visual Studio 18 2026' -A x64)
+            export PATH="$(cygpath -u "$RUNNER_TEMP")/process-native-sdk/bin:$PATH"
+          elif [[ "$RUNNER_OS" == macOS ]]; then
+            gen=(-G Ninja)
+            export DYLD_LIBRARY_PATH="$RUNNER_TEMP/process-native-sdk/lib:${DYLD_LIBRARY_PATH:-}"
+          else
+            gen=(-G Ninja)
+            export LD_LIBRARY_PATH="$RUNNER_TEMP/process-native-sdk/lib:${LD_LIBRARY_PATH:-}"
+          fi
+          cmake -S tests/process-installed -B build-process-installed "${gen[@]}" \
+            "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/process-native-sdk" -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-process-installed --config Release --parallel 2
+          ctest --test-dir build-process-installed -C Release \
+            --no-tests=error --output-on-failure --timeout 40

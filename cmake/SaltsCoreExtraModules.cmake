@@ -29,3 +29,9 @@ option(SALTSCORE_BUILD_FS "Build standalone native FS owner" OFF)
 if(SALTSCORE_BUILD_FS)
   include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsCoreFS.cmake")
 endif()
+
+# Child process management, native-only, not a CMeta or CFlow adapter.
+option(SALTSCORE_BUILD_PROCESS "Build standalone Process owner" OFF)
+if(SALTSCORE_BUILD_PROCESS)
+  include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsCoreProcess.cmake")
+endif()
