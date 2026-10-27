@@ -56,7 +56,21 @@ SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL thrd_detach(thrd_t thr);
 SALTS_CORE_PLATFORM_API thrd_t SALTS_CORE_PLATFORM_CALL thrd_current(void);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL thrd_equal(thrd_t a, thrd_t b);
 SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL thrd_yield(void);
-SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL thrd_sleep(const struct timespec *duration, struct timespec *remaining);
+/* CRT struct timespec must NEVER cross a TinyCC/MSVC/LLVM DLL boundary.
+ * Convert it here in the consumer, then use fixed-width values only.
+ */
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_c11_thrd_sleep_abi(uint64_t seconds, uint32_t nanos);
+static inline int SALTS_CORE_PLATFORM_CALL thrd_sleep(
+    const struct timespec *duration, struct timespec *remaining) {
+    int rc;
+    if (!duration || duration->tv_sec < 0 ||
+        duration->tv_nsec < 0 || duration->tv_nsec >= 1000000000L)
+        return -1;
+    rc = salts_c11_thrd_sleep_abi((uint64_t)duration->tv_sec,
+                                   (uint32_t)duration->tv_nsec);
+    if (rc == 0 && remaining) { remaining->tv_sec=0; remaining->tv_nsec=0; }
+    return rc;
+}
 #if defined(_MSC_VER)
 __declspec(noreturn)
 #elif defined(__GNUC__) || defined(__clang__)
@@ -67,12 +81,26 @@ SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL thrd_exit(int result);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL mtx_init(mtx_t *m, int type);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL mtx_lock(mtx_t *m);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL mtx_trylock(mtx_t *m);
-SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL mtx_timedlock(mtx_t *m, const struct timespec *utc_deadline);
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_c11_mtx_timedlock_abi(mtx_t *m, int64_t seconds, uint32_t nanos);
+static inline int SALTS_CORE_PLATFORM_CALL mtx_timedlock(
+    mtx_t *m, const struct timespec *utc_deadline) {
+    if (!utc_deadline || utc_deadline->tv_nsec < 0 ||
+        utc_deadline->tv_nsec >= 1000000000L) return thrd_error;
+    return salts_c11_mtx_timedlock_abi(m, (int64_t)utc_deadline->tv_sec,
+                                        (uint32_t)utc_deadline->tv_nsec);
+}
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL mtx_unlock(mtx_t *m);
 SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL mtx_destroy(mtx_t *m);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cnd_init(cnd_t *c);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cnd_wait(cnd_t *c, mtx_t *m);
-SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cnd_timedwait(cnd_t *c, mtx_t *m, const struct timespec *utc_deadline);
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_c11_cnd_timedwait_abi(cnd_t *c, mtx_t *m, int64_t seconds, uint32_t nanos);
+static inline int SALTS_CORE_PLATFORM_CALL cnd_timedwait(
+    cnd_t *c, mtx_t *m, const struct timespec *utc_deadline) {
+    if (!utc_deadline || utc_deadline->tv_nsec < 0 ||
+        utc_deadline->tv_nsec >= 1000000000L) return thrd_error;
+    return salts_c11_cnd_timedwait_abi(c, m,
+                (int64_t)utc_deadline->tv_sec, (uint32_t)utc_deadline->tv_nsec);
+}
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cnd_signal(cnd_t *c);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cnd_broadcast(cnd_t *c);
 SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cnd_destroy(cnd_t *c);
