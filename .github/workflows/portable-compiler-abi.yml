@@ -79,13 +79,16 @@ jobs:
             $d = "build-portable/salts_portable_$($pair.suffix).dll"
             $e = "build-portable/tcc_portable_$($pair.suffix).exe"
             $te = "build-portable/tcc_portable_tss_$($pair.suffix).exe"
+            $ce = "build-portable/tcc_c11_threads_$($pair.suffix).exe"
             & $ll '-std=c11' '-O2' '-shared' '-DSALTS_CORE_PLATFORM_BUILD=1' '-D_WIN32_WINNT=0x0601' '-Iinclude' 'src/platform/portable_atomic.c' 'src/platform/portable_thread_win32.c' 'src/platform/portable_tss_win32.c' 'src/platform/portable_once.c' 'src/platform/c11_threads.c' 'src/platform/clock.c' '-o' $d
             if ($LASTEXITCODE -ne 0) { throw "llvm-mingw provider build failed for $($pair.suffix)" }
             & $tt.FullName '-std=c11' '-Iinclude' 'tests/portable_tcc_windows_client.c' '-o' $e
             if ($LASTEXITCODE -ne 0) { throw "TinyCC consumer build failed for $($pair.suffix)" }
             & $tt.FullName '-std=c11' '-Iinclude' 'tests/portable_tcc_tss_windows.c' '-o' $te
             if ($LASTEXITCODE -ne 0) { throw "TinyCC TSS consumer build failed for $($pair.suffix)" }
-            foreach ($path in @($d,$e,$te)) {
+            & $tt.FullName '-std=c11' '-DSALTS_C11_THREADS_EXPERIMENTAL=1' '-Iinclude/salts_core/c11' '-Iinclude' 'tests/test_c11_threads.c' $d '-o' $ce
+            if ($LASTEXITCODE -ne 0) { throw "TinyCC $($pair.suffix) C11 threads.h direct DLL linking failed" }
+            foreach ($path in @($d,$e,$te,$ce)) {
               [byte[]]$bytes = [IO.File]::ReadAllBytes((Resolve-Path $path).Path)
               if ($bytes.Length -lt 128 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) {
                 throw "Not PE/MZ: $path"
@@ -102,11 +105,13 @@ jobs:
                 if ($LASTEXITCODE -ne 0) { throw "Native Win32 x86 TinyCC callback ABI failed $i" }
                 & (Resolve-Path $te).Path (Resolve-Path $d).Path
                 if ($LASTEXITCODE -ne 0) { throw "Native Win32 x86 TinyCC TSS callback failed $i" }
+                & (Resolve-Path $ce).Path
+                if ($LASTEXITCODE -ne 0) { throw "Native Win32 x86 C11 threads.h failed $i" }
               }
             }
           }
           $sealed = @{}
-          foreach ($name in @('salts_portable_arm64.dll','tcc_portable_arm64.exe','tcc_portable_tss_arm64.exe')) {
+          foreach ($name in @('salts_portable_arm64.dll','tcc_portable_arm64.exe','tcc_portable_tss_arm64.exe','tcc_c11_threads_arm64.exe')) {
             $sealed[$name] = (Get-FileHash "build-portable/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
           }
           $sealed | ConvertTo-Json -Depth 3 | Set-Content build-portable/arm64-manifest.json -Encoding utf8
@@ -117,6 +122,7 @@ jobs:
             build-portable/salts_portable_arm64.dll
             build-portable/tcc_portable_arm64.exe
             build-portable/tcc_portable_tss_arm64.exe
+            build-portable/tcc_c11_threads_arm64.exe
             build-portable/arm64-manifest.json
           if-no-files-found: error
 
@@ -137,7 +143,7 @@ jobs:
             throw 'Native Windows ARM64 hardware is required'
           }
           $manifest = Get-Content native-arm64/arm64-manifest.json -Raw | ConvertFrom-Json -AsHashtable
-          foreach ($name in @('salts_portable_arm64.dll','tcc_portable_arm64.exe','tcc_portable_tss_arm64.exe')) {
+          foreach ($name in @('salts_portable_arm64.dll','tcc_portable_arm64.exe','tcc_portable_tss_arm64.exe','tcc_c11_threads_arm64.exe')) {
             $path = (Resolve-Path "native-arm64/$name").Path
             [byte[]]$data = [IO.File]::ReadAllBytes($path)
             $pe = [BitConverter]::ToInt32($data, 0x3c)
@@ -158,6 +164,11 @@ jobs:
           for ($i=1; $i -le 10; $i++) {
             & $tssClient $provider
             if ($LASTEXITCODE -ne 0) { throw "Native ARM64 TinyCC TSS callback ABI failed $i" }
+          }
+          $c11Client = (Resolve-Path native-arm64/tcc_c11_threads_arm64.exe).Path
+          for ($i=1; $i -le 10; $i++) {
+            & $c11Client
+            if ($LASTEXITCODE -ne 0) { throw "Native ARM64 TinyCC C11 threads.h direct link failed $i" }
           }
   linux-native-tinycc:
     runs-on: ubuntu-22.04
