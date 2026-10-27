@@ -74,3 +74,20 @@ after the last producer is converted.
 Architecture remains:
 \`Salts::Platform (Atomic/Thread/C11 adapter)\` below
 \`Salts::Concurrency (queues/RCU/pools)\`; no CMeta/ACE dependency.
+
+
+## Windows i686 CRT time-layout qualification
+
+The initial Windows x64 direct TinyCC client passed, but true Windows
+i686 failed despite the same native Platform/TSS callback tests passing.
+The C11 adapter had originally exported parameters of type
+\`const struct timespec *\`, which is **not a valid cross-compiler ABI**:
+TinyCC and llvm-mingw/UCRT need not agree on \`time_t\` width, structure
+member offsets or padding on i686.
+
+The portable header now reads \`timespec\` **inside the client compiler**;
+\`thrd_sleep\`, \`mtx_timedlock\` and \`cnd_timedwait\` use prefixed,
+fixed-width \`_abi\` exports with uint64/int64 seconds and uint32 nanoseconds.
+The implementation never dereferences a client-allocated CRT timespec.
+A failing native i686 test is a required regression gate; it is not skipped
+or replaced with x64 emulation. The same contract applies on Windows ARM64.
