@@ -140,3 +140,109 @@ jobs:
             ${{ runner.temp }}/cnet-static-imports.txt
             ${{ runner.temp }}/core-static-build/Testing/Temporary/LastTest.log
           if-no-files-found: warn
+
+
+  windows-static-admission:
+    runs-on: windows-2025
+    timeout-minutes: 80
+    env:
+      CRYPTO_SHA: b09a981c1922db01070509c98511d291c98ee81e
+      PORT_SHA: d2ce09ebd3cf127338eea5c8d87a588aeb9d127c
+      VCPKG_SCRIPTS_SHA: 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch immutable Crypto and verified GmSSL source port
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src = Join-Path $env:RUNNER_TEMP 'crypto-src'
+          $cache = Join-Path $env:RUNNER_TEMP 'vcpkg-cache'
+          New-Item -ItemType Directory -Force -Path $src, $cache | Out-Null
+          & curl.exe -fLsS --retry 3 "https://api.github.com/repos/qigao/crypto/tarball/$env:CRYPTO_SHA" -o "$env:RUNNER_TEMP/crypto-source.tar.gz"
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Crypto download failed' }
+          & tar.exe -xzf "$env:RUNNER_TEMP/crypto-source.tar.gz" --strip-components=1 -C $src
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Crypto extraction failed' }
+          & curl.exe -fLsS --retry 3 "https://api.github.com/repos/qigao/vcpkg-cache/tarball/$env:PORT_SHA" -o "$env:RUNNER_TEMP/vcpkg-cache.tar.gz"
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned port source download failed' }
+          & tar.exe -xzf "$env:RUNNER_TEMP/vcpkg-cache.tar.gz" --strip-components=1 -C $cache
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned port source extraction failed' }
+          python "$src/tools/verify_vcpkg_gmssl.py" --port "$cache/ports/gmssl"
+          if ($LASTEXITCODE -ne 0) { throw 'GmSSL port source checksum mismatch' }
+      - name: Bootstrap pinned canonical vcpkg scripts (no Mono or NuGet)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'vcpkg'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          git -C $root init -q
+          git -C $root remote add origin https://github.com/microsoft/vcpkg.git
+          git -C $root fetch --no-tags origin $env:VCPKG_SCRIPTS_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned vcpkg fetch failed' }
+          git -C $root checkout --detach FETCH_HEAD
+          if ((git -C $root rev-parse HEAD).Trim() -ne $env:VCPKG_SCRIPTS_SHA) { throw 'vcpkg SHA mismatch' }
+          & "$root/bootstrap-vcpkg.bat" -disableMetrics
+          if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed' }
+          "VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Build and audit ONE installed static Salts::Crypto (MSVC x64)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src = Join-Path $env:RUNNER_TEMP 'crypto-src'
+          $cache = Join-Path $env:RUNNER_TEMP 'vcpkg-cache'
+          $prefix = Join-Path $src 'vcpkg_installed/x64-windows'
+          $sdk = Join-Path $env:RUNNER_TEMP 'crypto-installed'
+          $env:VCPKG_OVERLAY_PORTS = Join-Path $cache 'ports'
+          & "$env:VCPKG_ROOT/vcpkg.exe" install "--x-manifest-root=$src" "--x-install-root=$src/vcpkg_installed" --triplet=x64-windows "--overlay-ports=$env:VCPKG_OVERLAY_PORTS"
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned GmSSL vcpkg installation failed' }
+          python "$src/tools/verify_vcpkg_gmssl.py" --port "$env:VCPKG_OVERLAY_PORTS/gmssl" --prefix $prefix
+          if ($LASTEXITCODE -ne 0) { throw 'GmSSL installed static prefix is incorrect' }
+          & cmake -S $src -B "$env:RUNNER_TEMP/crypto-build" -G 'Visual Studio 18 2026' -A x64 -DBUILD_TESTING=ON "-DCRYPTO_GMSSL_ROOT=$prefix" "-DCMAKE_INSTALL_PREFIX=$sdk"
+          if ($LASTEXITCODE -ne 0) { throw 'Static Crypto SDK configure failed' }
+          & cmake --build "$env:RUNNER_TEMP/crypto-build" --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'Static Crypto SDK build failed' }
+          & ctest --test-dir "$env:RUNNER_TEMP/crypto-build" -C Release --output-on-failure --no-tests=error
+          if ($LASTEXITCODE -ne 0) { throw 'Static Crypto source tests failed' }
+          & cmake --install "$env:RUNNER_TEMP/crypto-build" --config Release
+          if ($LASTEXITCODE -ne 0) { throw 'Static Crypto SDK install failed' }
+          python "$src/tools/audit_static_crypto.py" --prefix $sdk --report "$env:RUNNER_TEMP/crypto-static-audit.json"
+          if ($LASTEXITCODE -ne 0) { throw 'Static Crypto archive audit failed' }
+      - name: Run genuine CNet C11/C++17 static admission with MSVC
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sdk = Join-Path $env:RUNNER_TEMP 'crypto-installed'
+          $build = Join-Path $env:RUNNER_TEMP 'core-static-build'
+          & cmake -S . -B $build -G 'Visual Studio 18 2026' -A x64 -DBUILD_TESTING=ON -DSALTSCORE_BUILD_CNET=OFF -DSALTSCORE_CNET_STATIC_CRYPTO_ADMISSION=ON "-DCMAKE_PREFIX_PATH=$sdk"
+          if ($LASTEXITCODE -ne 0) { throw 'CNet static profile configure failed' }
+          & cmake --build $build --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'CNet static profile compile/link failed' }
+          & ctest --test-dir $build -C Release --output-on-failure --no-tests=error -R '^saltscore[.]cnet_crypto_static_(policy|cpp17)$' --repeat until-fail:3
+          if ($LASTEXITCODE -ne 0) { throw 'MSVC C11/C++17 static admission regression' }
+      - name: Inspect final PE imports (no dynamic GmSSL or Crypto provider)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $binary = Join-Path $env:RUNNER_TEMP 'core-static-build/bin/Release/saltscore_cnet_crypto_static_admission.exe'
+          if (-not (Test-Path $binary)) { throw 'Missing CNet static test executable' }
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          if (-not (Test-Path $vswhere)) { throw 'VSWhere unavailable for PE import audit' }
+          $vsroot = & $vswhere -latest -products '*' -property installationPath
+          $dumpbin = Get-ChildItem -Path (Join-Path $vsroot 'VC/Tools/MSVC') -Filter dumpbin.exe -Recurse |
+            Where-Object { $_.FullName -match 'Hostx64\\x64' } | Select-Object -First 1
+          if (-not $dumpbin) { throw 'MSVC dumpbin not found' }
+          $deps = Join-Path $env:RUNNER_TEMP 'cnet-static-imports.txt'
+          & $dumpbin.FullName /DEPENDENTS $binary | Out-File -FilePath $deps -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw 'PE import audit failed' }
+          if (Select-String -Path $deps -Pattern 'gmssl.*dll|crypto_tls.*dll|crypto_provider.*dll|saltscore_cnet.*dll') {
+            throw 'Forbidden Crypto/GmSSL/CNet second runtime imported by static candidate'
+          }
+      - name: Preserve exact-head Windows static evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cnet-static-m0-x64-windows
+          path: |
+            ${{ runner.temp }}/crypto-static-audit.json
+            ${{ runner.temp }}/cnet-static-imports.txt
+            ${{ runner.temp }}/core-static-build/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
