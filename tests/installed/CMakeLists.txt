@@ -74,6 +74,18 @@ if(TARGET Salts::CNet)
   add_test(NAME sdk.abi_owner_consumer COMMAND abi_owner_consumer)
 endif()
 
+# Canonical original tn_base64_* ABI: installed C11 and C++17 clients each
+# link the *same* Salts::Core DSO. No second codec/library or build-tree include.
+add_executable(base64_consumer_c base64_consumer.c)
+target_compile_features(base64_consumer_c PRIVATE c_std_11)
+target_link_libraries(base64_consumer_c PRIVATE Salts::Core)
+add_test(NAME sdk.base64_consumer_c COMMAND base64_consumer_c)
+
+add_executable(base64_consumer_cpp base64_consumer.cpp)
+target_compile_features(base64_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(base64_consumer_cpp PRIVATE Salts::Core)
+add_test(NAME sdk.base64_consumer_cpp COMMAND base64_consumer_cpp)
+
 # Source-independent consumers. CMake package and all native targets come from
 # this installed Core prefix; there is no Salts package or reflected adapter.
 add_executable(vstr_consumer_c vstr_consumer.c)
