@@ -52,3 +52,22 @@ source-sanitized, cross-platform and installed consumer/link-map gates;
 Never install an alternate CNet provider, create a backward-compatibility
 alias, silently downgrade security profiles, or remove the historical GmSSL
 production pin before these gates pass.
+
+## M1: real CNet TLS private state on one static Crypto archive
+
+With `SALTSCORE_CNET_STATIC_CRYPTO_TLS_STATE_TESTS=ON` and
+`SALTSCORE_CRYPTO_TEST_FIXTURES` referencing the exact Crypto source
+`tests/fixtures`, build and run
+`saltscore.cnet_crypto_static_state_tls12_tls13`.
+The CNet private API signatures and an independently qualified opaque
+Crypto/CipherBIO engine are exercised with **actual TLS 1.2 and 1.3**
+client/server sessions, the pinned explicit CA and server leaf/key.
+It checks wrong identity/unsupported range, negotiated version and cipher,
+authenticated peer fingerprint, matched exporter, bounded encrypted record
+movement, deferred plaintext reads, repeated close_notify suppression,
+real EOF vs close_notify, and cleanup.
+
+This is a **test-only CNet TLS state**: no GmSSL include in the TLS candidate,
+no CNet production implementation, no direct imported GmSSL target, and no
+alternative Crypto shared provider. It does not claim system CA, IP SAN,
+client mTLS, ALPN binary names, ShangMi/TLCP or full NativeIO owner parity.

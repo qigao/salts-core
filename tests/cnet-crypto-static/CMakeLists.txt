@@ -57,3 +57,48 @@ target_link_libraries(saltscore_cnet_crypto_static_cpp17
 add_test(NAME saltscore.cnet_crypto_static_cpp17
   COMMAND saltscore_cnet_crypto_static_cpp17)
 set_tests_properties(saltscore.cnet_crypto_static_cpp17 PROPERTIES TIMEOUT 60)
+
+# M1 uses the same opaque CNet private TLS ABI, backed exclusively by the
+# installed static Salts::Crypto archive. It DOES exercise real TLS 1.2/1.3
+# handshakes/identity/record retention/exporter/close_notify, but deliberately
+# does not load or replace the original NativeIO Owner / CNet production DSO.
+option(SALTSCORE_CNET_STATIC_CRYPTO_TLS_STATE_TESTS
+  "Run real TLS1.2/1.3 CNet state over sole static Salts::Crypto" OFF)
+if(SALTSCORE_CNET_STATIC_CRYPTO_TLS_STATE_TESTS)
+  if(NOT SALTSCORE_CRYPTO_TEST_FIXTURES)
+    message(FATAL_ERROR "Exact installed-source Crypto TLS cert fixture directory is required")
+  endif()
+  foreach(_fixture IN ITEMS
+      external-io-ca-cert.pem external-io-server-cert.pem
+      external-io-server-key.pem)
+    if(NOT EXISTS "${SALTSCORE_CRYPTO_TEST_FIXTURES}/${_fixture}")
+      message(FATAL_ERROR "Missing exact static Crypto TLS fixture: ${_fixture}")
+    endif()
+  endforeach()
+  file(TO_CMAKE_PATH "${SALTSCORE_CRYPTO_TEST_FIXTURES}" _crypto_fixtures)
+  add_executable(saltscore_cnet_crypto_static_state
+    state.c cnet_crypto_owner_admission.c
+    "${PROJECT_SOURCE_DIR}/src/cnet/cnet_tls_crypto_qualification.c")
+  set_target_properties(saltscore_cnet_crypto_static_state PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  target_include_directories(saltscore_cnet_crypto_static_state PRIVATE
+    "${PROJECT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/src/cnet"
+    "${CMAKE_CURRENT_SOURCE_DIR}")
+  target_link_libraries(saltscore_cnet_crypto_static_state
+    PRIVATE Salts::Core Salts::Crypto)
+  target_compile_definitions(saltscore_cnet_crypto_static_state PRIVATE
+    "SDK_CA_FILE=\"${_crypto_fixtures}/external-io-ca-cert.pem\""
+    "SDK_SERVER_CERT_FILE=\"${_crypto_fixtures}/external-io-server-cert.pem\""
+    "SDK_SERVER_KEY_FILE=\"${_crypto_fixtures}/external-io-server-key.pem\"")
+  if(MSVC)
+    target_compile_options(saltscore_cnet_crypto_static_state
+      PRIVATE /experimental:c11atomics)
+  elseif(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+    target_compile_options(saltscore_cnet_crypto_static_state
+      PRIVATE -Wall -Wextra -Werror)
+  endif()
+  add_test(NAME saltscore.cnet_crypto_static_state_tls12_tls13
+    COMMAND saltscore_cnet_crypto_static_state)
+  set_tests_properties(saltscore.cnet_crypto_static_state_tls12_tls13
+    PROPERTIES TIMEOUT 120)
+endif()

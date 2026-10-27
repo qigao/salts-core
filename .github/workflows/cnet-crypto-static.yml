@@ -81,9 +81,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S . -B "$RUNNER_TEMP/core-static-build" -G Ninja             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON             -DSALTSCORE_BUILD_CNET=OFF             -DSALTSCORE_CNET_STATIC_CRYPTO_ADMISSION=ON             "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/crypto-installed"
+          cmake -S . -B "$RUNNER_TEMP/core-static-build" -G Ninja             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON             -DSALTSCORE_BUILD_CNET=OFF             -DSALTSCORE_CNET_STATIC_CRYPTO_ADMISSION=ON -DSALTSCORE_CNET_STATIC_CRYPTO_TLS_STATE_TESTS=ON "-DSALTSCORE_CRYPTO_TEST_FIXTURES=$RUNNER_TEMP/crypto-src/tests/fixtures" "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/crypto-installed"
           cmake --build "$RUNNER_TEMP/core-static-build" --parallel 2
-          ctest --test-dir "$RUNNER_TEMP/core-static-build" -C Release             --output-on-failure --no-tests=error             -R '^saltscore[.]cnet_crypto_static_(policy|cpp17)$'             --repeat until-fail:3
+          ctest --test-dir "$RUNNER_TEMP/core-static-build" -C Release             --output-on-failure --no-tests=error             -R '^saltscore[.]cnet_crypto_static_(policy|cpp17|state_tls12_tls13)$'             --repeat until-fail:3
       - name: Audit static target consumer does not load a second provider
         shell: bash
         run: |
@@ -187,11 +187,11 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $sdk = Join-Path $env:RUNNER_TEMP 'crypto-installed'
           $build = Join-Path $env:RUNNER_TEMP 'core-static-build'
-          & cmake -S . -B $build -G 'Visual Studio 18 2026' -A x64 -DBUILD_TESTING=ON -DSALTSCORE_BUILD_CNET=OFF -DSALTSCORE_CNET_STATIC_CRYPTO_ADMISSION=ON "-DCMAKE_PREFIX_PATH=$sdk"
+          & cmake -S . -B $build -G 'Visual Studio 18 2026' -A x64 -DBUILD_TESTING=ON -DSALTSCORE_BUILD_CNET=OFF -DSALTSCORE_CNET_STATIC_CRYPTO_ADMISSION=ON -DSALTSCORE_CNET_STATIC_CRYPTO_TLS_STATE_TESTS=ON "-DSALTSCORE_CRYPTO_TEST_FIXTURES=$env:RUNNER_TEMP/crypto-src/tests/fixtures" "-DCMAKE_PREFIX_PATH=$sdk"
           if ($LASTEXITCODE -ne 0) { throw 'CNet static profile configure failed' }
           & cmake --build $build --config Release --parallel 2
           if ($LASTEXITCODE -ne 0) { throw 'CNet static profile compile/link failed' }
-          & ctest --test-dir $build -C Release --output-on-failure --no-tests=error -R '^saltscore[.]cnet_crypto_static_(policy|cpp17)$' --repeat until-fail:3
+          & ctest --test-dir $build -C Release --output-on-failure --no-tests=error -R '^saltscore[.]cnet_crypto_static_(policy|cpp17|state_tls12_tls13)$' --repeat until-fail:3
           if ($LASTEXITCODE -ne 0) { throw 'MSVC C11/C++17 static admission regression' }
       - name: Inspect final PE imports (no dynamic GmSSL or Crypto provider)
         shell: pwsh
