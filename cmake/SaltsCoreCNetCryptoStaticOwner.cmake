@@ -118,21 +118,21 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
       PROPERTIES TIMEOUT 360 RESOURCE_LOCK cnet_m5_original_owner)
   endif()
 
-  # True client SAN mismatch requires SNI-neutral independent server:
+  # True client SAN mismatch requires SNI-neutral independent Python ssl server:
   # pinned GmSSL refuses unrecognized SNI *on the server* first.
   option(SALTSCORE_CNET_STATIC_CRYPTO_OPENSSL_SAN_TEST
     "Qualify static CNet client DNS SAN against independent OpenSSL peer" OFF)
   if(SALTSCORE_CNET_STATIC_CRYPTO_OPENSSL_SAN_TEST)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     foreach(_protocol IN ITEMS tls12 tls13)
-      add_test(NAME saltscore.cnet_crypto_static_openssl_san_${_protocol}
+      add_test(NAME saltscore.cnet_crypto_static_python_san_${_protocol}
         COMMAND "${Python3_EXECUTABLE}"
           "${CMAKE_CURRENT_SOURCE_DIR}/tests/cnet-crypto-static/external_san_peer.py"
           --binary "$<TARGET_FILE:saltscore_cnet_crypto_static_original_owner>"
           --cert "${_owner_fixtures}/external-io-server-cert.pem"
           --key "${_owner_fixtures}/external-io-server-key.pem"
           --protocol "${_protocol}")
-      set_tests_properties(saltscore.cnet_crypto_static_openssl_san_${_protocol}
+      set_tests_properties(saltscore.cnet_crypto_static_python_san_${_protocol}
         PROPERTIES TIMEOUT 75)
     endforeach()
   endif()
