@@ -102,7 +102,15 @@ jobs:
           fi
           # Persist the complete nm output before checking: grep -q under
           # pipefail can SIGPIPE nm and falsely fail a successful static link.
-          nm -g "$binary" > "$RUNNER_TEMP/cnet-static-symbols.txt"
+          # ELF keeps .symtab hidden Crypto code in final image; Mach-O
+          # hides private extern symbols from nm -g in the final executable.
+          # For Apple inspect the exact installed archive as done by the
+          # single-archive audit, plus the Mach-O import and live CTests.
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            nm -g "$binary" > "$RUNNER_TEMP/cnet-static-symbols.txt"
+          else
+            nm -gU "$RUNNER_TEMP/crypto-installed/lib/libsalts_crypto.a" > "$RUNNER_TEMP/cnet-static-symbols.txt"
+          fi
           # Provider/create helpers can be optimized into their callers.
           # Audit physical, nontrivial linked TLS and CipherBIO code as well
           # as archive symbol cardinality and real TLS1.2/1.3 CTests.
