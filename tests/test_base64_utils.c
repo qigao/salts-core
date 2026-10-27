@@ -55,7 +55,7 @@ static int test_binary_folding(void) {
   CHECK(tn_base64_decode_buf_ex(encoded, strlen(encoded), decoded,
                                 sizeof(decoded), &len) == TN_BASE64_OK);
   CHECK(len == sizeof(bytes) && memcmp(decoded, bytes, len) == 0);
-  CHECK(tn_base64_decode_buf_ex(" Zm9v\r\nYmFy \t", 14u, decoded,
+  CHECK(tn_base64_decode_buf_ex(" Zm9v\r\nYmFy \t", sizeof(" Zm9v\r\nYmFy \t") - 1u, decoded,
                                 sizeof(decoded), &len) == TN_BASE64_OK);
   CHECK(len == 6u && memcmp(decoded, "foobar", len) == 0);
   CHECK(tn_base64_decode_buf_ex("AA==", 4u, decoded, sizeof(decoded),
