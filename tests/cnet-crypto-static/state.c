@@ -325,7 +325,7 @@ static int run_negative(crypto_tls_provider *provider, uint32_t protocol,
     cnet_tls_context *client_ctx = NULL, *server_ctx = NULL;
     cnet_tls_state client = {0}, server = {0};
     bool client_ready = false, server_ready = false, rejected = false;
-    unsigned steps;
+    unsigned steps = 0u;
     size_t moved = 0u;
     int status, rc = 1;
     const char *hostname = wrong_dns ? "wrong.example" : "localhost";
