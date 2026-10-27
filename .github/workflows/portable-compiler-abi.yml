@@ -184,7 +184,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Native ARM64 TinyCC C11 threads.h direct link failed $i" }
           }
           $recursiveClient = (Resolve-Path native-arm64/tcc_c11_recursive_arm64.exe).Path
-          for ($i=1; $i -le 10; $i++) {
+          # Qualify repeated real ARM64 CV admission, not one lucky pass.
+          for ($i=1; $i -le 64; $i++) {
             Write-Host "ARM64 recursive mutex native attempt $i"
             $info = [System.Diagnostics.ProcessStartInfo]::new()
             $info.FileName = $recursiveClient
