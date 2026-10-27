@@ -1,7 +1,7 @@
 #ifndef SALTS_THREAD_PRIMITIVES_H
 #define SALTS_THREAD_PRIMITIVES_H
 
-#include <salts/error_codes.h>
+#include <salts/core/error_codes.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

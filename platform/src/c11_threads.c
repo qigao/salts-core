@@ -1,6 +1,6 @@
 #define SALTS_C11_THREADS_EXPERIMENTAL 1
-#include <salts_core/c11/threads.h>
-#include <salts/clock.h>
+#include <salts/platform/threads.h>
+#include <salts/platform/clock.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -51,7 +51,7 @@ static void release_c11_thread(struct salts_c11_thread *t) {
                                    SALTS_MEMORY_ACQ_REL, &previous);
     if (previous == 1u) free(t);
 }
-static int SALTS_CORE_PLATFORM_CALL bridge_thread(void *ctx) {
+static int SALTS_PLATFORM_CALL bridge_thread(void *ctx) {
     struct salts_c11_thread *thread = (struct salts_c11_thread *)ctx;
     int ret;
     current_thread = thread;
@@ -61,7 +61,7 @@ static int SALTS_CORE_PLATFORM_CALL bridge_thread(void *ctx) {
     release_c11_thread(thread);
     return ret;
 }
-int SALTS_CORE_PLATFORM_CALL thrd_create(thrd_t *out, thrd_start_t fn, void *argument) {
+int SALTS_PLATFORM_CALL thrd_create(thrd_t *out, thrd_start_t fn, void *argument) {
     struct salts_c11_thread *thread;
     int rc;
     if (!out || !fn) return thrd_error;
@@ -81,7 +81,7 @@ int SALTS_CORE_PLATFORM_CALL thrd_create(thrd_t *out, thrd_start_t fn, void *arg
     *out = thread;
     return thrd_success;
 }
-int SALTS_CORE_PLATFORM_CALL thrd_join(thrd_t thread, int *result) {
+int SALTS_PLATFORM_CALL thrd_join(thrd_t thread, int *result) {
     int rc;
     if (!thread || !thread->owner) return thrd_error;
     rc = salts_platform_thread_join(&thread->owner, result);
@@ -89,7 +89,7 @@ int SALTS_CORE_PLATFORM_CALL thrd_join(thrd_t thread, int *result) {
     release_c11_thread(thread);
     return thrd_success;
 }
-int SALTS_CORE_PLATFORM_CALL thrd_detach(thrd_t thread) {
+int SALTS_PLATFORM_CALL thrd_detach(thrd_t thread) {
     int rc;
     if (!thread || !thread->owner) return thrd_error;
     rc = salts_platform_thread_detach(&thread->owner);
@@ -98,14 +98,14 @@ int SALTS_CORE_PLATFORM_CALL thrd_detach(thrd_t thread) {
     release_c11_thread(thread);
     return thrd_success;
 }
-thrd_t SALTS_CORE_PLATFORM_CALL thrd_current(void) {
+thrd_t SALTS_PLATFORM_CALL thrd_current(void) {
     uint64_t id;
     if (current_thread) return current_thread;
     id = salts_platform_thread_current_id();
     set_thread_id(&foreign_thread, id);
     return &foreign_thread;
 }
-int SALTS_CORE_PLATFORM_CALL thrd_equal(thrd_t a, thrd_t b) {
+int SALTS_PLATFORM_CALL thrd_equal(thrd_t a, thrd_t b) {
     uint64_t left, right;
     if (!a || !b) return 0;
     if (a == b) return 1;
@@ -113,11 +113,11 @@ int SALTS_CORE_PLATFORM_CALL thrd_equal(thrd_t a, thrd_t b) {
     right = token_id(b);
     return left && left == right;
 }
-void SALTS_CORE_PLATFORM_CALL thrd_yield(void) {
+void SALTS_PLATFORM_CALL thrd_yield(void) {
     salts_platform_thread_yield();
 }
 /* Stable cross-compiler transport: duration is NOT a CRT timespec pointer. */
-int SALTS_CORE_PLATFORM_CALL salts_c11_thrd_sleep_abi(
+int SALTS_PLATFORM_CALL salts_c11_thrd_sleep_abi(
     uint64_t seconds, uint32_t nanos) {
     uint64_t ns;
     if (nanos >= 1000000000u ||
@@ -127,7 +127,7 @@ int SALTS_CORE_PLATFORM_CALL salts_c11_thrd_sleep_abi(
     if (ns > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS) return -1;
     return salts_platform_thread_sleep_ns(ns) == SALTS_OK ? 0 : -1;
 }
-void SALTS_CORE_PLATFORM_CALL thrd_exit(int result) {
+void SALTS_PLATFORM_CALL thrd_exit(int result) {
     struct salts_c11_thread *thread = current_thread;
     if (thread) {
         current_thread = NULL;
@@ -167,7 +167,7 @@ static int deadline_to_relative_ns(int64_t utc_seconds, uint32_t nanos,
     *out = delta * 1000000000ull + extra;
     return thrd_success;
 }
-int SALTS_CORE_PLATFORM_CALL mtx_init(mtx_t *m, int type) {
+int SALTS_PLATFORM_CALL mtx_init(mtx_t *m, int type) {
     int rc;
     if (!m || (type != mtx_plain && type != mtx_timed)) return thrd_error;
     m->owner = NULL;
@@ -175,16 +175,16 @@ int SALTS_CORE_PLATFORM_CALL mtx_init(mtx_t *m, int type) {
     rc = salts_platform_mutex_create(&m->owner);
     return status_to_c11(rc);
 }
-int SALTS_CORE_PLATFORM_CALL mtx_lock(mtx_t *m) {
+int SALTS_PLATFORM_CALL mtx_lock(mtx_t *m) {
     return status_to_c11(m && m->owner ?
         salts_platform_mutex_lock(m->owner) : SALTS_EINVAL);
 }
-int SALTS_CORE_PLATFORM_CALL mtx_trylock(mtx_t *m) {
+int SALTS_PLATFORM_CALL mtx_trylock(mtx_t *m) {
     int rc = m && m->owner ? salts_platform_mutex_timedlock_ns(m->owner, 0) : SALTS_EINVAL;
     if (rc == SALTS_ETIMEDOUT) return thrd_busy;
     return status_to_c11(rc);
 }
-int SALTS_CORE_PLATFORM_CALL salts_c11_mtx_timedlock_abi(
+int SALTS_PLATFORM_CALL salts_c11_mtx_timedlock_abi(
     mtx_t *m, int64_t utc_seconds, uint32_t nanos) {
     uint64_t ns;
     if (!m || !m->owner || m->type != mtx_timed ||
@@ -192,24 +192,24 @@ int SALTS_CORE_PLATFORM_CALL salts_c11_mtx_timedlock_abi(
         return thrd_error;
     return status_to_c11(salts_platform_mutex_timedlock_ns(m->owner, ns));
 }
-int SALTS_CORE_PLATFORM_CALL mtx_unlock(mtx_t *m) {
+int SALTS_PLATFORM_CALL mtx_unlock(mtx_t *m) {
     return status_to_c11(m && m->owner ?
         salts_platform_mutex_unlock(m->owner) : SALTS_EINVAL);
 }
-void SALTS_CORE_PLATFORM_CALL mtx_destroy(mtx_t *m) {
+void SALTS_PLATFORM_CALL mtx_destroy(mtx_t *m) {
     if (m && m->owner) (void)salts_platform_mutex_destroy(&m->owner);
 }
 
-int SALTS_CORE_PLATFORM_CALL cnd_init(cnd_t *c) {
+int SALTS_PLATFORM_CALL cnd_init(cnd_t *c) {
     if (!c) return thrd_error;
     c->owner = NULL;
     return status_to_c11(salts_platform_condition_create(&c->owner));
 }
-int SALTS_CORE_PLATFORM_CALL cnd_wait(cnd_t *c, mtx_t *m) {
+int SALTS_PLATFORM_CALL cnd_wait(cnd_t *c, mtx_t *m) {
     return status_to_c11(c && m && c->owner && m->owner ?
         salts_platform_condition_wait(c->owner,m->owner) : SALTS_EINVAL);
 }
-int SALTS_CORE_PLATFORM_CALL salts_c11_cnd_timedwait_abi(
+int SALTS_PLATFORM_CALL salts_c11_cnd_timedwait_abi(
     cnd_t *c, mtx_t *m, int64_t utc_seconds, uint32_t nanos) {
     uint64_t ns;
     if (!c || !m || !c->owner || !m->owner ||
@@ -218,16 +218,16 @@ int SALTS_CORE_PLATFORM_CALL salts_c11_cnd_timedwait_abi(
     return status_to_c11(salts_platform_condition_timedwait_ns(
                              c->owner, m->owner, ns));
 }
-int SALTS_CORE_PLATFORM_CALL cnd_signal(cnd_t *c) {
+int SALTS_PLATFORM_CALL cnd_signal(cnd_t *c) {
     return status_to_c11(c && c->owner ? salts_platform_condition_signal(c->owner) : SALTS_EINVAL);
 }
-int SALTS_CORE_PLATFORM_CALL cnd_broadcast(cnd_t *c) {
+int SALTS_PLATFORM_CALL cnd_broadcast(cnd_t *c) {
     return status_to_c11(c && c->owner ? salts_platform_condition_broadcast(c->owner) : SALTS_EINVAL);
 }
-void SALTS_CORE_PLATFORM_CALL cnd_destroy(cnd_t *c) {
+void SALTS_PLATFORM_CALL cnd_destroy(cnd_t *c) {
     if (c && c->owner) (void)salts_platform_condition_destroy(&c->owner);
 }
-void SALTS_CORE_PLATFORM_CALL call_once(once_flag *f,
-    void (SALTS_CORE_PLATFORM_CALL *callback)(void)) {
+void SALTS_PLATFORM_CALL call_once(once_flag *f,
+    void (SALTS_PLATFORM_CALL *callback)(void)) {
     if (salts_platform_call_once(f, callback) != SALTS_OK) abort();
 }

@@ -1,8 +1,8 @@
-#include <salts/clock.h>
+#include <salts/platform/clock.h>
 
 #ifdef _WIN32
   #include <windows.h>
-  #include <salts_core/platform_atomic.h>
+  #include <salts/platform/portable_atomic.h>
 #else
   #include <time.h>
 #endif

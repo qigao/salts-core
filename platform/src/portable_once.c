@@ -1,9 +1,9 @@
-#include <salts_core/platform_thread.h>
+#include <salts/platform/portable_thread.h>
 
 /* No implicit OS atomics in the client; a single C ABI owns the transition.
  * A recursive callback on the same flag would deadlock and is prohibited.
  */
-int SALTS_CORE_PLATFORM_CALL salts_platform_call_once(salts_platform_once *flag,
+int SALTS_PLATFORM_CALL salts_platform_call_once(salts_platform_once *flag,
                                        salts_platform_once_fn callback) {
     uint32_t expected = 0, state = 0;
     int swapped = 0;
