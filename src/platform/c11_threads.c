@@ -169,10 +169,14 @@ static int deadline_to_relative_ns(int64_t utc_seconds, uint32_t nanos,
 }
 int SALTS_CORE_PLATFORM_CALL mtx_init(mtx_t *m, int type) {
     int rc;
-    if (!m || (type != mtx_plain && type != mtx_timed)) return thrd_error;
+    /* ISO C11 mtx_plain==0; recursive and timed flags can be combined. */
+    if (!m || type < 0 || (type & ~(mtx_recursive | mtx_timed)) != 0)
+        return thrd_error;
     m->owner = NULL;
     m->type = type;
-    rc = salts_platform_mutex_create(&m->owner);
+    rc = (type & mtx_recursive) ?
+         salts_platform_mutex_create_recursive(&m->owner) :
+         salts_platform_mutex_create(&m->owner);
     return status_to_c11(rc);
 }
 int SALTS_CORE_PLATFORM_CALL mtx_lock(mtx_t *m) {
@@ -187,7 +191,7 @@ int SALTS_CORE_PLATFORM_CALL mtx_trylock(mtx_t *m) {
 int SALTS_CORE_PLATFORM_CALL salts_c11_mtx_timedlock_abi(
     mtx_t *m, int64_t utc_seconds, uint32_t nanos) {
     uint64_t ns;
-    if (!m || !m->owner || m->type != mtx_timed ||
+    if (!m || !m->owner || !(m->type & mtx_timed) ||
         deadline_to_relative_ns(utc_seconds, nanos, &ns) != thrd_success)
         return thrd_error;
     return status_to_c11(salts_platform_mutex_timedlock_ns(m->owner, ns));
