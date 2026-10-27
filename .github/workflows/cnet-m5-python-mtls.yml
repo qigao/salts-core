@@ -359,7 +359,7 @@ jobs:
           $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
           $vsroot = & $vswhere -latest -products '*' -property installationPath
           $dumpbin = Get-ChildItem -Path (Join-Path $vsroot 'VC/Tools/MSVC') -Filter dumpbin.exe -Recurse |
-            Where-Object { $_.FullName -match 'Hostx64\x64' } | Select-Object -First 1
+            Where-Object { $_.FullName -match 'Hostx64\\x64' } | Select-Object -First 1
           if (-not $dumpbin) { throw 'M6 dumpbin unavailable' }
           foreach ($module in @('a','b')) {
             $plugin = Join-Path $bin "saltscore_cnet_m6_plugin_$module.dll"
