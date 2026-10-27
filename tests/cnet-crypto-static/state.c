@@ -21,6 +21,9 @@
 #ifndef SDK_SERVER_KEY_FILE
 #error SDK_SERVER_KEY_FILE is required
 #endif
+#ifndef SDK_WRONG_CA_FILE
+#error SDK_WRONG_CA_FILE is required for authenticated failure tests
+#endif
 
 enum { MAX_STEPS = 180000, CIPHER_CHUNK = 193 };
 #define CHECK(expr) do {                                                \
@@ -308,6 +311,85 @@ cleanup:
     return rc;
 }
 
+/* A policy that passes admission must still fail its actual authenticated
+ * handshake when CA or DNS SAN is wrong. This cannot be replaced by the
+ * earlier source-identity mismatch check: it uses real server ciphertext.
+ * Success means a precise client-side Crypto verification refusal, not a
+ * timeout, forged close_notify, or a completed TLS connection.
+ */
+static int run_negative(crypto_tls_provider *provider, uint32_t protocol,
+                        bool wrong_dns)
+{
+    cnet_tls_client_config client_policy = {0};
+    cnet_tls_server_config server_policy = {0};
+    cnet_tls_context *client_ctx = NULL, *server_ctx = NULL;
+    cnet_tls_state client = {0}, server = {0};
+    bool client_ready = false, server_ready = false, rejected = false;
+    unsigned steps;
+    size_t moved = 0u;
+    int status, rc = 1;
+    const char *hostname = wrong_dns ? "wrong.example" : "localhost";
+    const size_t capacity = CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY;
+
+    client_policy.size = sizeof(client_policy);
+    client_policy.server_name = hostname;
+    client_policy.ca_file = wrong_dns ? SDK_CA_FILE : SDK_WRONG_CA_FILE;
+    server_policy.size = sizeof(server_policy);
+    server_policy.cert_file = SDK_SERVER_CERT_FILE;
+    server_policy.key_file = SDK_SERVER_KEY_FILE;
+
+    CHECK(cnet_crypto_tls_test_client_context(
+        provider, &client_policy, hostname, protocol,
+        capacity, &client_ctx) == SALTS_OK);
+    CHECK(cnet_crypto_tls_test_server_context(
+        provider, &server_policy, protocol,
+        capacity, &server_ctx) == SALTS_OK);
+    /* Both valid PEM identity inputs must instantiate real TLS sessions.
+     * A certificate parse/load failure is not counted as wrong-CA rejection.
+     */
+    CHECK(cnet_tls_state_init(
+        &client, client_ctx, false, hostname, capacity) == SALTS_OK);
+    client_ctx = NULL;
+    CHECK(cnet_tls_state_init(
+        &server, server_ctx, true, NULL, capacity) == SALTS_OK);
+    server_ctx = NULL;
+
+    for (steps = 0u; steps < MAX_STEPS; ++steps) {
+        if (!client_ready) {
+            status = cnet_tls_handshake(&client, &client_ready);
+            if (status != SALTS_OK) {
+                CHECK(status == SALTS_EPROTO ||
+                      status == SALTS_ECONNABORTED);
+                rejected = true;
+                break;
+            }
+        }
+        if (!server_ready)
+            CHECK(cnet_tls_handshake(&server, &server_ready) == SALTS_OK);
+        CHECK(pump_pair(&client, &server, &moved) == 0);
+        CHECK(!client_ready && !cnet_tls_state_handshake_complete(&client));
+    }
+    CHECK(rejected && steps < MAX_STEPS && moved > 0u);
+    CHECK(!client_ready && !client.handshake_complete);
+    rc = 0;
+cleanup:
+    if (client.engine != NULL) cnet_tls_state_destroy(&client);
+    if (server.engine != NULL) cnet_tls_state_destroy(&server);
+    if (client_ctx != NULL) cnet_tls_context_release(client_ctx);
+    if (server_ctx != NULL) cnet_tls_context_release(server_ctx);
+    if (rc)
+        fprintf(stderr, "CNet Crypto TLS0x%x invalid %s must reject during"
+                " real handshake: client_ready=%d server_ready=%d"
+                " rejected=%d ciphertext=%zu steps=%u\n",
+                protocol, wrong_dns ? "DNS SAN" : "CA root",
+                (int)client_ready, (int)server_ready,
+                (int)rejected, moved, steps);
+    else
+        printf("CNet TLS0x%x wrong %s authenticated rejection PASS\n",
+               protocol, wrong_dns ? "DNS SAN" : "CA root");
+    return rc;
+}
+
 int main(void)
 {
     crypto_tls_provider *provider = NULL;
@@ -320,6 +402,10 @@ int main(void)
     if (run_one(provider, CRYPTO_TLS_1_2, true) != 0) goto done;
     if (run_one(provider, CRYPTO_TLS_1_3, false) != 0) goto done;
     if (run_one(provider, CRYPTO_TLS_1_3, true) != 0) goto done;
+    if (run_negative(provider, CRYPTO_TLS_1_2, false) != 0) goto done;
+    if (run_negative(provider, CRYPTO_TLS_1_2, true) != 0) goto done;
+    if (run_negative(provider, CRYPTO_TLS_1_3, false) != 0) goto done;
+    if (run_negative(provider, CRYPTO_TLS_1_3, true) != 0) goto done;
     rc = 0;
 done:
     if (crypto_tls_provider_destroy(&provider) != CRYPTO_TLS_OK)

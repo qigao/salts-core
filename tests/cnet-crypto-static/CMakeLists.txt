@@ -89,7 +89,8 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_TLS_STATE_TESTS)
   target_compile_definitions(saltscore_cnet_crypto_static_state PRIVATE
     "SDK_CA_FILE=\"${_crypto_fixtures}/external-io-ca-cert.pem\""
     "SDK_SERVER_CERT_FILE=\"${_crypto_fixtures}/external-io-server-cert.pem\""
-    "SDK_SERVER_KEY_FILE=\"${_crypto_fixtures}/external-io-server-key.pem\"")
+    "SDK_SERVER_KEY_FILE=\"${_crypto_fixtures}/external-io-server-key.pem\""
+    "SDK_WRONG_CA_FILE=\"${PROJECT_SOURCE_DIR}/tests/fixtures/p384-test-wrong-root-cert.pem\"")
   if(MSVC)
     target_compile_options(saltscore_cnet_crypto_static_state
       PRIVATE /experimental:c11atomics)
