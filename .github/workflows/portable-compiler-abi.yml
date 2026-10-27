@@ -59,6 +59,13 @@ jobs:
             & (Resolve-Path $c11Exe).Path
             if ($LASTEXITCODE -ne 0) { throw "TinyCC C11 threads.h runtime failed $i" }
           }
+          $recursiveExe = 'build-portable/tcc_c11_recursive.exe'
+          & $tcc.FullName '-std=c11' '-DSALTS_C11_THREADS_EXPERIMENTAL=1' '-Iinclude/salts_core/c11' '-Iinclude' 'tests/test_c11_recursive.c' $dll '-o' $recursiveExe
+          if ($LASTEXITCODE -ne 0) { throw 'TinyCC x64 recursive C11 mutex source did not link' }
+          for ($i=1; $i -le 5; $i++) {
+            & (Resolve-Path $recursiveExe).Path
+            if ($LASTEXITCODE -ne 0) { throw "TinyCC x64 recursive C11 mutex runtime failed $i" }
+          }
           $tssExe = 'build-portable/tcc_portable_tss.exe'
           & $tcc.FullName '-std=c11' '-Iinclude' 'tests/portable_tcc_tss_windows.c' '-o' $tssExe
           if ($LASTEXITCODE -ne 0) { throw 'TinyCC FLS/timed C client did not compile' }
@@ -80,6 +87,7 @@ jobs:
             $e = "build-portable/tcc_portable_$($pair.suffix).exe"
             $te = "build-portable/tcc_portable_tss_$($pair.suffix).exe"
             $ce = "build-portable/tcc_c11_threads_$($pair.suffix).exe"
+            $re = "build-portable/tcc_c11_recursive_$($pair.suffix).exe"
             & $ll '-std=c11' '-O2' '-Werror=unknown-attributes' '-shared' '-DSALTS_CORE_PLATFORM_BUILD=1' '-D_WIN32_WINNT=0x0601' '-Iinclude' 'src/platform/portable_atomic.c' 'src/platform/portable_thread_win32.c' 'src/platform/portable_tss_win32.c' 'src/platform/portable_once.c' 'src/platform/c11_threads.c' 'src/platform/clock.c' '-o' $d
             if ($LASTEXITCODE -ne 0) { throw "llvm-mingw provider build failed for $($pair.suffix)" }
             & $tt.FullName '-std=c11' '-Iinclude' 'tests/portable_tcc_windows_client.c' '-o' $e
@@ -88,7 +96,9 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "TinyCC TSS consumer build failed for $($pair.suffix)" }
             & $tt.FullName '-std=c11' '-DSALTS_C11_THREADS_EXPERIMENTAL=1' '-Iinclude/salts_core/c11' '-Iinclude' 'tests/test_c11_threads.c' $d '-o' $ce
             if ($LASTEXITCODE -ne 0) { throw "TinyCC $($pair.suffix) C11 threads.h direct DLL linking failed" }
-            foreach ($path in @($d,$e,$te,$ce)) {
+            & $tt.FullName '-std=c11' '-DSALTS_C11_THREADS_EXPERIMENTAL=1' '-Iinclude/salts_core/c11' '-Iinclude' 'tests/test_c11_recursive.c' $d '-o' $re
+            if ($LASTEXITCODE -ne 0) { throw "TinyCC $($pair.suffix) recursive C11 mutex source did not link" }
+            foreach ($path in @($d,$e,$te,$ce,$re)) {
               [byte[]]$bytes = [IO.File]::ReadAllBytes((Resolve-Path $path).Path)
               if ($bytes.Length -lt 128 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) {
                 throw "Not PE/MZ: $path"
@@ -107,11 +117,13 @@ jobs:
                 if ($LASTEXITCODE -ne 0) { throw "Native Win32 x86 TinyCC TSS callback failed $i" }
                 & (Resolve-Path $ce).Path
                 if ($LASTEXITCODE -ne 0) { throw "Native Win32 x86 C11 threads.h failed $i" }
+                & (Resolve-Path $re).Path
+                if ($LASTEXITCODE -ne 0) { throw "Native Win32 x86 C11 recursive mutex failed $i" }
               }
             }
           }
           $sealed = @{}
-          foreach ($name in @('salts_portable_arm64.dll','tcc_portable_arm64.exe','tcc_portable_tss_arm64.exe','tcc_c11_threads_arm64.exe')) {
+          foreach ($name in @('salts_portable_arm64.dll','tcc_portable_arm64.exe','tcc_portable_tss_arm64.exe','tcc_c11_threads_arm64.exe','tcc_c11_recursive_arm64.exe')) {
             $sealed[$name] = (Get-FileHash "build-portable/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
           }
           $sealed | ConvertTo-Json -Depth 3 | Set-Content build-portable/arm64-manifest.json -Encoding utf8
@@ -123,6 +135,7 @@ jobs:
             build-portable/tcc_portable_arm64.exe
             build-portable/tcc_portable_tss_arm64.exe
             build-portable/tcc_c11_threads_arm64.exe
+            build-portable/tcc_c11_recursive_arm64.exe
             build-portable/arm64-manifest.json
           if-no-files-found: error
 
@@ -143,7 +156,7 @@ jobs:
             throw 'Native Windows ARM64 hardware is required'
           }
           $manifest = Get-Content native-arm64/arm64-manifest.json -Raw | ConvertFrom-Json -AsHashtable
-          foreach ($name in @('salts_portable_arm64.dll','tcc_portable_arm64.exe','tcc_portable_tss_arm64.exe','tcc_c11_threads_arm64.exe')) {
+          foreach ($name in @('salts_portable_arm64.dll','tcc_portable_arm64.exe','tcc_portable_tss_arm64.exe','tcc_c11_threads_arm64.exe','tcc_c11_recursive_arm64.exe')) {
             $path = (Resolve-Path "native-arm64/$name").Path
             [byte[]]$data = [IO.File]::ReadAllBytes($path)
             $pe = [BitConverter]::ToInt32($data, 0x3c)
@@ -169,6 +182,11 @@ jobs:
           for ($i=1; $i -le 10; $i++) {
             & $c11Client
             if ($LASTEXITCODE -ne 0) { throw "Native ARM64 TinyCC C11 threads.h direct link failed $i" }
+          }
+          $recursiveClient = (Resolve-Path native-arm64/tcc_c11_recursive_arm64.exe).Path
+          for ($i=1; $i -le 10; $i++) {
+            & $recursiveClient
+            if ($LASTEXITCODE -ne 0) { throw "Native ARM64 TinyCC C11 recursive mutex failed $i" }
           }
   linux-native-tinycc:
     runs-on: ubuntu-22.04
@@ -199,7 +217,7 @@ jobs:
             -o build-portable/tcc_platform_consumer
           export LD_LIBRARY_PATH="$PWD/build-portable:$(printenv LD_LIBRARY_PATH || true)"
           for i in 1 2 3 4 5; do ./build-portable/tcc_platform_consumer; done
-          for fixture in test_portable_timing test_portable_tss test_portable_timed_mutex test_c11_threads; do
+          for fixture in test_portable_timing test_portable_tss test_portable_timed_mutex test_c11_threads test_c11_recursive; do
             "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -DSALTS_C11_THREADS_EXPERIMENTAL=1 -Iinclude/salts_core/c11 -Iinclude \
               "tests/$fixture.c" -Lbuild-portable -lsalts_portable \
               -o "build-portable/$fixture"
@@ -226,6 +244,14 @@ jobs:
             -o build-portable/tcc_installed_c11
           export LD_LIBRARY_PATH="$PWD/portable-installed/lib:$(printenv LD_LIBRARY_PATH || true)"
           for i in 1 2 3 4 5; do ./build-portable/tcc_installed_c11; done
+          "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -std=c11 \
+            -DSALTS_C11_THREADS_EXPERIMENTAL=1 \
+            -Iportable-installed/include/salts_core/c11 \
+            -Iportable-installed/include \
+            tests/test_c11_recursive.c \
+            -Lportable-installed/lib -lsaltscore_platform \
+            -o build-portable/tcc_installed_recursive
+          for i in 1 2 3 4 5; do ./build-portable/tcc_installed_recursive; done
 
   macos-native-tinycc:
     strategy:
@@ -261,7 +287,7 @@ jobs:
             -o build-portable/tcc_platform_consumer
           export DYLD_LIBRARY_PATH="$PWD/build-portable:$(printenv DYLD_LIBRARY_PATH || true)"
           for i in 1 2 3 4 5; do ./build-portable/tcc_platform_consumer; done
-          for fixture in test_portable_timing test_portable_tss test_portable_timed_mutex test_c11_threads; do
+          for fixture in test_portable_timing test_portable_tss test_portable_timed_mutex test_c11_threads test_c11_recursive; do
             "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -DSALTS_C11_THREADS_EXPERIMENTAL=1 -Iinclude/salts_core/c11 -Iinclude \
               "tests/$fixture.c" -Lbuild-portable -lsalts_portable \
               -o "build-portable/$fixture"
@@ -291,10 +317,14 @@ jobs:
             "-DCMAKE_C_FLAGS=${{ matrix.flags }} -fno-omit-frame-pointer -g -O1" \
             -DBUILD_TESTING=ON
           cmake --build build-sanitize \
-            --target saltscore_portable_timing_test saltscore_portable_tss_test saltscore_portable_timed_mutex_test saltscore_c11_threads_test \
+            --target saltscore_portable_timing_test saltscore_portable_tss_test saltscore_portable_timed_mutex_test saltscore_c11_threads_test saltscore_c11_recursive_test \
             --parallel 2
           ctest --test-dir build-sanitize --output-on-failure \
-            --repeat until-fail:10 -R '^saltscore\.(portable_(timing|tss|timed_mutex)|c11_threads_facade)$'
+            --repeat until-fail:10 -R '^saltscore\.(portable_(timing|tss|timed_mutex)|c11_threads_facade|c11_recursive)
+
+
+
+
 
 
 
