@@ -253,7 +253,7 @@ jobs:
             --target saltscore_portable_timing_test saltscore_portable_tss_test saltscore_portable_timed_mutex_test saltscore_c11_threads_test \
             --parallel 2
           ctest --test-dir build-sanitize --output-on-failure \
-            --repeat until-fail:10 -R '^saltscore\.(portable_(timing|tss|timed_mutex)|c11_threads_facade)
+            --repeat until-fail:10 -R '^saltscore\.(portable_(timing|tss|timed_mutex)|c11_threads_facade)$'
 
 
 
