@@ -7,6 +7,11 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <time.h>
+#if defined(_WIN32)
+#define RECUR_TRACE(msg) do { fprintf(stderr, "rec-stage:%s\n", msg); fflush(stderr); } while (0)
+#else
+#define RECUR_TRACE(msg) ((void)0)
+#endif
 
 enum { WAITERS=4 };
 static mtx_t mutex;
@@ -19,18 +24,27 @@ static int SALTS_CORE_PLATFORM_CALL waiter(void *arg) {
     uintptr_t id=(uintptr_t)arg;
     uint32_t before=0;
     struct timespec expired={0,0};
+    RECUR_TRACE("worker-lock-before");
     if (mtx_lock(&mutex) != thrd_success) return -1;
+    RECUR_TRACE("worker-lock-after");
+    RECUR_TRACE("worker-zero-timeout-before");
     if (cnd_timedwait(&condition, &mutex, &expired) != thrd_timedout)
         return -2;
+    RECUR_TRACE("worker-zero-timeout-after");
     if (salts_atomic32_fetch_add(&ready,1u,SALTS_MEMORY_RELEASE,&before))
         return -3;
     if (cnd_signal(&admissions_condition) != thrd_success) return -7;
+    RECUR_TRACE("worker-ready-signal");
     /* All WAITERS are on the same recursive mutex but individually enter
      * cnd_wait at recursion depth one. The owning OS lock is released
      * while each waits; native recursive ownership must be restored.
      */
-    while (!go)
+    while (!go) {
+        RECUR_TRACE("worker-cond-wait-before");
         if (cnd_wait(&condition, &mutex) != thrd_success) return -4;
+        RECUR_TRACE("worker-cond-wait-woke");
+    }
+    RECUR_TRACE("worker-go");
     if (mtx_trylock(&mutex) != thrd_success) return -5; /* depth two */
     if (mtx_unlock(&mutex) != thrd_success ||
         mtx_unlock(&mutex) != thrd_success) return -6;
@@ -44,6 +58,7 @@ int main(void) {
     struct timespec later;
     later.tv_sec=time(NULL)+10;
     later.tv_nsec=0;
+    RECUR_TRACE("main-init");
     if (mtx_init(&mutex, mtx_recursive | mtx_timed) != thrd_success ||
         cnd_init(&condition) != thrd_success ||
         cnd_init(&admissions_condition) != thrd_success) return 1;
@@ -51,8 +66,10 @@ int main(void) {
         mtx_timedlock(&mutex,&later)) return 2;
     if (salts_platform_mutex_destroy(&mutex.owner) != SALTS_EBUSY)
         return 3;
+    RECUR_TRACE("main-recursive-depth3-acquired");
     if (mtx_unlock(&mutex) || mtx_unlock(&mutex) || mtx_unlock(&mutex))
         return 4;
+    RECUR_TRACE("main-recursive-depth3-released");
     if (salts_platform_mutex_create_recursive(&native) || !native)
         return 5;
     if (salts_platform_mutex_lock(native) ||
@@ -65,8 +82,10 @@ int main(void) {
     if (salts_platform_mutex_unlock(native) ||
         salts_platform_mutex_destroy(&native) || native)
         return 8;
+    RECUR_TRACE("main-native-recursive-destroyed");
     for (i=0;i<WAITERS;i++)
         if (thrd_create(&thread[i],waiter,(void *)(uintptr_t)i)) return 9;
+    RECUR_TRACE("main-workers-created");
     /* Admission is an explicit condition, not a scheduler-dependent
      * fixed-count yield loop. Both predicates and signaling are guarded
      * by the same native recursive mutex, at recursion depth one.
@@ -78,7 +97,7 @@ int main(void) {
         int rc;
         if (salts_atomic32_load(&ready,SALTS_MEMORY_ACQUIRE,&admitted))
             return 10;
-        if (admitted==WAITERS) break;
+        if (admitted==WAITERS) { RECUR_TRACE("main-admitted-all"); break; }
         rc=cnd_timedwait(&admissions_condition,&mutex,&later);
         if (rc!=thrd_success) {
             fprintf(stderr,"recursive admission wait failed: rc=%d admitted=%u\n",
@@ -87,7 +106,9 @@ int main(void) {
         }
     }
     go=1;
+    RECUR_TRACE("main-go-broadcast-before");
     if (cnd_broadcast(&condition) || mtx_unlock(&mutex)) return 13;
+    RECUR_TRACE("main-go-broadcast-after");
     for (i=0;i<WAITERS;i++)
         if (thrd_join(thread[i],&ret) || ret!=40+i) {
             fprintf(stderr,"recursive worker %d result %d\n",i,ret);
