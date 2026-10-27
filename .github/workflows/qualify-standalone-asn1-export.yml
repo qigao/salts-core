@@ -91,3 +91,93 @@ jobs:
             UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
             ctest --test-dir build-sanitize --no-tests=error \
               --output-on-failure --timeout 120
+
+  crypto-consumer:
+    name: Crypto consumes one standalone ASN1 + installed SDK / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            triplet: x64-linux
+          - os: macos-15
+            triplet: arm64-osx
+          - os: windows-2025
+            triplet: qigao-x64-windows-v145
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/crypto
+          ref: b2884e6d66cf14c699a6494b8535d0397d468318
+          path: asn1
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/crypto
+          ref: baeba74cafdaac34a1f01934bcfef4442e073cc7
+          path: crypto
+          persist-credentials: false
+      - name: Install generic standalone ASN1 (no backend)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            generator=(-G 'Visual Studio 18 2026' -A x64)
+            asn1_sdk="$(cygpath -m "$RUNNER_TEMP")/asn1-sdk"
+          else
+            generator=(-G Ninja)
+            asn1_sdk="$RUNNER_TEMP/asn1-sdk"
+          fi
+          cmake -S asn1 -B build-asn1 "${generator[@]}" \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            "-DCMAKE_INSTALL_PREFIX=$asn1_sdk"
+          cmake --build build-asn1 --config Release --parallel 2
+          ctest --test-dir build-asn1 -C Release \
+            --no-tests=error --output-on-failure
+          cmake --install build-asn1 --config Release
+          echo "ASN1_SDK=$asn1_sdk" >> "$GITHUB_ENV"
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@4d0c635920aa061a41be6c5bc184d7023f5cb834
+        with:
+          mode: read
+          triplet: ${{ matrix.triplet }}
+          host-triplet: ${{ matrix.triplet }}
+          manifest-root: crypto
+      - name: Exact installed GmSSL, build Crypto format helpers and SDK consumers
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            generator=(-G 'Visual Studio 18 2026' -A x64)
+            root="$(cygpath -m "$GITHUB_WORKSPACE")/crypto"
+            vcpkg="$(cygpath -u "$VCPKG_ROOT")/vcpkg.exe"
+            crypto_sdk="$(cygpath -m "$RUNNER_TEMP")/crypto-sdk"
+            archive=gmssl.lib
+          else
+            generator=(-G Ninja)
+            root="$GITHUB_WORKSPACE/crypto"
+            vcpkg="$VCPKG_ROOT/vcpkg"
+            crypto_sdk="$RUNNER_TEMP/crypto-sdk"
+            archive=libgmssl.a
+          fi
+          "$vcpkg" install "--x-manifest-root=$root" \
+            "--x-install-root=$root/vcpkg_installed" \
+            --triplet "${{ matrix.triplet }}" --only-binarycaching
+          gmssl_sdk="$root/vcpkg_installed/${{ matrix.triplet }}"
+          test -s "$gmssl_sdk/lib/$archive"
+          cmake -S crypto -B build-crypto "${generator[@]}" \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            "-DCMAKE_PREFIX_PATH=$ASN1_SDK" \
+            "-DCRYPTO_GMSSL_ROOT=$gmssl_sdk"
+          cmake --build build-crypto --config Release --parallel 2
+          ctest --test-dir build-crypto -C Release \
+            --no-tests=error --output-on-failure --timeout 120
+          cmake --install build-crypto --config Release --prefix "$crypto_sdk"
+          python3 crypto/tools/audit_static_crypto.py \
+            --prefix "$crypto_sdk" --report "$RUNNER_TEMP/crypto-audit.json"
+          cmake -S crypto/tests/asn1/installed -B build-crypto-installed \
+            "${generator[@]}" "-DCMAKE_PREFIX_PATH=$crypto_sdk;$ASN1_SDK"
+          cmake --build build-crypto-installed --config Release --parallel 2
+          ctest --test-dir build-crypto-installed -C Release \
+            --no-tests=error --output-on-failure --timeout 120
