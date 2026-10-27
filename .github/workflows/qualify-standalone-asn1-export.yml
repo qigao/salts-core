@@ -1,0 +1,93 @@
+name: TEMPORARY independent ASN1 single-owner qualification
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/qualify-standalone-asn1-export.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  installed:
+    name: Provider-neutral ASN1 source and installed C11 C++17 / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/crypto
+          ref: b2884e6d66cf14c699a6494b8535d0397d468318
+          path: asn1
+          persist-credentials: false
+      - name: Verify exact export source and no vendor/provider coupling
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C asn1 rev-parse HEAD)" = "b2884e6d66cf14c699a6494b8535d0397d468318"
+          test -f asn1/include/salts/asn1.h
+          test -f asn1/include/salts/asn1_value.h
+          test ! -e asn1/include/crypto
+          test ! -e asn1/vendor
+          test ! -e asn1/src/crypto.c
+          test ! -e asn1/.github/workflows
+      - name: Build and run original C11 plus C++17 and installed consumers
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            generator=(-G 'Visual Studio 18 2026' -A x64)
+            install="$(cygpath -m "$RUNNER_TEMP")/asn1-sdk"
+            archive=salts_asn1.lib
+          else
+            generator=(-G Ninja)
+            install="$RUNNER_TEMP/asn1-sdk"
+            archive=libsalts_asn1.a
+          fi
+          cmake -S asn1 -B build-asn1 "${generator[@]}" \
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release \
+            "-DCMAKE_INSTALL_PREFIX=$install"
+          cmake --build build-asn1 --config Release --parallel 2
+          ctest --test-dir build-asn1 -C Release \
+            --no-tests=error --output-on-failure --timeout 120
+          cmake --install build-asn1 --config Release
+          test -s "$install/lib/$archive"
+          test -s "$install/include/salts/asn1.h"
+          test -s "$install/include/salts/asn1_value.h"
+          test -s "$install/lib/cmake/ASN1/ASN1Config.cmake"
+          test ! -e "$install/include/crypto/asn1.h"
+          test ! -e "$install/lib/libsalts_crypto.a"
+          cmake -S asn1/tests/installed -B build-installed "${generator[@]}" \
+            -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$install"
+          cmake --build build-installed --config Release --parallel 2
+          ctest --test-dir build-installed -C Release \
+            --no-tests=error --output-on-failure --timeout 120
+
+  sanitizers:
+    name: Provider-neutral ASN1 ASan UBSan / Linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/crypto
+          ref: b2884e6d66cf14c699a6494b8535d0397d468318
+          path: asn1
+          persist-credentials: false
+      - name: Build and execute original ASN1 conformance under ASan UBSan
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S asn1 -B build-sanitize -G Ninja \
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug \
+            "-DCMAKE_C_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined"
+          cmake --build build-sanitize --parallel 2
+          ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+            UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+            ctest --test-dir build-sanitize --no-tests=error \
+              --output-on-failure --timeout 120
