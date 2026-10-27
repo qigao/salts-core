@@ -225,6 +225,13 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_condition_timedwait_ns(
     DWORD milliseconds;
     if (!c || !m || timeout_ns > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS)
         return SALTS_EINVAL;
+    /* A zero relative deadline is already expired: do not enter the
+     * Win32 condition-variable wait kernel path at all. Keeping the
+     * calling mutex owned is exactly the timed-out postcondition and
+     * avoids an unnecessary release/reacquire at zero milliseconds.
+     * Positive deadlines still use true OS condition waits.
+     */
+    if (timeout_ns == 0) return SALTS_ETIMEDOUT;
     milliseconds = (DWORD)((timeout_ns + 999999ull) / 1000000ull);
     if ((m->recursive ?
           SleepConditionVariableCS(&c->native, &m->native.critical, milliseconds) :
