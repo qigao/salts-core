@@ -6,7 +6,7 @@
 #ifndef CORO_POOL_H
 #define CORO_POOL_H
 
-#include "coro.h"
+#include "salts/coroutine/coro.h"
 #include <stddef.h>
 
 #ifdef __cplusplus

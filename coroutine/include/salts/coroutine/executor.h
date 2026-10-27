@@ -6,9 +6,9 @@
 #ifndef CORO_EXECUTOR_H
 #define CORO_EXECUTOR_H
 
-#include "coro_pool.h"
+#include "salts/coroutine/pool.h"
 
-#include <salts/error_codes.h>
+#include <salts/core/error_codes.h>
 #include <stddef.h>
 #include <stdint.h>
 
