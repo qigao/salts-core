@@ -1,9 +1,9 @@
-#include <cnet/websocket.h>
+#include <salts/cnet/websocket.h>
 
 #include "websocket_frame_parser.h"
 
-#include <salts/error_codes.h>
-#include <salts/random.h>
+#include <salts/core/error_codes.h>
+#include <salts/platform/random.h>
 
 #include <limits.h>
 #include <stdlib.h>

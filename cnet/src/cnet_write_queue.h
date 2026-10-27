@@ -3,7 +3,7 @@
 
 #include "cnet_session.h"
 
-#include <cnet/cnet.h>
+#include <salts/cnet/cnet.h>
 
 #include <stdbool.h>
 #include <stddef.h>
