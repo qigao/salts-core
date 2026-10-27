@@ -25,10 +25,11 @@ PATTERNS = {
 # time. Two exact guard lines are non-dependency references; no other CMake
 # lines or source paths are exempt.
 STATIC_CRYPTO_GUARD_FILE = Path("cmake/SaltsCoreCNetCryptoStaticOwner.cmake")
-STATIC_CRYPTO_DENIED_TARGET_GUARD_LINES = frozenset({
+STATIC_CRYPTO_DENIED_TARGET_GUARD = (
+    "foreach(_forbidden IN ITEMS",
     "Salts::TLS Salts::TLSCipherBIO Salts::CryptoProvider",
     "Crypto::TLS Crypto::TLSCipherBIO Crypto::Provider)",
-})
+)
 
 
 def check_repository(root: Path) -> list[str]:
@@ -41,12 +42,20 @@ def check_repository(root: Path) -> list[str]:
             continue
         if path.suffix not in SCANNED_EXTENSIONS and path.name != "CMakeLists.txt":
             continue
-        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            # A precise test-only denylist is not a link or package import.
-            # Production/other sources still cannot reference those targets.
-            if (relative == STATIC_CRYPTO_GUARD_FILE and
-                    line.strip() in STATIC_CRYPTO_DENIED_TARGET_GUARD_LINES):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        denied_guard_indices: set[int] = set()
+        if relative == STATIC_CRYPTO_GUARD_FILE:
+            # Only a complete, contiguous CMake foreach(_forbidden...)
+            # definition can be treated as a negative assertion; never
+            # exclude target_link_libraries or unrelated lines in this file.
+            for offset in range(len(lines) - 2):
+                if tuple(line.strip() for line in lines[offset:offset + 3]) == (
+                        STATIC_CRYPTO_DENIED_TARGET_GUARD):
+                    denied_guard_indices.update((offset + 1, offset + 2))
+        for index, line in enumerate(lines):
+            if index in denied_guard_indices:
                 continue
+            lineno = index + 1
             # Build and source files must not refer to any legacy module even in
             # disabled branches; migration is not allowed to add hidden fallback.
             for rule, regex in PATTERNS.items():
