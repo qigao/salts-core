@@ -103,8 +103,11 @@ jobs:
           # Persist the complete nm output before checking: grep -q under
           # pipefail can SIGPIPE nm and falsely fail a successful static link.
           nm -g "$binary" > "$RUNNER_TEMP/cnet-static-symbols.txt"
-          grep -E '[[:space:]][Tt][[:space:]]_?crypto_tls_provider_create$' "$RUNNER_TEMP/cnet-static-symbols.txt" > /dev/null
-          grep -E '[[:space:]][Tt][[:space:]]_?crypto_tls_cipher_bio_create$' "$RUNNER_TEMP/cnet-static-symbols.txt" > /dev/null
+          # Provider/create helpers can be optimized into their callers.
+          # Audit physical, nontrivial linked TLS and CipherBIO code as well
+          # as archive symbol cardinality and real TLS1.2/1.3 CTests.
+          grep -E '[[:space:]][Tt][[:space:]]_?crypto_tls_session_handshake$' "$RUNNER_TEMP/cnet-static-symbols.txt" > /dev/null
+          grep -E '[[:space:]][Tt][[:space:]]_?crypto_tls_cipher_bio_acquire_io$' "$RUNNER_TEMP/cnet-static-symbols.txt" > /dev/null
       - name: Preserve exact-head candidate evidence
         if: always()
         uses: actions/upload-artifact@v4
