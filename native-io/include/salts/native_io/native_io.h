@@ -1,7 +1,7 @@
 #ifndef SALTS_NATIVE_IO_H
 #define SALTS_NATIVE_IO_H
 
-#include <salts/error_codes.h>
+#include <salts/core/error_codes.h>
 
 #ifndef __cplusplus
   #include <stdbool.h>

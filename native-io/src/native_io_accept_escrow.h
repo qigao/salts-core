@@ -1,7 +1,7 @@
 #ifndef SALTS_NATIVE_IO_ACCEPT_ESCROW_H
 #define SALTS_NATIVE_IO_ACCEPT_ESCROW_H
 
-#include <salts/native_io.h>
+#include <salts/native_io/native_io.h>
 
 #include <stdbool.h>
 #include <stddef.h>

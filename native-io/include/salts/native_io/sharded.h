@@ -1,7 +1,7 @@
 #ifndef SALTS_NATIVE_IO_SHARDED_H
 #define SALTS_NATIVE_IO_SHARDED_H
 
-#include <salts/native_io.h>
+#include <salts/native_io/native_io.h>
 
 #include <stddef.h>
 #include <stdint.h>

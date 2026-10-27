@@ -1,6 +1,6 @@
 #include "native_io_accept_escrow.h"
 
-#include <salts/error_codes.h>
+#include <salts/core/error_codes.h>
 
 #include <stdlib.h>
 #include <string.h>
