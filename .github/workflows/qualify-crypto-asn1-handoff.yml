@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: qigao/crypto
-          ref: 505f245d1bac243264d5fe9986d34d02c9eb39e8
+          ref: 64f33418cbad5dffe60f5528d80af4b28ad55bb0
           path: crypto
           persist-credentials: false
       - name: Strict source-only BER/DER and RFC8410 conformance
@@ -47,7 +47,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: qigao/crypto
-          ref: 505f245d1bac243264d5fe9986d34d02c9eb39e8
+          ref: 64f33418cbad5dffe60f5528d80af4b28ad55bb0
           path: crypto
           persist-credentials: false
       - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@2169f4df6cc17b786ad2f756bcae57699b581f3c
