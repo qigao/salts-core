@@ -23,3 +23,9 @@ endif()
 
 option(SALTSCORE_NATIVE_CPP_CONFORMANCE
   "Compile original native C++17 source contract against standalone Core" OFF)
+
+# Native rooted filesystem; no reflection, vstr, CFlow or old target aliases.
+option(SALTSCORE_BUILD_FS "Build standalone native FS owner" OFF)
+if(SALTSCORE_BUILD_FS)
+  include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsCoreFS.cmake")
+endif()
