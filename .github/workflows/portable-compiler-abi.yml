@@ -35,6 +35,28 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          function RunRecursiveBounded([string]$binary, [string]$architecture, [int]$attempt) {
+            $config = [System.Diagnostics.ProcessStartInfo]::new()
+            $config.FileName = (Resolve-Path $binary).Path
+            $config.UseShellExecute = $false
+            $config.RedirectStandardError = $true
+            $config.RedirectStandardOutput = $true
+            $proc = [System.Diagnostics.Process]::Start($config)
+            if (-not $proc) { throw "Cannot start $architecture recursive test" }
+            $completed = $proc.WaitForExit(15000)
+            if (-not $completed) {
+              $proc.Kill($true)
+              $proc.WaitForExit()
+            }
+            $stderr = $proc.StandardError.ReadToEnd()
+            $stdout = $proc.StandardOutput.ReadToEnd()
+            if ($stderr) { Write-Host $stderr }
+            if ($stdout) { Write-Host $stdout }
+            $exit = $proc.ExitCode
+            $proc.Dispose()
+            if (-not $completed) { throw "$architecture recursive HANG attempt=$attempt (15s)" }
+            if ($exit -ne 0) { throw "$architecture recursive FAILURE attempt=$attempt exit=$exit" }
+          }
           $clang = Get-ChildItem tools/llvm -Recurse -Filter x86_64-w64-mingw32-clang.exe | Select-Object -First 1
           $tcc = Get-ChildItem tools/tinycc-win -Recurse -Filter tcc.exe | Select-Object -First 1
           if (-not $clang -or -not $tcc) { throw 'Pinned compiler binaries absent' }
@@ -63,8 +85,7 @@ jobs:
           & $tcc.FullName '-std=c11' '-DSALTS_C11_THREADS_EXPERIMENTAL=1' '-Iinclude/salts_core/c11' '-Iinclude' 'tests/test_c11_recursive.c' $dll '-o' $recursiveExe
           if ($LASTEXITCODE -ne 0) { throw 'TinyCC x64 recursive C11 mutex source did not link' }
           for ($i=1; $i -le 5; $i++) {
-            & (Resolve-Path $recursiveExe).Path
-            if ($LASTEXITCODE -ne 0) { throw "TinyCC x64 recursive C11 mutex runtime failed $i" }
+            RunRecursiveBounded $recursiveExe 'x64-TinyCC' $i
           }
           $tssExe = 'build-portable/tcc_portable_tss.exe'
           & $tcc.FullName '-std=c11' '-Iinclude' 'tests/portable_tcc_tss_windows.c' '-o' $tssExe
@@ -117,8 +138,7 @@ jobs:
                 if ($LASTEXITCODE -ne 0) { throw "Native Win32 x86 TinyCC TSS callback failed $i" }
                 & (Resolve-Path $ce).Path
                 if ($LASTEXITCODE -ne 0) { throw "Native Win32 x86 C11 threads.h failed $i" }
-                & (Resolve-Path $re).Path
-                if ($LASTEXITCODE -ne 0) { throw "Native Win32 x86 C11 recursive mutex failed $i" }
+                RunRecursiveBounded $re 'x86-TinyCC' $i
               }
             }
           }
