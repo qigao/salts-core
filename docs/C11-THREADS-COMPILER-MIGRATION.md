@@ -39,8 +39,7 @@ Included M2 source/API qualification:
   owner. All return values use C11 \`thrd_*\` categories.
 
 **Remaining required before a standard header can be generally
-enabled:** recursive mutexes (\`mtx_recursive\` currently fail closed
-instead of pretending to be plain locks), complete standard TSS
+enabled:** complete standard TSS
 \`tss_create/delete/get/set\` and repeated destructor semantics
 (\`salts_platform_tss_destroy\` currently returns BUSY), full
 cancellation/close/admission, unload barriers, exact C11
@@ -91,3 +90,39 @@ fixed-width \`_abi\` exports with uint64/int64 seconds and uint32 nanoseconds.
 The implementation never dereferences a client-allocated CRT timespec.
 A failing native i686 test is a required regression gate; it is not skipped
 or replaced with x64 emulation. The same contract applies on Windows ARM64.
+
+
+## M2-B: Actual recursive mutex ownership
+
+\`mtx_recursive\`, \`mtx_recursive|mtx_timed\` and \`mtx_plain\` all
+admit the same prefixed C ABI. \`salts_platform_mutex_create_recursive()\`
+creates a **provider-owned** recursive mutex, not a caller-allocated
+\`pthread_mutex_t\` or Windows \`CRITICAL_SECTION\`. Windows uses native
+\`CRITICAL_SECTION\` and \`SleepConditionVariableCS\`; plain mutexes stay
+on SRWLOCK with \`SleepConditionVariableSRW\`. POSIX uses a real
+\`PTHREAD_MUTEX_RECURSIVE\` attribute and \`pthread_cond_wait\`.
+Both backends reuse the earlier relative-monotonic timed acquisition.
+
+The native provider checks a counted recursion/admission depth before
+destroy. This is essential: \`pthread_mutex_trylock\` and
+\`TryEnterCriticalSection\` **succeed when invoked by the thread already
+holding a recursive lock**, so a trylock-only destroy probe is unsafe.
+A held recursive mutex returns \`SALTS_EBUSY\` even for its owning
+thread; no live lock is destroyed by a successful self-recursion.
+
+Condition waits are admitted when the calling thread holds precisely
+one recursion level. Multiple different threads may wait on the SAME
+recursive mutex concurrently; each releases its native lock while
+waiting. Live ownership is retained in the counted depth so a mutex
+cannot be destroyed while sleepers are active. Calling a condition
+wait at recursion depth greater than one is not admitted and remains
+an explicit caller-side precondition. Destroy racing new entrants is
+**not** qualified until M2 close/admission barriers are complete.
+
+Required differential gates cover depth-three recursion,
+\`mtx_trylock\`, \`mtx_timedlock\`, BUSY destroy at depths one/two/three,
+and four simultaneous condition waiters, including actual
+Windows x86/x64/ARM64 TinyCC->llvm-mingw, macOS Intel/Apple Silicon
+TinyCC->Clang, Linux TinyCC->GCC, Installed SDK C11/C++17 consumers,
+GCC TSan and Clang ASan/UBSan. See Issue #42 for remaining TSS
+destructor iterations and unloading/retainer work.
