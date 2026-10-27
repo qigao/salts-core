@@ -9,6 +9,7 @@
 #include "cnet_crypto_owner_admission.h"
 #include <cnet/cnet.h>
 #include <crypto/tls.h>
+#include <crypto/tls_auth.h>
 #include <crypto/cipher_bio.h>
 #include <cmeta_buffer.h>
 #include <salts/clock.h>
