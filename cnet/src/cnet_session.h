@@ -1,7 +1,7 @@
 #ifndef CNET_SESSION_H
 #define CNET_SESSION_H
 
-#include <salts/error_codes.h>
+#include <salts/core/error_codes.h>
 
 #include <stdbool.h>
 #include <stddef.h>

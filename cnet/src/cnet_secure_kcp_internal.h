@@ -1,7 +1,7 @@
 #ifndef CNET_SECURE_KCP_INTERNAL_H
 #define CNET_SECURE_KCP_INTERNAL_H
 
-#include <cnet/cnet.h>
+#include <salts/cnet/cnet.h>
 
 #include "cnet_kcp_internal.h"
 

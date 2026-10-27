@@ -3,10 +3,10 @@
 #include "cnet_module.h"
 
 #include <ares.h>
-#include <cnet/name_lookup.h>
-#include <salts/clock.h>
+#include <salts/cnet/name_lookup.h>
+#include <salts/platform/clock.h>
 #include <stdatomic.h>
-#include <salts/thread.h>
+#include <salts/platform/thread.h>
 
 #include <limits.h>
 #include <stdio.h>

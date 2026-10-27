@@ -1,4 +1,4 @@
-#include <cnet/cnet.h>
+#include <salts/cnet/cnet.h>
 
 #include "cnet_kcp_fec_internal.h"
 #include "cnet_kcp_internal.h"
@@ -10,7 +10,7 @@
 
 #include "cnet_monocypher_namespace.h"
 #include <monocypher.h>
-#include <salts/clock.h>
+#include <salts/platform/clock.h>
 
 #include <limits.h>
 #include <stdlib.h>

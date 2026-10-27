@@ -1,7 +1,7 @@
 #ifndef CNET_OWNER_H
 #define CNET_OWNER_H
 
-#include <cnet/cnet.h>
+#include <salts/cnet/cnet.h>
 
 #include "cnet_command.h"
 #include "cnet_event.h"

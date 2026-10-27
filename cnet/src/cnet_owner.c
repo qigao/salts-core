@@ -1,8 +1,8 @@
 #include "cnet_owner.h"
 
-#include <salts/clock.h>
-#include <salts/deadline_queue.h>
-#include <salts/error_codes.h>
+#include <salts/platform/clock.h>
+#include <salts/concurrency/deadline_queue.h>
+#include <salts/core/error_codes.h>
 
 #include <limits.h>
 #include <stdbool.h>
