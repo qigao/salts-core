@@ -132,6 +132,52 @@ jobs:
             echo "SECURITY FAIL: candidate imported a second provider" >&2
             exit 1
           fi
+      - name: M6 audit shared physical Crypto Owner imports (ELF/Mach-O)
+        shell: bash
+        run: |
+          set -euo pipefail
+          build="$RUNNER_TEMP/core-static-owner-build"
+          owner=$(find "$build" -type f \
+            \( -name 'libsaltscore_cnet_m6_static_crypto.so' -o \
+               -name 'libsaltscore_cnet_m6_static_crypto.dylib' \) -print -quit)
+          host=$(find "$build" -type f \
+            -name saltscore_cnet_m6_two_plugin_loader -print -quit)
+          test -n "$owner" && test -n "$host"
+          for module in a b; do
+            plugin=$(find "$build" -type f \
+              \( -name "libsaltscore_cnet_m6_plugin_$module.so" -o \
+                 -name "libsaltscore_cnet_m6_plugin_$module.dylib" \) -print -quit)
+            test -n "$plugin"
+            if [ "${{ runner.os }}" = "Linux" ]; then
+              readelf -d "$plugin" > "$RUNNER_TEMP/cnet-m6-plugin-$module-imports.txt"
+            else
+              otool -L "$plugin" > "$RUNNER_TEMP/cnet-m6-plugin-$module-imports.txt"
+            fi
+            grep -Fq 'saltscore_cnet_m6_static_crypto' \
+              "$RUNNER_TEMP/cnet-m6-plugin-$module-imports.txt"
+            if grep -Eiq 'libgmssl|libsalts_crypto|libsaltscore_cnet[.](so|dylib)|libcrypto_provider|libcrypto_tls' \
+              "$RUNNER_TEMP/cnet-m6-plugin-$module-imports.txt"; then
+              echo "M6 fail: plugin imported a second physical TLS owner" >&2
+              exit 1
+            fi
+          done
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            readelf -d "$owner" > "$RUNNER_TEMP/cnet-m6-owner-imports.txt"
+            readelf -d "$host" > "$RUNNER_TEMP/cnet-m6-host-imports.txt"
+          else
+            otool -L "$owner" > "$RUNNER_TEMP/cnet-m6-owner-imports.txt"
+            otool -L "$host" > "$RUNNER_TEMP/cnet-m6-host-imports.txt"
+          fi
+          if grep -Eiq 'libgmssl|libsalts_crypto|libsaltscore_cnet[.](so|dylib)|libcrypto_provider|libcrypto_tls' \
+            "$RUNNER_TEMP/cnet-m6-owner-imports.txt"; then
+            echo "M6 fail: shared CNet candidate imports a second TLS provider" >&2
+            exit 1
+          fi
+          if grep -Eiq 'saltscore_cnet|gmssl|salts_crypto|crypto_tls|crypto_provider' \
+            "$RUNNER_TEMP/cnet-m6-host-imports.txt"; then
+            echo "M6 fail: host directly links CNet or Crypto" >&2
+            exit 1
+          fi
       - name: Preserve exact-head candidate evidence
         if: always()
         uses: actions/upload-artifact@v4
