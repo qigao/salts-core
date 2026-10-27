@@ -10,6 +10,7 @@
  */
 struct salts_c11_thread {
     salts_atomic64 id;
+    salts_atomic32 refs; /* creator + worker, even across detach/exit */
     salts_platform_thread *owner;
     thrd_start_t callback;
     void *argument;
@@ -42,6 +43,12 @@ static void set_thread_id(struct salts_c11_thread *thread, uint64_t id) {
     if (id) (void)salts_atomic64_cas(&thread->id, &expected, id,
                 SALTS_MEMORY_ACQ_REL, SALTS_MEMORY_ACQUIRE, &changed);
 }
+static void release_c11_thread(struct salts_c11_thread *t) {
+    uint32_t previous = 0;
+    (void)salts_atomic32_fetch_add(&t->refs, UINT32_MAX,
+                                   SALTS_MEMORY_ACQ_REL, &previous);
+    if (previous == 1u) free(t);
+}
 static int SALTS_CORE_PLATFORM_CALL bridge_thread(void *ctx) {
     struct salts_c11_thread *thread = (struct salts_c11_thread *)ctx;
     int ret;
@@ -49,6 +56,7 @@ static int SALTS_CORE_PLATFORM_CALL bridge_thread(void *ctx) {
     set_thread_id(thread, salts_platform_thread_current_id());
     ret = thread->callback(thread->argument);
     current_thread = NULL;
+    release_c11_thread(thread);
     return ret;
 }
 int SALTS_CORE_PLATFORM_CALL thrd_create(thrd_t *out, thrd_start_t fn, void *argument) {
@@ -60,6 +68,7 @@ int SALTS_CORE_PLATFORM_CALL thrd_create(thrd_t *out, thrd_start_t fn, void *arg
     if (!thread) return thrd_nomem;
     thread->callback = fn;
     thread->argument = argument;
+    if (salts_atomic32_init(&thread->refs, 2u)) { free(thread); return thrd_error; }
     if (salts_atomic64_init(&thread->id, 0)) {
         free(thread);
         return thrd_error;
@@ -75,7 +84,7 @@ int SALTS_CORE_PLATFORM_CALL thrd_join(thrd_t thread, int *result) {
     if (!thread || !thread->owner) return thrd_error;
     rc = salts_platform_thread_join(&thread->owner, result);
     if (rc != SALTS_OK) return status_to_c11(rc);
-    free(thread);
+    release_c11_thread(thread);
     return thrd_success;
 }
 int SALTS_CORE_PLATFORM_CALL thrd_detach(thrd_t thread) {
@@ -83,11 +92,8 @@ int SALTS_CORE_PLATFORM_CALL thrd_detach(thrd_t thread) {
     if (!thread || !thread->owner) return thrd_error;
     rc = salts_platform_thread_detach(&thread->owner);
     if (rc != SALTS_OK) return status_to_c11(rc);
-    /* This initial adapter does not admit detached thrd_t ownership.
-     * P0's native Platform detach remains supported separately.
-     * Returning success here would free the wrapper before callback.
-     * A bounded owner/worker retainer is required for thrd_detach.
-     */
+    /* Worker keeps its reference until normal return or thrd_exit. */
+    release_c11_thread(thread);
     return thrd_success;
 }
 thrd_t SALTS_CORE_PLATFORM_CALL thrd_current(void) {
@@ -124,9 +130,12 @@ int SALTS_CORE_PLATFORM_CALL thrd_sleep(const struct timespec *duration,
     return 0;
 }
 void SALTS_CORE_PLATFORM_CALL thrd_exit(int result) {
-    /* Platform early-exit retires the worker reference before OS exit.
-     * The thrd_t owner remains held until the creator joins it.
-     */
+    struct salts_c11_thread *thread = current_thread;
+    if (thread) {
+        current_thread = NULL;
+        release_c11_thread(thread);
+    }
+    /* Platform early-exit retires its own worker reference before OS exit. */
     salts_platform_thread_exit(result);
     abort();
 }
