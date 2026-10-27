@@ -126,7 +126,7 @@ if(TARGET saltscore_wsparser)
   set_target_properties(saltscore_wsparser_test PROPERTIES
     C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
   target_include_directories(saltscore_wsparser_test PRIVATE
-    "${PROJECT_SOURCE_DIR}/src/cnet/wsparser")
+    "${PROJECT_SOURCE_DIR}/cnet/src/wsparser")
   target_link_libraries(saltscore_wsparser_test PRIVATE saltscore_wsparser)
   add_test(NAME saltscore.wsparser COMMAND saltscore_wsparser_test)
 endif()
@@ -135,14 +135,16 @@ endif()
 # when CNet/TLS itself is disabled. These are test-only, never SDK exports.
 add_executable(saltscore_cnet_policy_test
   test_cnet_policy.c
-  ../src/cnet/cnet_destination_policy.c
-  ../src/cnet/cnet_owner_strategy.c
-  ../src/cnet/cnet_recovery_policy.c)
+  ../cnet/src/cnet_destination_policy.c
+  ../cnet/src/cnet_owner_strategy.c
+  ../cnet/src/cnet_recovery_policy.c)
 target_compile_features(saltscore_cnet_policy_test PRIVATE c_std_11)
 set_target_properties(saltscore_cnet_policy_test PROPERTIES
   C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 target_include_directories(saltscore_cnet_policy_test PRIVATE
-  "${PROJECT_SOURCE_DIR}/include")
+  "${PROJECT_SOURCE_DIR}/cnet/include"
+  "${PROJECT_SOURCE_DIR}/platform/include"
+  "${PROJECT_SOURCE_DIR}/core/include")
 target_link_libraries(saltscore_cnet_policy_test PRIVATE Salts::Platform)
 if(MSVC)
   target_compile_options(saltscore_cnet_policy_test PRIVATE
@@ -287,7 +289,7 @@ set_tests_properties(saltscore.portable_timed_mutex PROPERTIES TIMEOUT 35)
 # Explicit C11 threads.h source-compatibility admission (not a global CRT override).
 add_executable(saltscore_c11_threads_test test_c11_threads.c)
 target_include_directories(saltscore_c11_threads_test BEFORE PRIVATE
-  "${PROJECT_SOURCE_DIR}/include/salts_core/c11")
+  "${PROJECT_SOURCE_DIR}/platform/include/salts_core/c11")
 target_compile_definitions(saltscore_c11_threads_test PRIVATE
   SALTS_C11_THREADS_EXPERIMENTAL=1)
 set_target_properties(saltscore_c11_threads_test PROPERTIES
