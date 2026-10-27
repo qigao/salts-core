@@ -21,6 +21,9 @@
 #ifndef SDK_SERVER_KEY_FILE
 #error SDK_SERVER_KEY_FILE is required
 #endif
+#ifndef SDK_WRONG_CA_FILE
+#error SDK_WRONG_CA_FILE is required for authenticated failure tests
+#endif
 
 enum { MAX_STEPS = 180000, CIPHER_CHUNK = 193 };
 #define CHECK(expr) do {                                                \
@@ -308,6 +311,88 @@ cleanup:
     return rc;
 }
 
+/* A valid but unrelated CA must be rejected by the client during its
+ * actual encrypted handshake, not by configuration/PEM parsing or by the
+ * server's certificate/SNI-selection policy. Wrong-SAN client verification
+ * against an independent, SNI-neutral OpenSSL peer is a separate test.
+ */
+static int run_wrong_ca(crypto_tls_provider *provider, uint32_t protocol)
+{
+    cnet_tls_client_config client_policy = {0};
+    cnet_tls_server_config server_policy = {0};
+    cnet_tls_context *client_ctx = NULL, *server_ctx = NULL;
+    cnet_tls_state client = {0}, server = {0};
+    bool client_ready = false, server_ready = false, rejected = false;
+    unsigned steps = 0u;
+    size_t moved = 0u;
+    int status, rc = 1;
+    uint32_t sessions = UINT32_MAX;
+    const size_t capacity = CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY;
+
+    client_policy.size = sizeof(client_policy);
+    client_policy.server_name = "localhost"; /* correct SNI */
+    client_policy.ca_file = SDK_WRONG_CA_FILE; /* unrelated but valid CA */
+    server_policy.size = sizeof(server_policy);
+    server_policy.cert_file = SDK_SERVER_CERT_FILE;
+    server_policy.key_file = SDK_SERVER_KEY_FILE;
+
+    CHECK(cnet_crypto_tls_test_client_context(
+        provider, &client_policy, "localhost", protocol,
+        capacity, &client_ctx) == SALTS_OK);
+    CHECK(cnet_crypto_tls_test_server_context(
+        provider, &server_policy, protocol,
+        capacity, &server_ctx) == SALTS_OK);
+    CHECK(cnet_tls_state_init(
+        &client, client_ctx, false, "localhost", capacity) == SALTS_OK);
+    client_ctx = NULL;
+    CHECK(cnet_tls_state_init(
+        &server, server_ctx, true, NULL, capacity) == SALTS_OK);
+    server_ctx = NULL;
+
+    for (steps = 0u; steps < MAX_STEPS; ++steps) {
+        if (!client_ready) {
+            status = cnet_tls_handshake(&client, &client_ready);
+            if (status != SALTS_OK) {
+                CHECK(status == SALTS_EPROTO ||
+                      status == SALTS_ECONNABORTED);
+                rejected = true;
+                break;
+            }
+        }
+        if (!server_ready)
+            CHECK(cnet_tls_handshake(&server, &server_ready) == SALTS_OK);
+        CHECK(pump_pair(&client, &server, &moved) == 0);
+        CHECK(!client_ready && !cnet_tls_state_handshake_complete(&client));
+    }
+    CHECK(rejected && steps < MAX_STEPS && moved > 0u);
+    CHECK(!client_ready && !client.handshake_complete);
+    {
+        uint8_t bytes[3] = {1u, 2u, 3u};
+        bool completed = true;
+        CHECK(cnet_tls_write(&client, bytes, sizeof(bytes), &completed)
+              == SALTS_ENOTCONN);
+        CHECK(!client.handshake_complete);
+    }
+    rc = 0;
+cleanup:
+    if (client.engine != NULL) cnet_tls_state_destroy(&client);
+    if (server.engine != NULL) cnet_tls_state_destroy(&server);
+    if (client_ctx != NULL) cnet_tls_context_release(client_ctx);
+    if (server_ctx != NULL) cnet_tls_context_release(server_ctx);
+    if (crypto_tls_provider_session_count(provider, &sessions) != CRYPTO_TLS_OK ||
+        sessions != 0u)
+        rc = 1; /* no leaked authentication/session ownership */
+    if (rc)
+        fprintf(stderr, "Static CNet TLS0x%x unrelated CA failure not proven:"
+                " client_ready=%d rejected=%d ciphertext=%zu steps=%u live=%u\n",
+                protocol, (int)client_ready, (int)rejected, moved, steps,
+                (unsigned)sessions);
+    else
+        printf("Static CNet TLS0x%x unrelated CA authenticated rejection PASS\n",
+               protocol);
+    return rc;
+}
+
 int main(void)
 {
     crypto_tls_provider *provider = NULL;
@@ -320,6 +405,8 @@ int main(void)
     if (run_one(provider, CRYPTO_TLS_1_2, true) != 0) goto done;
     if (run_one(provider, CRYPTO_TLS_1_3, false) != 0) goto done;
     if (run_one(provider, CRYPTO_TLS_1_3, true) != 0) goto done;
+    if (run_wrong_ca(provider, CRYPTO_TLS_1_2) != 0) goto done;
+    if (run_wrong_ca(provider, CRYPTO_TLS_1_3) != 0) goto done;
     rc = 0;
 done:
     if (crypto_tls_provider_destroy(&provider) != CRYPTO_TLS_OK)
