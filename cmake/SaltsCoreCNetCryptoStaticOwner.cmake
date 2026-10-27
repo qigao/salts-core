@@ -97,6 +97,27 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
   set_tests_properties(saltscore.cnet_crypto_static_original_owner_tls12_tls13
     PROPERTIES TIMEOUT 120)
 
+  # M5: real original CNet epoll/kqueue/IOCP Owner, not an adapter-only
+  # socket. TLS12/TLS13 REQUIRED mTLS uses exact-head Crypto Python X.509
+  # fixtures and a single physical static Crypto instance in the process.
+  option(SALTSCORE_CNET_M5_PYTHON_MTLS_TEST
+    "Run true original NativeIO Owner REQUIRED mTLS with Python cert fixtures" OFF)
+  if(SALTSCORE_CNET_M5_PYTHON_MTLS_TEST)
+    if(NOT SALTSCORE_CRYPTO_PYTHON_FIXTURE_SOURCE OR
+        NOT EXISTS "${SALTSCORE_CRYPTO_PYTHON_FIXTURE_SOURCE}")
+      message(FATAL_ERROR "Exact-head Crypto Python mTLS fixture module required")
+    endif()
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME saltscore.cnet_crypto_static_original_owner_python_mtls
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/cnet-crypto-static/python_original_owner_mtls.py"
+        --binary "$<TARGET_FILE:saltscore_cnet_crypto_static_original_owner>"
+        --crypto-python-fixtures "${SALTSCORE_CRYPTO_PYTHON_FIXTURE_SOURCE}"
+        --work "${CMAKE_CURRENT_BINARY_DIR}/m5-private-python-fixtures")
+    set_tests_properties(saltscore.cnet_crypto_static_original_owner_python_mtls
+      PROPERTIES TIMEOUT 360 RESOURCE_LOCK cnet_m5_original_owner)
+  endif()
+
   # True client SAN mismatch requires SNI-neutral independent server:
   # pinned GmSSL refuses unrecognized SNI *on the server* first.
   option(SALTSCORE_CNET_STATIC_CRYPTO_OPENSSL_SAN_TEST
