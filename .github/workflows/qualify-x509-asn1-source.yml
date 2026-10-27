@@ -95,18 +95,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: qigao/salts-net
-          ref: f628cf922a6815e881416643ccdcb4a3c18820e5
+          ref: c22d29097047e41ffc1c4aca9cdce86dc069d738
           path: net
           persist-credentials: false
       - name: Verify no ASN1 module and compile MIB CLI without a library
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C net rev-parse HEAD)" = "f628cf922a6815e881416643ccdcb4a3c18820e5"
+          test "$(git -C net rev-parse HEAD)" = "c22d29097047e41ffc1c4aca9cdce86dc069d738"
           python3 net/tools/check_single_asn1_owner.py
           test ! -d net/snmp/asn1
-          ! grep -R -E 'SaltsNet::SNMPSupport|SaltsNet::Asn1Parser|add_library\\(saltsnet_snmp_support' \
-            net/snmp/mib net/snmp/CMakeLists.txt
+          # The repository guard differentiates banned declarations from
+          # README statements and negative import assertions.
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends re2c
           cc -O2 -o "$PWD/lemon" net/tools/lemon/lemon.c
