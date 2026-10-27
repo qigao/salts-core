@@ -134,3 +134,7 @@ install(FILES vendor/cnet/reed/LICENSE
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/reed)
 install(FILES vendor/cnet/monocypher/UPSTREAM.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/monocypher)
+
+# Test-only genuine original CNet Owner and NativeIO, using the sole static
+# Crypto candidate. No production target, ABI or GmSSL link is replaced.
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsCoreCNetCryptoStaticOwner.cmake")
