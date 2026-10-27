@@ -13,12 +13,22 @@ import re
 SCANNED_EXTENSIONS = {".c", ".cc", ".cpp", ".h", ".hpp", ".m", ".mm", ".cmake"}
 IGNORED_DIRECTORIES = {".git", ".github", "vendor", "third_party", "build", "out", "tools", "docs", "_build", "_installed", "_sdk", "CMakeFiles"}
 PATTERNS = {
-    "forbidden high-level Salts target": re.compile(r"\bSalts::(?!Core\b|Platform\b|Concurrency\b|Coroutine\b|NativeIO\b|URI\b|CNet\b|Unicode\b|IDNA\b|CSerde\b|TinyTest\b|SCTP\b|SCTPWire\b|FS\b|Process\b)[A-Za-z_0-9]+"),
+    "forbidden high-level Salts target": re.compile(r"\bSalts::(?!Core\b|Platform\b|Concurrency\b|Coroutine\b|NativeIO\b|URI\b|CNet\b|Unicode\b|IDNA\b|CSerde\b|TinyTest\b|SCTP\b|SCTPWire\b|FS\b|Process\b|Crypto\b)[A-Za-z_0-9]+"),
     "forbidden alternate target namespace": re.compile(r"\b(?:SaltsCore|SaltsCrypto|Crypto)::[A-Za-z_0-9]+"),
     "legacy package lookup": re.compile(r"\b(?:find_package|find_dependency)\s*\(\s*Salts(?:Utils)?(?:\s|\))", re.IGNORECASE),
     "CMeta/CFlow/CSTL include": re.compile(r'^\s*#\s*include\s*[<"](?:cmeta/|cflow/|cstl(?:/|\.h))'),
     "CMeta/CFlow runtime object": re.compile(r"\b(?:CMETA_STRUCT|CMETA_IMPLEMENTS|cmeta_type_desc|cflow_executor|cflow_io_actor|cflow_waker|cflow_publisher)\b"),
 }
+
+
+# The test-local sole-static candidate rejects split providers at configure
+# time. Two exact guard lines are non-dependency references; no other CMake
+# lines or source paths are exempt.
+STATIC_CRYPTO_GUARD_FILE = Path("cmake/SaltsCoreCNetCryptoStaticOwner.cmake")
+STATIC_CRYPTO_DENIED_TARGET_GUARD_LINES = frozenset({
+    "Salts::TLS Salts::TLSCipherBIO Salts::CryptoProvider",
+    "Crypto::TLS Crypto::TLSCipherBIO Crypto::Provider)",
+})
 
 
 def check_repository(root: Path) -> list[str]:
@@ -32,6 +42,11 @@ def check_repository(root: Path) -> list[str]:
         if path.suffix not in SCANNED_EXTENSIONS and path.name != "CMakeLists.txt":
             continue
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            # A precise test-only denylist is not a link or package import.
+            # Production/other sources still cannot reference those targets.
+            if (relative == STATIC_CRYPTO_GUARD_FILE and
+                    line.strip() in STATIC_CRYPTO_DENIED_TARGET_GUARD_LINES):
+                continue
             # Build and source files must not refer to any legacy module even in
             # disabled branches; migration is not allowed to add hidden fallback.
             for rule, regex in PATTERNS.items():
