@@ -264,6 +264,20 @@ if(SALTSCORE_BUILD_CNET)
   include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsCoreCNet.cmake")
 endif()
 
+# Strict, uninstalled static Crypto/CNet admission. A completely separate
+# build from incumbent GmSSL CNet; never a runtime/provider fallback.
+option(SALTSCORE_CNET_STATIC_CRYPTO_ADMISSION
+  "Qualify CNet policy against the sole installed static Salts::Crypto (test only)"
+  OFF)
+if(SALTSCORE_CNET_STATIC_CRYPTO_ADMISSION)
+  if(NOT BUILD_TESTING OR SALTSCORE_BUILD_CNET)
+    message(FATAL_ERROR
+      "Static Crypto qualification requires BUILD_TESTING=ON and production SALTSCORE_BUILD_CNET=OFF")
+  endif()
+  add_subdirectory(tests/cnet-crypto-static)
+endif()
+
+
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsCoreExtraModules.cmake")
 
 # TinyTest is defined by ExtraModules. Admit the full original CNet Owner
