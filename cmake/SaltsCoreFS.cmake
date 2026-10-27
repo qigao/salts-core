@@ -1,6 +1,6 @@
 
 # One native C11 filesystem owner; no CMeta/CFlow/old Salts references.
-add_library(saltscore_fs SHARED src/fs/fs.c src/fs/fs_root.c)
+add_library(saltscore_fs SHARED fs/src/fs.c fs/src/fs_root.c)
 add_library(Salts::FS ALIAS saltscore_fs)
 target_compile_features(saltscore_fs PUBLIC c_std_11)
 set_target_properties(saltscore_fs PROPERTIES
@@ -8,7 +8,7 @@ set_target_properties(saltscore_fs PROPERTIES
   C_VISIBILITY_PRESET default WINDOWS_EXPORT_ALL_SYMBOLS ON
   VERSION "${PROJECT_VERSION}" SOVERSION "${SALTSCORE_NATIVE_SOVERSION}")
 target_include_directories(saltscore_fs PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/fs/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_link_libraries(saltscore_fs PUBLIC Salts::Platform)
 if(WIN32)
@@ -25,7 +25,7 @@ install(TARGETS saltscore_fs EXPORT SaltsCoreTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES include/salts/fs.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/salts)
+install(FILES fs/include/salts/fs.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/salts)
 if(BUILD_TESTING)
   add_executable(saltscore_fs_test tests/test_fs.c)
   target_compile_features(saltscore_fs_test PRIVATE c_std_11)
