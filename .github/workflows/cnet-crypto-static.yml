@@ -178,14 +178,35 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Restore pinned re2c via curl and GitHub Packages (no Mono)
+      - name: Compile pinned upstream re2c 4.6 from verified GitHub source (MSVC)
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          python cmake/ci/github-packages.py re2c "$env:RUNNER_TEMP/qigao-re2c-binary"
-          if ($LASTEXITCODE -ne 0) { throw 'Pinned re2c fetch failed' }
+          $archive = Join-Path $env:RUNNER_TEMP 're2c-4.6.tar.xz'
+          $src = Join-Path $env:RUNNER_TEMP 're2c-source'
+          $build = Join-Path $env:RUNNER_TEMP 're2c-build'
+          New-Item -ItemType Directory -Path $src -Force | Out-Null
+          & curl.exe -fLsS --retry 3 'https://github.com/skvadrik/re2c/releases/download/4.6/re2c-4.6.tar.xz' -o $archive
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned re2c source download failed' }
+          $digest = (Get-FileHash -Algorithm SHA256 -Path $archive).Hash.ToLowerInvariant()
+          if ($digest -ne '75bf2696445e831d0d44e0d9f2909eeffc18c09757f222b2fb025f7e59fe130b') {
+            throw 'Pinned official re2c 4.6 release digest mismatch'
+          }
+          & tar.exe -xJf $archive --strip-components=1 -C $src
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned re2c archive extraction failed' }
+          $configure = @(
+            '-S', $src, '-B', $build, '-G', 'Visual Studio 18 2026', '-A', 'x64',
+            '-DRE2C_REBUILD_LEXERS=OFF', '-DRE2C_REBUILD_PARSERS=OFF',
+            '-DRE2C_REBUILD_SYNTAX=OFF', '-DRE2C_REBUILD_DOCS=OFF')
+          & cmake @configure
+          if ($LASTEXITCODE -ne 0) { throw 'MSVC re2c bootstrap configure failed' }
+          & cmake --build $build --config Release --target re2c --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'MSVC native re2c build failed' }
+          $binaries = @(Get-ChildItem -Path $build -Filter re2c.exe -Recurse -File)
+          if ($binaries.Count -ne 1) { throw 're2c host executable missing or ambiguous' }
+          & $binaries[0].FullName --version
+          if ($LASTEXITCODE -ne 0) { throw 're2c host bootstrap smoke failed' }
+          (Split-Path $binaries[0].FullName) | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Fetch immutable Crypto and verified GmSSL source port
         shell: pwsh
         run: |
