@@ -220,7 +220,7 @@ static int cnet_owner_test_drive_to_state(cnet_owner *owner, cnet_session_table 
           sessions, handle, &terminal);
       fprintf(stderr,
           "Unexpected CNet Owner terminal during state admission:"
-          " expected=%d terminal-read=%d kind=%d status=%d stage=%d\\n",
+          " expected=%d terminal-read=%d kind=%d status=%d stage=%d\n",
           (int)expected, received, (int)terminal.kind,
           terminal.status, (int)terminal.stage);
       return SALTS_EIO;
@@ -230,7 +230,7 @@ static int cnet_owner_test_drive_to_state(cnet_owner *owner, cnet_session_table 
     if (cmeta_monotonic_ms() >= deadline) {
       fprintf(stderr,
           "CNet Owner state admission deadline:"
-          " state=%d expected=%d elapsed-limit-ms=%d\\n",
+          " state=%d expected=%d elapsed-limit-ms=%d\n",
           (int)state, (int)expected, CNET_OWNER_TEST_TIMEOUT_MS);
       return SALTS_ETIMEDOUT;
     }
