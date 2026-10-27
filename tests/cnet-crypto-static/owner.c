@@ -130,7 +130,17 @@ static int pump(cnet_client *dialer, cnet_client *acceptor)
     } \
 } while (0)
 
-static int run_protocol(uint32_t protocol, bool with_alpn)
+typedef struct m5_mtls_case {
+    const char *ca, *server_cert, *server_key;
+    const char *client_cert, *client_key;
+    bool expect_accept;
+} m5_mtls_case;
+
+/* The original CNet clients and NativeIO Owners remain unchanged.
+ * Python-generated file fixtures remain alive until full owner teardown.
+ */
+static int run_protocol(uint32_t protocol, bool with_alpn,
+                        const m5_mtls_case *mtls)
 {
     crypto_tls_provider *provider = NULL;
     cnet_tls_client profile = {0};
@@ -171,11 +181,19 @@ static int run_protocol(uint32_t protocol, bool with_alpn)
     CHECK(crypto_tls_provider_create(CRYPTO_TLS_ABI_VERSION, &provider)
           == CRYPTO_TLS_OK);
     client_policy.size = sizeof(client_policy);
-    client_policy.ca_file = SDK_CA_FILE;
+    client_policy.ca_file = mtls ? mtls->ca : SDK_CA_FILE;
     client_policy.server_name = "localhost";
+    if (mtls != NULL) {
+        client_policy.cert_file = mtls->client_cert;
+        client_policy.key_file = mtls->client_key;
+    }
     server_policy.size = sizeof(server_policy);
-    server_policy.cert_file = SDK_SERVER_CERT_FILE;
-    server_policy.key_file = SDK_SERVER_KEY_FILE;
+    server_policy.cert_file = mtls ? mtls->server_cert : SDK_SERVER_CERT_FILE;
+    server_policy.key_file = mtls ? mtls->server_key : SDK_SERVER_KEY_FILE;
+    if (mtls != NULL) {
+        server_policy.client_auth = CNET_TLS_CLIENT_AUTH_REQUIRED;
+        server_policy.ca_file = mtls->ca;
+    }
     if (with_alpn) {
         client_policy.alpn_protocols = client_offers;
         client_policy.alpn_protocol_count = 2u;
@@ -230,9 +248,22 @@ static int run_protocol(uint32_t protocol, bool with_alpn)
                 CHECK(accepted.slot && accepted.generation);
             }
         }
-        CHECK(!client_seen.failed && !server_seen.failed);
-        if (accepted.slot && client_seen.connected == 1u &&
-            server_seen.connected == 1u) break;
+        if (mtls != NULL && !mtls->expect_accept) {
+            if (accepted.slot && server_seen.failed != 0u) break;
+        } else {
+            CHECK(!client_seen.failed && !server_seen.failed);
+            if (accepted.slot && client_seen.connected == 1u &&
+                server_seen.connected == 1u) break;
+        }
+    }
+    if (mtls != NULL && !mtls->expect_accept) {
+        CHECK(accepted.slot && accepted.generation);
+        CHECK(server_seen.connected == 0u);
+        CHECK(server_seen.failed == 1u && server_seen.terminal == 1u);
+        CHECK(client_seen.sent == 0u && server_seen.plaintext_received == 0u
+              && client_seen.plaintext_received == 0u);
+        rc = 0;
+        goto done;
     }
     CHECK(client_seen.connected == 1u && server_seen.connected == 1u);
     CHECK(!client_seen.failed && !server_seen.failed);
@@ -482,6 +513,19 @@ static int external_main(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
+    if (argc == 9 && strcmp(argv[1], "--mtls") == 0) {
+        m5_mtls_case m = {0};
+        uint32_t protocol;
+        if (strcmp(argv[2], "12") == 0) protocol = CRYPTO_TLS_1_2;
+        else if (strcmp(argv[2], "13") == 0) protocol = CRYPTO_TLS_1_3;
+        else return 2;
+        m.ca = argv[3]; m.server_cert = argv[4]; m.server_key = argv[5];
+        m.client_cert = strcmp(argv[6], "-") == 0 ? NULL : argv[6];
+        m.client_key = strcmp(argv[7], "-") == 0 ? NULL : argv[7];
+        m.expect_accept = strcmp(argv[8], "accept") == 0;
+        if (!m.expect_accept && strcmp(argv[8], "reject") != 0) return 2;
+        return run_protocol(protocol, false, &m);
+    }
     if (argc != 1) return external_main(argc, argv);
     cnet_tls_client dummy = {0};
     cnet_tls_client_config default_policy = {0};
@@ -489,9 +533,9 @@ int main(int argc, char **argv)
     if (cnet_tls_client_init(&dummy, &default_policy) != SALTS_ENOTSUP ||
         dummy.impl != NULL)
         return 2; /* Never admit implicit root stores/default TLS range. */
-    if (run_protocol(CRYPTO_TLS_1_2, false) != 0) return 1;
-    if (run_protocol(CRYPTO_TLS_1_2, true) != 0) return 1;
-    if (run_protocol(CRYPTO_TLS_1_3, false) != 0) return 1;
-    if (run_protocol(CRYPTO_TLS_1_3, true) != 0) return 1;
+    if (run_protocol(CRYPTO_TLS_1_2, false, NULL) != 0) return 1;
+    if (run_protocol(CRYPTO_TLS_1_2, true, NULL) != 0) return 1;
+    if (run_protocol(CRYPTO_TLS_1_3, false, NULL) != 0) return 1;
+    if (run_protocol(CRYPTO_TLS_1_3, true, NULL) != 0) return 1;
     return 0;
 }
