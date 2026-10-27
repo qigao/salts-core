@@ -1,6 +1,6 @@
 #include "cnet_kcp_secure_internal.h"
 
-#include <salts/random.h>
+#include <salts/platform/random.h>
 
 #include "cnet_monocypher_namespace.h"
 #include <monocypher.h>

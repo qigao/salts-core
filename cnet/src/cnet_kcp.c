@@ -1,4 +1,4 @@
-#include <cnet/cnet.h>
+#include <salts/cnet/cnet.h>
 
 #include "cnet_kcp_internal.h"
 

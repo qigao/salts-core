@@ -1,7 +1,7 @@
 #ifndef CNET_KCP_SECURE_INTERNAL_H
 #define CNET_KCP_SECURE_INTERNAL_H
 
-#include <cnet/cnet.h>
+#include <salts/cnet/cnet.h>
 
 enum {
   CNET_KCP_SECURE_HANDSHAKE_BYTES = 64,

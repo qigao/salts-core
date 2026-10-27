@@ -1,7 +1,7 @@
-#include <cnet/managed_dial.h>
-#include <salts/clock.h>
-#include <salts/error_codes.h>
-#include <salts/thread.h>
+#include <salts/cnet/managed_dial.h>
+#include <salts/platform/clock.h>
+#include <salts/core/error_codes.h>
+#include <salts/platform/thread.h>
 
 #include <stdint.h>
 #include <stdlib.h>

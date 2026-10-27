@@ -1,11 +1,11 @@
-#include <cnet/cnet.h>
+#include <salts/cnet/cnet.h>
 
 #include "cnet_client_internal.h"
 #include "cnet_module.h"
 #include "cnet_transport.h"
 #include "native_io_internal_accept.h"
 
-#include <salts/clock.h>
+#include <salts/platform/clock.h>
 
 #include <limits.h>
 #include <stdbool.h>

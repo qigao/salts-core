@@ -1,7 +1,7 @@
 #ifndef CNET_KCP_INTERNAL_H
 #define CNET_KCP_INTERNAL_H
 
-#include <cnet/cnet.h>
+#include <salts/cnet/cnet.h>
 
 typedef struct cnet_kcp_send_marker {
   uint32_t final_sequence;

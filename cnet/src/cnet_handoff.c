@@ -1,6 +1,6 @@
-#include <cnet/handoff.h>
-#include <ring_buffer.h>
-#include <salts/thread.h>
+#include <salts/cnet/handoff.h>
+#include <salts/core/ring_buffer.h>
+#include <salts/platform/thread.h>
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>

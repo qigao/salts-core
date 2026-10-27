@@ -1,9 +1,9 @@
 #include "cnet_module.h"
 #include "cnet_transport.h"
 #include "cnet_uri.h"
-#include <cnet/ipc.h>
+#include <salts/cnet/ipc.h>
 #include <limits.h>
-#include <salts/native_ipc.h>
+#include <salts/native_io/ipc.h>
 #include <stdlib.h>
 #include <string.h>
 
