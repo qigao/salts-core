@@ -4,9 +4,9 @@ Tracked by [salts-core #3](https://github.com/qigao/salts-core/issues/3).
 This is a stacked Draft qualification branch, not a production ABI cutover.
 
 Original source commit: `qigao/salts@d6d936a86087a7f9a982126157d154e905580f30`.
-- `salts/utils/src/cmeta_buffer.c` -> `src/core/cmeta_buffer.c`
-- `salts/utils/include/cmeta_buffer.h` -> `include/cmeta_buffer.h`
-- `salts/utils/include/cmeta_api.h` -> `include/cmeta_api.h`
+- `salts/utils/src/cmeta_buffer.c` -> `core/src/cmeta_buffer.c`
+- `salts/utils/include/cmeta_buffer.h` -> `core/include/cmeta_buffer.h`
+- `salts/utils/include/cmeta_api.h` -> `core/include/cmeta_api.h`
 
 Only includes and old target-owner text changed. Existing pool/buffer allocation,
 reference counts, zero-copy slices, external buffer callback/retention and
