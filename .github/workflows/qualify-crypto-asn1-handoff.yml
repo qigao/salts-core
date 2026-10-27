@@ -1,0 +1,79 @@
+name: Temporary ASN1 Crypto source-owner qualification
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/qualify-crypto-asn1-handoff.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  source:
+    name: Crypto-owned ASN1 C11/C++17 / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/crypto
+          ref: ee1463904a673ac90b87977c72ce140ce77dadaa
+          path: crypto
+          persist-credentials: false
+      - name: Strict source-only BER/DER and RFC8410 conformance
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            generator=(-G 'Visual Studio 18 2026' -A x64)
+          else
+            generator=(-G Ninja)
+          fi
+          cmake -S crypto/tests/asn1/standalone -B build-asn1 "${generator[@]}" \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-asn1 --config Release --parallel 2
+          ctest --test-dir build-asn1 -C Release --no-tests=error \
+            --output-on-failure --timeout 120
+
+  installed:
+    name: Crypto ASN1 in one real installed Salts::Crypto archive / linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/crypto
+          ref: ee1463904a673ac90b87977c72ce140ce77dadaa
+          path: crypto
+          persist-credentials: false
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@2169f4df6cc17b786ad2f756bcae57699b581f3c
+        with:
+          mode: read
+      - name: Install exact vcpkg GmSSL and compile static Crypto with ASN1
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$GITHUB_WORKSPACE/crypto"
+          install="$RUNNER_TEMP/asn1-crypto-sdk"
+          "$VCPKG_ROOT/vcpkg" install \
+            "--x-manifest-root=$root" \
+            "--x-install-root=$root/vcpkg_installed" \
+            --triplet x64-linux
+          prefix="$root/vcpkg_installed/x64-linux"
+          test -s "$prefix/lib/libgmssl.a"
+          cmake -S "$root" -B build-crypto -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            "-DCRYPTO_GMSSL_ROOT=$prefix"
+          cmake --build build-crypto --parallel 2
+          ctest --test-dir build-crypto --no-tests=error --output-on-failure
+          cmake --install build-crypto --prefix "$install"
+          python3 "$root/tools/audit_static_crypto.py" \
+            --prefix "$install" --report "$RUNNER_TEMP/asn1-symbol-audit.json"
+          cmake -S "$root/tests/asn1/installed" -B build-installed -G Ninja \
+            "-DCMAKE_PREFIX_PATH=$install"
+          cmake --build build-installed --parallel 2
+          ctest --test-dir build-installed --no-tests=error --output-on-failure
