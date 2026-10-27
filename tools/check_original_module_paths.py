@@ -44,7 +44,10 @@ PATH_PATTERN = re.compile(
 
 
 def read_original_paths(manifest: Path = MANIFEST) -> tuple[str, ...]:
-    data = manifest.read_bytes()
+    # Git's checkout may materialize text files with CRLF on Windows while
+    # the tracked Git blob remains LF. Compare the original *tracked* bytes,
+    # not a platform-specific working-tree newline representation.
+    data = manifest.read_bytes().replace(b"\r\n", b"\n")
     identity = hashlib.sha1(f"blob {len(data)}\0".encode("ascii") + data).hexdigest()
     if identity != MANIFEST_GIT_BLOB:
         raise ValueError("original Salts module-name inventory identity changed")

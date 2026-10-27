@@ -70,6 +70,21 @@ class OriginalSaltsModulePathAdmission(unittest.TestCase):
             (root / "platform/src/readiness.c").write_text("a legitimate bug fix\n")
             orig.validate(root, self.names)
 
+    def test_windows_checkout_crlf_normalizes_to_tracked_lf_blob(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "inventory.txt"
+            original = orig.MANIFEST.read_bytes().replace(b"\r\n", b"\n")
+            path.write_bytes(original.replace(b"\n", b"\r\n"))
+            self.assertEqual(orig.read_original_paths(path), self.names)
+
+    def test_arbitrary_carriage_returns_are_not_normalized(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "inventory.txt"
+            original = orig.MANIFEST.read_bytes().replace(b"\r\n", b"\n")
+            path.write_bytes(original.replace(b"\n", b"\r", 1))
+            with self.assertRaisesRegex(ValueError, "identity changed"):
+                orig.read_original_paths(path)
+
     def test_manifest_cannot_silently_drop_or_relabel_a_path(self) -> None:
         text = orig.MANIFEST.read_text(encoding="utf-8")
         with tempfile.TemporaryDirectory() as tmp:
