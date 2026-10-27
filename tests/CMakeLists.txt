@@ -281,3 +281,17 @@ target_compile_features(saltscore_clock_atomic_owner_test PRIVATE c_std_11)
 target_link_libraries(saltscore_clock_atomic_owner_test PRIVATE Salts::Platform)
 add_test(NAME saltscore.clock_atomic_owner COMMAND saltscore_clock_atomic_owner_test)
 set_tests_properties(saltscore.clock_atomic_owner PROPERTIES TIMEOUT 30)
+
+
+# C11 mtx_recursive and mtx_recursive|mtx_timed must use the native
+# provider-owned recursion mode, including shared condition variables.
+add_executable(saltscore_c11_recursive_test test_c11_recursive.c)
+target_include_directories(saltscore_c11_recursive_test BEFORE PRIVATE
+  "${PROJECT_SOURCE_DIR}/include/salts_core/c11")
+target_compile_definitions(saltscore_c11_recursive_test PRIVATE
+  SALTS_C11_THREADS_EXPERIMENTAL=1)
+set_target_properties(saltscore_c11_recursive_test PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+target_link_libraries(saltscore_c11_recursive_test PRIVATE Salts::Platform)
+add_test(NAME saltscore.c11_recursive COMMAND saltscore_c11_recursive_test)
+set_tests_properties(saltscore.c11_recursive PROPERTIES TIMEOUT 35)
