@@ -118,3 +118,72 @@ jobs:
           cmake --build build-formats --config Release --parallel 2
           ctest --test-dir build-formats -C Release --no-tests=error \
             --output-on-failure --timeout 120
+
+  full-crypto:
+    name: One-repo installed ASN1 + Crypto static SDK (curl-only) / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            triplet: x64-linux
+          - os: macos-15
+            triplet: arm64-osx
+          - os: windows-2025
+            triplet: qigao-x64-windows-v145
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/crypto
+          ref: d7b90d81cbace4907b2918c8e031737ddcf629e6
+          path: repo
+          persist-credentials: false
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@4d0c635920aa061a41be6c5bc184d7023f5cb834
+        with:
+          mode: read
+          triplet: ${{ matrix.triplet }}
+          host-triplet: ${{ matrix.triplet }}
+          manifest-root: repo/crypto
+      - name: Exact GmSSL plus two static modules and independent installed C11 C++17
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C repo rev-parse HEAD)" = "d7b90d81cbace4907b2918c8e031737ddcf629e6"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            generator=(-G 'Visual Studio 18 2026' -A x64)
+            root="$(cygpath -m "$PWD/repo")"
+            vcpkg="$(cygpath -u "$VCPKG_ROOT")/vcpkg.exe"
+            sdk="$(cygpath -m "$RUNNER_TEMP")/combined-sdk"
+            gmsslarchive=gmssl.lib
+          else
+            generator=(-G Ninja)
+            root="$PWD/repo"
+            vcpkg="$VCPKG_ROOT/vcpkg"
+            sdk="$RUNNER_TEMP/combined-sdk"
+            gmsslarchive=libgmssl.a
+          fi
+          "$vcpkg" install "--x-manifest-root=$root/crypto" \
+            "--x-install-root=$root/crypto/vcpkg_installed" \
+            --triplet "${{ matrix.triplet }}" --only-binarycaching
+          gmssl="$root/crypto/vcpkg_installed/${{ matrix.triplet }}"
+          test -s "$gmssl/lib/$gmsslarchive"
+          cmake -S repo -B build-all "${generator[@]}" \
+            -DBUILD_TESTING=ON "-DCRYPTO_GMSSL_ROOT=$gmssl"
+          cmake --build build-all --config Release --parallel 2
+          ctest --test-dir build-all -C Release \
+            --no-tests=error --output-on-failure --timeout 120
+          cmake --install build-all --config Release --prefix "$sdk"
+          python3 repo/crypto/tools/audit_static_crypto.py \
+            --prefix "$sdk" --report "$RUNNER_TEMP/two-module-static-audit.json"
+          cmake -S repo/asn1/tests/installed -B build-consumer-asn1 \
+            "${generator[@]}" "-DCMAKE_PREFIX_PATH=$sdk"
+          cmake --build build-consumer-asn1 --config Release --parallel 2
+          ctest --test-dir build-consumer-asn1 -C Release \
+            --no-tests=error --output-on-failure --timeout 120
+          cmake -S repo/crypto/tests/asn1/installed -B build-consumer-crypto \
+            "${generator[@]}" "-DCMAKE_PREFIX_PATH=$sdk"
+          cmake --build build-consumer-crypto --config Release --parallel 2
+          ctest --test-dir build-consumer-crypto -C Release \
+            --no-tests=error --output-on-failure --timeout 120
