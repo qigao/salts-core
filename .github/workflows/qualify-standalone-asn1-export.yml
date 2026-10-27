@@ -181,3 +181,55 @@ jobs:
           cmake --build build-crypto-installed --config Release --parallel 2
           ctest --test-dir build-crypto-installed -C Release \
             --no-tests=error --output-on-failure --timeout 120
+
+  crypto-formats-source:
+    name: ECDSA RFC8410 source against standalone ASN1 no GmSSL / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/crypto
+          ref: b2884e6d66cf14c699a6494b8535d0397d468318
+          path: asn1
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/crypto
+          ref: baeba74cafdaac34a1f01934bcfef4442e073cc7
+          path: crypto
+          persist-credentials: false
+      - name: Compile and execute Crypto key format source on installed ASN1
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            generator=(-G 'Visual Studio 18 2026' -A x64)
+            install="$(cygpath -m "$RUNNER_TEMP")/asn1-sdk"
+            crypto_src="$(cygpath -m "$PWD/crypto")"
+          else
+            generator=(-G Ninja)
+            install="$RUNNER_TEMP/asn1-sdk"
+            crypto_src="$PWD/crypto"
+          fi
+          test "$(git -C crypto rev-parse HEAD)" = "baeba74cafdaac34a1f01934bcfef4442e073cc7"
+          cmake -S asn1 -B build-asn1-source "${generator[@]}" \
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release \
+            "-DCMAKE_INSTALL_PREFIX=$install"
+          cmake --build build-asn1-source --config Release --parallel 2
+          ctest --test-dir build-asn1-source -C Release \
+            --no-tests=error --output-on-failure
+          cmake --install build-asn1-source --config Release
+          cmake -S tests/asn1-crypto-format-qualification -B build-keyformat \
+            "${generator[@]}" -DCMAKE_BUILD_TYPE=Release \
+            "-DCMAKE_PREFIX_PATH=$install" "-DCRYPTO_SOURCE=$crypto_src"
+          cmake --build build-keyformat --config Release --parallel 2
+          ctest --test-dir build-keyformat -C Release \
+            --no-tests=error --output-on-failure --timeout 120
