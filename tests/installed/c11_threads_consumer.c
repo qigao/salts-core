@@ -23,5 +23,20 @@ int main(void) {
     if (thrd_sleep(&step,NULL)) return 8;
     cnd_destroy(&cond);
     mtx_destroy(&mutex);
+    {
+        mtx_t recursive;
+        struct timespec future;
+        future.tv_sec=time(NULL)+2;
+        future.tv_nsec=0;
+        if (mtx_init(&recursive,mtx_recursive|mtx_timed) != thrd_success ||
+            mtx_lock(&recursive) || mtx_trylock(&recursive) ||
+            mtx_timedlock(&recursive,&future)) return 9;
+        if (salts_platform_mutex_destroy(&recursive.owner)!=SALTS_EBUSY)
+            return 10;
+        if (mtx_unlock(&recursive) || mtx_unlock(&recursive) ||
+            mtx_unlock(&recursive)) return 11;
+        mtx_destroy(&recursive);
+        if (recursive.owner) return 12;
+    }
     return 0;
 }
