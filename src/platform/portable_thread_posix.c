@@ -278,6 +278,10 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_condition_timedwait_ns(
     int rc;
     if (!c || !m || timeout_ns > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS ||
         seconds > (uint64_t)INT64_MAX) return SALTS_EINVAL;
+    /* Consistent with Win32: already-expired relative wait does not
+     * release and re-acquire the caller's mutex. The caller still owns it.
+     */
+    if (timeout_ns == 0) return SALTS_ETIMEDOUT;
 #if defined(__APPLE__)
     deadline.tv_sec = (time_t)seconds;
     if (deadline.tv_sec < 0 || (uint64_t)deadline.tv_sec != seconds) return SALTS_EINVAL;
