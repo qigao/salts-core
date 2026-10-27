@@ -266,6 +266,22 @@ endif()
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsCoreExtraModules.cmake")
 
+# TinyTest is defined by ExtraModules. Admit the full original CNet Owner
+# test profile only *after* its native test target exists; not a public SDK.
+# Original Salts native CNet Owner conformance migrated into Core. Compile a
+# TEST-LOCAL complete Owner once per test executable, never install it or link
+# a second CNet owner beside the production DSO in the same image.
+option(SALTSCORE_CNET_OWNER_SOURCE_TESTS
+  "Qualify original CNet Owner and actual retained NativeIO terminal" OFF)
+if(SALTSCORE_CNET_OWNER_SOURCE_TESTS)
+  if(NOT BUILD_TESTING OR NOT SALTSCORE_BUILD_TINYTEST OR
+     NOT TARGET Salts::TinyTest)
+    message(FATAL_ERROR "CNet original source tests require BUILD_TESTING and Core TinyTest")
+  endif()
+  add_subdirectory(tests/cnet-owner)
+endif()
+
+
 # One optional native C11 SCTP source owner; never an old package or fallback.
 option(SALTSCORE_BUILD_SCTP "Build standalone C11 SCTP Wire and Session" OFF)
 if(SALTSCORE_BUILD_SCTP)

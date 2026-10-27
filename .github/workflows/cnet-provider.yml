@@ -20,6 +20,7 @@ on:
       - "tests/installed/cnet_consumer.*"
       - "tests/test_gmssl_*.c"
       - "tests/test_cnet_tcp_loopback.c"
+      - "tests/cnet-owner/**"
       - "tests/test_cnet_tls_ca_san.c"
       - "tests/fixtures/**"
       - "tests/CMakeLists.txt"
@@ -77,12 +78,17 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=x64-linux -DVCPKG_MANIFEST_FEATURES=cnet \
             -DSALTSCORE_BUILD_URI=ON -DSALTSCORE_BUILD_CNET=ON \
+            -DSALTSCORE_BUILD_TINYTEST=ON -DSALTSCORE_CNET_OWNER_SOURCE_TESTS=ON \
             "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/saltscore-sdk"
           cmake --build build-cnet --parallel 2
           ctest --test-dir build-cnet --output-on-failure -C Release --no-tests=error
           # A provider link alone is not network conformance: execute real TCP.
           ctest --test-dir build-cnet --output-on-failure -C Release \
             -R '^saltscore[.]cnet_tcp_loopback$' --no-tests=error
+          # Original native Owner: pooled buffer stays alive through deadline,
+          # real partial terminal and final retirement (not mock completion).
+          ctest --test-dir build-cnet --output-on-failure -C Release \
+            -R '^saltscore[.]cnet_owner_original$' --no-tests=error
           # Actual TCP TLS peer verification: CA + hostname must be enforced.
           ctest --test-dir build-cnet --output-on-failure -C Release \
             -R '^saltscore[.]cnet_tls_ca_san$' --no-tests=error
@@ -192,11 +198,13 @@ jobs:
             -DVCPKG_TARGET_TRIPLET="$VCPKG_TARGET_TRIPLET" \
             -DVCPKG_MANIFEST_FEATURES=cnet \
             -DSALTSCORE_BUILD_URI=ON -DSALTSCORE_BUILD_CNET=ON \
+            -DSALTSCORE_BUILD_TINYTEST=ON -DSALTSCORE_CNET_OWNER_SOURCE_TESTS=ON \
             "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/saltscore-sdk"
           cmake --build build-cnet --parallel 2
           ctest --test-dir build-cnet --output-on-failure -C Release --timeout 65 --no-tests=error
           for check in saltscore.cnet_tcp_loopback saltscore.cnet_tls_ca_san \
-                       saltscore.gmssl_tls_io_abi saltscore.gmssl_shangmi_provider; do
+                       saltscore.gmssl_tls_io_abi saltscore.gmssl_shangmi_provider \
+                       saltscore.cnet_owner_original; do
             ctest --test-dir build-cnet -C Release --output-on-failure \
               -R "^$check$" --no-tests=error
           done
@@ -312,6 +320,7 @@ jobs:
                     '-DVCPKG_TARGET_TRIPLET=x64-windows',
                     '-DVCPKG_MANIFEST_FEATURES=cnet',
                     '-DSALTSCORE_BUILD_URI=ON', '-DSALTSCORE_BUILD_CNET=ON',
+                    '-DSALTSCORE_BUILD_TINYTEST=ON', '-DSALTSCORE_CNET_OWNER_SOURCE_TESTS=ON',
                     "-DCMAKE_INSTALL_PREFIX=$env:RUNNER_TEMP/saltscore-sdk")
           & cmake @cmakeArgs
           if ($LASTEXITCODE -ne 0) { throw "Windows CNet provider configure failed" }
@@ -323,7 +332,8 @@ jobs:
           ctest --test-dir build-cnet -C Release --output-on-failure --timeout 65 --no-tests=error
           if ($LASTEXITCODE -ne 0) { throw "Windows CNet native CTest failed" }
           foreach ($test in @('saltscore.cnet_tcp_loopback', 'saltscore.cnet_tls_ca_san',
-                              'saltscore.gmssl_tls_io_abi', 'saltscore.gmssl_shangmi_provider')) {
+                              'saltscore.gmssl_tls_io_abi', 'saltscore.gmssl_shangmi_provider',
+                              'saltscore.cnet_owner_original')) {
             ctest --test-dir build-cnet -C Release --output-on-failure -R "^$test$" --no-tests=error
             if ($LASTEXITCODE -ne 0) { throw "required Windows gate failed: $test" }
           }
