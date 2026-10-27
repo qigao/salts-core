@@ -10,6 +10,8 @@
 #include <salts_core/platform_thread.h>
 #include <stdint.h>
 #include <time.h>
+/* glibc stdlib.h declares its own once_flag; include it BEFORE aliasing. */
+#include <stdlib.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -19,7 +21,8 @@ typedef struct salts_c11_thread *thrd_t;
 typedef int (SALTS_CORE_PLATFORM_CALL *thrd_start_t)(void *);
 typedef struct { salts_platform_mutex *owner; int type; } mtx_t;
 typedef struct { salts_platform_condition *owner; } cnd_t;
-typedef salts_platform_once once_flag;
+typedef salts_platform_once salts_c11_once_flag;
+#define once_flag salts_c11_once_flag
 #define ONCE_FLAG_INIT SALTS_PLATFORM_ONCE_INIT
 enum { thrd_success=0, thrd_nomem=1, thrd_timedout=2, thrd_busy=3, thrd_error=4 };
 enum { mtx_plain=0, mtx_recursive=1, mtx_timed=2 };
