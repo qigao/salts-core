@@ -273,3 +273,11 @@ set_target_properties(saltscore_c11_threads_test PROPERTIES
 target_link_libraries(saltscore_c11_threads_test PRIVATE Salts::Platform)
 add_test(NAME saltscore.c11_threads_facade COMMAND saltscore_c11_threads_test)
 set_tests_properties(saltscore.c11_threads_facade PROPERTIES TIMEOUT 35)
+
+
+# Regression for Windows cmeta_hrtime once-atomic QPC frequency publication.
+add_executable(saltscore_clock_atomic_owner_test test_clock_atomic_owner.c)
+target_compile_features(saltscore_clock_atomic_owner_test PRIVATE c_std_11)
+target_link_libraries(saltscore_clock_atomic_owner_test PRIVATE Salts::Platform)
+add_test(NAME saltscore.clock_atomic_owner COMMAND saltscore_clock_atomic_owner_test)
+set_tests_properties(saltscore.clock_atomic_owner PROPERTIES TIMEOUT 30)
