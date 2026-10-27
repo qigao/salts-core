@@ -28,12 +28,24 @@ static int SALTS_CORE_PLATFORM_CALL waiter(void *arg) {
     if (mtx_lock(&mutex) != thrd_success) return -1;
     RECUR_TRACE("worker-lock-after");
     RECUR_TRACE("worker-zero-timeout-before");
-    if (cnd_timedwait(&condition, &mutex, &expired) != thrd_timedout)
-        return -2;
+    {
+        const int wait_result = cnd_timedwait(&condition, &mutex, &expired);
+        if (wait_result != thrd_timedout) {
+            fprintf(stderr,"recursive worker %u zero-timeout unexpected rc=%d\n",
+                    (unsigned)id, wait_result);
+            (void)mtx_unlock(&mutex);
+            return -2;
+        }
+    }
     RECUR_TRACE("worker-zero-timeout-after");
-    if (salts_atomic32_fetch_add(&ready,1u,SALTS_MEMORY_RELEASE,&before))
+    if (salts_atomic32_fetch_add(&ready,1u,SALTS_MEMORY_RELEASE,&before)) {
+        (void)mtx_unlock(&mutex);
         return -3;
-    if (cnd_signal(&admissions_condition) != thrd_success) return -7;
+    }
+    if (cnd_signal(&admissions_condition) != thrd_success) {
+        (void)mtx_unlock(&mutex);
+        return -7;
+    }
     RECUR_TRACE("worker-ready-signal");
     /* All WAITERS are on the same recursive mutex but individually enter
      * cnd_wait at recursion depth one. The owning OS lock is released
@@ -41,11 +53,19 @@ static int SALTS_CORE_PLATFORM_CALL waiter(void *arg) {
      */
     while (!go) {
         RECUR_TRACE("worker-cond-wait-before");
-        if (cnd_wait(&condition, &mutex) != thrd_success) return -4;
+        if (cnd_wait(&condition, &mutex) != thrd_success) {
+            fprintf(stderr,"recursive worker %u condition wait failure\n",
+                    (unsigned)id);
+            (void)mtx_unlock(&mutex);
+            return -4;
+        }
         RECUR_TRACE("worker-cond-wait-woke");
     }
     RECUR_TRACE("worker-go");
-    if (mtx_trylock(&mutex) != thrd_success) return -5; /* depth two */
+    if (mtx_trylock(&mutex) != thrd_success) {
+        (void)mtx_unlock(&mutex);
+        return -5;
+    } /* depth two */
     if (mtx_unlock(&mutex) != thrd_success ||
         mtx_unlock(&mutex) != thrd_success) return -6;
     return (int)id+40;
