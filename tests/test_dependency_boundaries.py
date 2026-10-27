@@ -39,22 +39,19 @@ class DependencyGateTest(unittest.TestCase):
 
     def test_canonical_crypto_is_allowed_but_split_tls_is_not(self):
         self.assertEqual(
-            self.check_text("target_link_libraries(app PRIVATE Salts::Crypto)\\n",
+            self.check_text("target_link_libraries(app PRIVATE Salts::Crypto)\n",
                             ".cmake"), [])
         self.assertEqual(len(self.check_text(
-            "target_link_libraries(app PRIVATE Salts::TLS)\\n", ".cmake")), 1)
+            "target_link_libraries(app PRIVATE Salts::TLS)\n", ".cmake")), 1)
         self.assertEqual(len(self.check_text(
-            "target_link_libraries(app PRIVATE Crypto::TLS)\\n", ".cmake")), 1)
+            "target_link_libraries(app PRIVATE Crypto::TLS)\n", ".cmake")), 1)
 
     def test_single_static_crypto_negative_guard_is_not_a_dependency(self):
         guard = (
-            "foreach(_forbidden IN ITEMS\\n"
-            "  Salts::TLS Salts::TLSCipherBIO Salts::CryptoProvider\\n"
-            "  Crypto::TLS Crypto::TLSCipherBIO Crypto::Provider)\\n"
-            "  if(TARGET ${_forbidden})\\n"
-            "    message(FATAL_ERROR \\"second provider forbidden\\")\\n"
-            "  endif()\\n"
-            "endforeach()\\n"
+            "foreach(_forbidden IN ITEMS\n"
+            "  Salts::TLS Salts::TLSCipherBIO Salts::CryptoProvider\n"
+            "  Crypto::TLS Crypto::TLSCipherBIO Crypto::Provider)\n"
+            "endforeach()\n"
         )
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -64,21 +61,22 @@ class DependencyGateTest(unittest.TestCase):
             guard_file.write_text(guard, encoding="utf-8")
             self.assertEqual(module.check_repository(root), [])
 
-            # A production link next to the negative guard remains forbidden.
-            guard_file.write_text(guard +
-                                  "target_link_libraries(app PRIVATE Crypto::TLS)\\n",
-                                  encoding="utf-8")
+            # Any real provider link next to negative guard remains forbidden.
+            guard_file.write_text(
+                guard + "target_link_libraries(app PRIVATE Crypto::TLS)\n",
+                encoding="utf-8")
             self.assertEqual(len(module.check_repository(root)), 1)
 
-            # The same negative words in any OTHER file still cause failure.
+            # Same deny-list words in another file still trigger scan.
             guard_file.write_text(guard, encoding="utf-8")
             (root / "extra.cmake").write_text(guard, encoding="utf-8")
             self.assertEqual(len(module.check_repository(root)), 2)
 
-            # Incomplete/renamed guard must not receive this exception.
+            # A renamed guard cannot hide dependencies.
             (root / "extra.cmake").unlink()
-            guard_file.write_text(guard.replace("foreach(_forbidden IN ITEMS",
-                                                "set(_forbidden"), encoding="utf-8")
+            guard_file.write_text(
+                guard.replace("foreach(_forbidden IN ITEMS",
+                              "set(_forbidden"), encoding="utf-8")
             self.assertEqual(len(module.check_repository(root)), 2)
 
     def test_retired_asn1_target_is_forbidden(self):
