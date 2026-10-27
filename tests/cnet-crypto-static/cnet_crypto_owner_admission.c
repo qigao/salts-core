@@ -4,6 +4,7 @@
 #include "cnet_crypto_owner_admission.h"
 #include "cnet_tls.h" /* canonical private CNet hostname capacity */
 #include <crypto/tls_ext.h>
+#include <crypto/tls_auth.h>
 #include <salts/error_codes.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -136,10 +137,22 @@ int cnet_crypto_owner_admit_client(const cnet_tls_client_config *config,
          strcmp(config->server_name, source_identity) != 0))
         return SALTS_EINVAL;
     if (config->security_profile != CNET_TLS_SECURITY_PROFILE_STANDARD ||
-        config->ca_path != NULL || config->cert_file != NULL ||
-        config->key_file != NULL)
+        config->ca_path != NULL)
         return SALTS_ENOTSUP;
-    if (config->key_password != NULL) return SALTS_EINVAL;
+    if ((config->cert_file == NULL) != (config->key_file == NULL))
+        return SALTS_EINVAL;
+    if (config->key_password != NULL && config->key_file == NULL)
+        return SALTS_EINVAL;
+    if (config->cert_file != NULL) {
+        if (crypto_tls_auth_abi_version() != CRYPTO_TLS_AUTH_ABI_VERSION)
+            return SALTS_ENOTSUP;
+        if (!bounded_nonempty(config->cert_file, CRYPTO_TLS_AUTH_MAX_PATH_BYTES)
+            || !bounded_nonempty(config->key_file, CRYPTO_TLS_AUTH_MAX_PATH_BYTES))
+            return SALTS_EINVAL;
+        if (config->key_password != NULL &&
+            !bounded_nonempty(config->key_password, CRYPTO_TLS_AUTH_MAX_PASSWORD_BYTES))
+            return SALTS_EINVAL;
+    }
     status = admit_text_alpn(config->alpn_protocols,
                              config->alpn_protocol_count);
     if (status != SALTS_OK) return status;
@@ -147,7 +160,9 @@ int cnet_crypto_owner_admit_client(const cnet_tls_client_config *config,
      * Missing or blank explicit CA is a hard rejection, not a fallback.
      */
     if (config->ca_file == NULL) return SALTS_ENOTSUP;
-    if (!bounded_nonempty(config->ca_file, CNET_CRYPTO_TEST_PATH_LIMIT))
+    if (!bounded_nonempty(config->ca_file,
+            config->cert_file != NULL ? CRYPTO_TLS_AUTH_MAX_PATH_BYTES :
+                CNET_CRYPTO_TEST_PATH_LIMIT))
         return SALTS_EINVAL;
 
     memset(&admitted, 0, sizeof(admitted));
@@ -177,20 +192,30 @@ int cnet_crypto_owner_admit_server(const cnet_tls_server_config *config,
         config->client_auth != CNET_TLS_CLIENT_AUTH_REQUIRED)
         return SALTS_EINVAL;
     if (config->security_profile != CNET_TLS_SECURITY_PROFILE_STANDARD ||
-        config->client_auth == CNET_TLS_CLIENT_AUTH_REQUIRED ||
         config->ca_path != NULL)
         return SALTS_ENOTSUP;
-    /* With client auth disabled, CA parameters are not relevant and
-     * must not be silently ignored. Private-key passwords are not yet
-     * admitted under this candidate.
-     */
-    if (config->ca_file != NULL || config->key_password != NULL)
+    if (config->client_auth == CNET_TLS_CLIENT_AUTH_REQUIRED) {
+        if (crypto_tls_auth_abi_version() != CRYPTO_TLS_AUTH_ABI_VERSION)
+            return SALTS_ENOTSUP;
+        if (config->ca_file == NULL)
+            return SALTS_ENOTSUP; /* NEVER downgrade REQUIRED to NONE */
+        if (!bounded_nonempty(config->ca_file, CRYPTO_TLS_AUTH_MAX_PATH_BYTES))
+            return SALTS_EINVAL;
+    } else if (config->ca_file != NULL) {
         return SALTS_ENOTSUP;
+    }
+    if (config->key_password != NULL &&
+        !bounded_nonempty(config->key_password, CRYPTO_TLS_AUTH_MAX_PASSWORD_BYTES))
+        return SALTS_EINVAL;
     status = admit_text_alpn(config->alpn_protocols,
                              config->alpn_protocol_count);
     if (status != SALTS_OK) return status;
-    if (!bounded_nonempty(config->cert_file, CNET_CRYPTO_TEST_PATH_LIMIT) ||
-        !bounded_nonempty(config->key_file, CNET_CRYPTO_TEST_PATH_LIMIT))
+    if (!bounded_nonempty(config->cert_file,
+            config->client_auth == CNET_TLS_CLIENT_AUTH_REQUIRED ?
+                CRYPTO_TLS_AUTH_MAX_PATH_BYTES : CNET_CRYPTO_TEST_PATH_LIMIT) ||
+        !bounded_nonempty(config->key_file,
+            config->client_auth == CNET_TLS_CLIENT_AUTH_REQUIRED ?
+                CRYPTO_TLS_AUTH_MAX_PATH_BYTES : CNET_CRYPTO_TEST_PATH_LIMIT))
         return SALTS_EINVAL;
 
     memset(&admitted, 0, sizeof(admitted));
@@ -200,6 +225,7 @@ int cnet_crypto_owner_admit_server(const cnet_tls_server_config *config,
     admitted.verify_depth = 4u;
     admitted.certificate_file = config->cert_file;
     admitted.private_key_file = config->key_file;
+    admitted.private_key_password = config->key_password;
     *out_options = admitted;
     return SALTS_OK;
 }
