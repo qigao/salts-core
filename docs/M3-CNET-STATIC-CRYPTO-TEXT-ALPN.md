@@ -34,6 +34,9 @@ must still return `SALTS_ENOENT`, never a fabricated name.
   installed static Crypto backend, explicit CA and server key.
 - Client offers `h2`, `http/1.1`; server offers `h2`. Both independently
   query exact negotiated `h2` with stable size.
+- The caller modifies all original ALPN strings after context admission,
+  before TLS session initialization. Both endpoints must negotiate the
+  pre-mutation deep-copied `h2`, never borrowed caller storage.
 - Full unchanged original CNet Owner and real epoll/kqueue/IOCP version
   and cipher metadata, user plaintext, RFC 9266 exporter, NativeIO
   retained buffers and close terminal under both ALPN variants.

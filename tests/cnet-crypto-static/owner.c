@@ -163,8 +163,10 @@ static int run_protocol(uint32_t protocol, bool with_alpn)
     unsigned poll_count;
     const char *expected_version =
         protocol == CRYPTO_TLS_1_2 ? "TLSv1.2" : "TLSv1.3";
-    static const char *const client_offers[] = {"h2", "http/1.1"};
-    static const char *const server_offers[] = {"h2"};
+    char client_h2[] = "h2", client_http[] = "http/1.1";
+    char server_h2[] = "h2";
+    const char *const client_offers[] = {client_h2, client_http};
+    const char *const server_offers[] = {server_h2};
 
     CHECK(crypto_tls_provider_create(CRYPTO_TLS_ABI_VERSION, &provider)
           == CRYPTO_TLS_OK);
@@ -187,6 +189,15 @@ static int run_protocol(uint32_t protocol, bool with_alpn)
     CHECK(cnet_crypto_test_bind_server(
         &identity, provider, &server_policy, protocol,
         CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY) == SALTS_OK);
+    if (with_alpn) {
+        /* Reusable client/server policies are synchronously consumed.
+         * Force mutation before original CNet Owner admits the TCP session;
+         * selected ALPN must still be h2, not x2.
+         */
+        client_h2[0] = 'x';
+        client_http[0] = 'x';
+        server_h2[0] = 'x';
+    }
     CHECK(cnet_listener_init(&listener, &listen_cfg) == SALTS_OK);
     listener_live = 1;
     CHECK(cnet_listener_port(&listener, &port) == SALTS_OK && port != 0u);

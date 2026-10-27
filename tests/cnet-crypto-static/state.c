@@ -77,8 +77,10 @@ static int run_one(crypto_tls_provider *provider, uint32_t protocol,
     unsigned steps;
     int rc = 1;
     const size_t capacity = CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY;
-    static const char *const client_offers[] = {"h2", "http/1.1"};
-    static const char *const server_offers[] = {"h2"};
+    char client_h2[] = "h2", client_http[] = "http/1.1";
+    char server_h2[] = "h2";
+    const char *const client_offers[] = {client_h2, client_http};
+    const char *const server_offers[] = {server_h2};
 
     client_policy.size = sizeof(client_policy);
     client_policy.ca_file = SDK_CA_FILE;
@@ -99,6 +101,16 @@ static int run_one(crypto_tls_provider *provider, uint32_t protocol,
     CHECK(cnet_crypto_tls_test_server_context(
         provider, &server_policy, protocol,
         capacity, &server_context) == SALTS_OK);
+    if (with_alpn) {
+        /* The caller owns only temporary admission input; both reusable
+         * CNet contexts must have independent bounded copies by now.
+         * Mutating original names before session creation must not change
+         * either endpoint's negotiated ALPN identity.
+         */
+        client_h2[0] = 'x';
+        client_http[0] = 'x';
+        server_h2[0] = 'x';
+    }
     /* An unsupported range must be rejected BEFORE creating a session.
      * A failed admission does not transfer context ownership.
      */
