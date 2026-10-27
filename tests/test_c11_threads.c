@@ -61,8 +61,12 @@ int main(void) {
     deadline.tv_nsec=0;
     if (mtx_timedlock(&gate,&deadline) || mtx_unlock(&gate)) return 9;
     for (i=0;i<WORKERS;i++) {
+        int j;
         threads[i]=NULL;
         if (thrd_create(&threads[i],worker,(void *)(uintptr_t)i)) return 10;
+        if (thrd_equal(threads[i], thrd_current())) return 22;
+        for (j=0; j<i; j++)
+            if (thrd_equal(threads[i],threads[j])) return 23;
     }
     if (mtx_lock(&gate)) return 11;
     go=1;
