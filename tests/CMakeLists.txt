@@ -53,6 +53,14 @@ set_target_properties(saltscore_bytes_test PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.bytes COMMAND saltscore_bytes_test)
 
+# Core Platform is the sole owner of native fast-key state; no CMeta ABI.
+add_executable(saltscore_fastpath_test test_fastpath.c)
+target_compile_features(saltscore_fastpath_test PRIVATE c_std_11)
+target_link_libraries(saltscore_fastpath_test PRIVATE Salts::Platform)
+set_target_properties(saltscore_fastpath_test PROPERTIES
+  C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME saltscore.fastpath COMMAND saltscore_fastpath_test)
+
 add_executable(saltscore_platform_test test_platform.c)
 target_link_libraries(saltscore_platform_test PRIVATE Salts::Platform)
 set_target_properties(saltscore_platform_test PROPERTIES

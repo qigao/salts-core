@@ -45,7 +45,7 @@ endif()
 set(_saltscore_platform_sources
     src/platform/clock.c src/platform/random.c src/platform/readiness.c
     src/platform/portable_atomic.c src/platform/portable_once.c
-    src/platform/c11_threads.c)
+    src/platform/c11_threads.c src/platform/fastpath.c)
 if(WIN32)
   list(APPEND _saltscore_platform_sources
     src/platform/thread_win32.c src/platform/portable_thread_win32.c src/platform/portable_tss_win32.c)
@@ -77,7 +77,7 @@ target_include_directories(saltscore_platform PUBLIC
 target_link_libraries(saltscore_platform PUBLIC Threads::Threads)
 # Windows MSVC C11 atomic contract is mandatory for the readiness handles.
 if(MSVC)
-  target_compile_options(saltscore_platform PRIVATE
+  target_compile_options(saltscore_platform PUBLIC
     $<$<COMPILE_LANGUAGE:C>:-experimental:c11atomics>)
 endif()
 if(UNIX)
@@ -265,6 +265,12 @@ if(SALTSCORE_BUILD_CNET)
 endif()
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsCoreExtraModules.cmake")
+
+# One optional native C11 SCTP source owner; never an old package or fallback.
+option(SALTSCORE_BUILD_SCTP "Build standalone C11 SCTP Wire and Session" OFF)
+if(SALTSCORE_BUILD_SCTP)
+  add_subdirectory(cnet/sctp)
+endif()
 
 # PE/COFF does not honor ELF/Mach-O SOVERSION. Encode the pre-stable 0.1 ABI
 # epoch in each Windows DLL and its import library, without a filename alias.
