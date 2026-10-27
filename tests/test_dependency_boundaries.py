@@ -37,6 +37,62 @@ class DependencyGateTest(unittest.TestCase):
                    "target_link_libraries(app PRIVATE Salts::IDNA Salts::CSerde Salts::TinyTest)\n")
         self.assertEqual(self.check_text(content, ".cmake"), [])
 
+    def test_salts_crypto_is_the_canonical_static_boundary(self):
+        self.assertEqual(
+            self.check_text(
+                "find_package(Crypto CONFIG REQUIRED)\n"
+                "target_link_libraries(app PRIVATE Salts::Crypto)\n",
+                ".cmake"),
+            [])
+
+    def test_explicit_fail_closed_legacy_target_guards_are_not_imports(self):
+        content = (
+            "foreach(_forbidden IN ITEMS\n"
+            "    Salts::TLS Crypto::TLS Crypto::Provider)\n"
+            "  if(TARGET ${_forbidden})\n"
+            "    message(FATAL_ERROR \"duplicate TLS provider\")\n"
+            "  endif()\n"
+            "endforeach()\n"
+            'if(_crypto_links MATCHES "GmSSL::|Crypto::TLS|Salts::TLS")\n'
+            '  message(FATAL_ERROR "old provider in link interface")\n'
+            "endif()\n"
+        )
+        self.assertEqual(self.check_text(content, ".cmake"), [])
+
+    def test_negative_guard_does_not_hide_actual_illegal_link(self):
+        content = (
+            "foreach(_forbidden IN ITEMS Crypto::TLS)\n"
+            "  if(TARGET ${_forbidden})\n"
+            "    message(FATAL_ERROR \"duplicate provider\")\n"
+            "  endif()\n"
+            "  target_link_libraries(app PRIVATE Crypto::TLS Salts::CFlow)\n"
+            "endforeach()\n"
+        )
+        self.assertEqual(len(self.check_text(content, ".cmake")), 2)
+
+    def test_dependency_names_in_comments_do_not_create_imports(self):
+        self.assertEqual(self.check_text(
+            "# Old Crypto::TLS cannot be linked\n"
+            "/* SaltsCore::CNet historical layout */\n"
+            "int normal(void);\n"), [])
+
+    def test_preprocessor_macro_never_hidden_as_comment(self):
+        self.assertEqual(
+            len(self.check_text("#define LEGACY_BACKEND CMETA_STRUCT\n")), 1)
+
+    def test_dereferenced_source_never_hidden_as_comment(self):
+        self.assertEqual(
+            len(self.check_text("*owner = cflow_executor;\n")), 1)
+
+    def test_multiline_comments_do_not_create_dependency_edges(self):
+        self.assertEqual(self.check_text(
+            "/*\n * historical Crypto::TLS and SaltsCore::CNet\n */\n"
+            "int still_native(void);\n"), [])
+
+    def test_inline_comment_then_real_code_is_not_exempted(self):
+        self.assertEqual(
+            len(self.check_text("/* note */ Crypto::TLS unauthorized;\n")), 1)
+
     def test_retired_asn1_target_is_forbidden(self):
         self.assertEqual(
             len(self.check_text("target_link_libraries(app PRIVATE Salts::ASN1)\n",
