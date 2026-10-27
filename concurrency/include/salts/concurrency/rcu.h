@@ -1,7 +1,7 @@
 #ifndef SALTS_RCU_H
 #define SALTS_RCU_H
 
-#include <salts/error_codes.h>
+#include <salts/core/error_codes.h>
 #include <stddef.h>
 
 #ifdef __cplusplus

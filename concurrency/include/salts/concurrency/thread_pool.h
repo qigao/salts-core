@@ -1,7 +1,7 @@
 #ifndef SALTS_THREAD_POOL_H
 #define SALTS_THREAD_POOL_H
 
-#include <salts/error_codes.h>
+#include <salts/core/error_codes.h>
 #include <stddef.h>
 #include <stdint.h>
 

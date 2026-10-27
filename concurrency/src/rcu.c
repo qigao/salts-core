@@ -1,5 +1,5 @@
-#include <salts/rcu.h>
-#include <salts/thread.h>
+#include <salts/concurrency/rcu.h>
+#include <salts/platform/thread.h>
 #include <stdbool.h>
 #include <stdlib.h>
 

@@ -5,7 +5,7 @@
 #error "Salts atomic helpers require C11 atomics; use native C++ atomics in C++"
 #endif
 
-#include <salts/error_codes.h>
+#include <salts/core/error_codes.h>
 
 #include <stdbool.h>
 #include <stdatomic.h>

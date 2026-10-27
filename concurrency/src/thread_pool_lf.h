@@ -1,7 +1,7 @@
 #ifndef SALTS_THREAD_POOL_LF_INTERNAL_H
 #define SALTS_THREAD_POOL_LF_INTERNAL_H
 
-#include <salts/thread_pool.h>
+#include <salts/concurrency/thread_pool.h>
 
 typedef struct cmeta_threadpool_lf cmeta_threadpool_lf;
 int cmeta_threadpool_lf_create(const cmeta_threadpool_lf_config_t *config,

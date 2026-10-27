@@ -1,7 +1,7 @@
 #ifndef SALTS_DEADLINE_QUEUE_H
 #define SALTS_DEADLINE_QUEUE_H
 
-#include <salts/error_codes.h>
+#include <salts/core/error_codes.h>
 
 #include <stddef.h>
 #include <stdint.h>

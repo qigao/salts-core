@@ -1,7 +1,7 @@
-#include <salts/disruptor.h>
-#include <salts/error_codes.h>
-#include <salts/thread.h>
-#include <salts/thread_pool.h>
+#include <salts/concurrency/disruptor.h>
+#include <salts/core/error_codes.h>
+#include <salts/platform/thread.h>
+#include <salts/concurrency/thread_pool.h>
 #include "thread_pool_lf.h"
 
 #include <stdatomic.h>
