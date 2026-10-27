@@ -172,14 +172,15 @@ jobs:
           mkdir -p build-portable
           gcc -std=c11 -O2 -pthread -fPIC -shared -DSALTS_CORE_PLATFORM_BUILD=1 -Iinclude \
             src/platform/portable_atomic.c src/platform/portable_thread_posix.c \
-            src/platform/portable_tss_posix.c src/platform/portable_once.c -o build-portable/libsalts_portable.so
-          "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -Iinclude \
+            src/platform/portable_tss_posix.c src/platform/portable_once.c \
+            src/platform/c11_threads.c src/platform/clock.c -o build-portable/libsalts_portable.so
+          "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -DSALTS_C11_THREADS_EXPERIMENTAL=1 -Iinclude/salts_core/c11 -Iinclude \
             tests/test_portable_concurrency.c -Lbuild-portable -lsalts_portable \
             -o build-portable/tcc_platform_consumer
           export LD_LIBRARY_PATH="$PWD/build-portable:$(printenv LD_LIBRARY_PATH || true)"
           for i in 1 2 3 4 5; do ./build-portable/tcc_platform_consumer; done
-          for fixture in test_portable_timing test_portable_tss test_portable_timed_mutex; do
-            "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -Iinclude \
+          for fixture in test_portable_timing test_portable_tss test_portable_timed_mutex test_c11_threads; do
+            "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -DSALTS_C11_THREADS_EXPERIMENTAL=1 -Iinclude/salts_core/c11 -Iinclude \
               "tests/$fixture.c" -Lbuild-portable -lsalts_portable \
               -o "build-portable/$fixture"
             for i in 1 2 3 4 5; do "./build-portable/$fixture"; done
@@ -212,14 +213,15 @@ jobs:
           clang -std=c11 -O2 -fPIC -pthread -dynamiclib \
             -DSALTS_CORE_PLATFORM_BUILD=1 -Iinclude \
             src/platform/portable_atomic.c src/platform/portable_thread_posix.c \
-            src/platform/portable_tss_posix.c src/platform/portable_once.c -o build-portable/libsalts_portable.dylib
-          "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -Iinclude \
+            src/platform/portable_tss_posix.c src/platform/portable_once.c \
+            src/platform/c11_threads.c src/platform/clock.c -o build-portable/libsalts_portable.dylib
+          "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -DSALTS_C11_THREADS_EXPERIMENTAL=1 -Iinclude/salts_core/c11 -Iinclude \
             tests/test_portable_concurrency.c -Lbuild-portable -lsalts_portable \
             -o build-portable/tcc_platform_consumer
           export DYLD_LIBRARY_PATH="$PWD/build-portable:$(printenv DYLD_LIBRARY_PATH || true)"
           for i in 1 2 3 4 5; do ./build-portable/tcc_platform_consumer; done
-          for fixture in test_portable_timing test_portable_tss test_portable_timed_mutex; do
-            "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -Iinclude \
+          for fixture in test_portable_timing test_portable_tss test_portable_timed_mutex test_c11_threads; do
+            "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -DSALTS_C11_THREADS_EXPERIMENTAL=1 -Iinclude/salts_core/c11 -Iinclude \
               "tests/$fixture.c" -Lbuild-portable -lsalts_portable \
               -o "build-portable/$fixture"
             for i in 1 2 3 4 5; do "./build-portable/$fixture"; done
@@ -248,8 +250,10 @@ jobs:
             "-DCMAKE_C_FLAGS=${{ matrix.flags }} -fno-omit-frame-pointer -g -O1" \
             -DBUILD_TESTING=ON
           cmake --build build-sanitize \
-            --target saltscore_portable_timing_test saltscore_portable_tss_test saltscore_portable_timed_mutex_test \
+            --target saltscore_portable_timing_test saltscore_portable_tss_test saltscore_portable_timed_mutex_test saltscore_c11_threads_test \
             --parallel 2
           ctest --test-dir build-sanitize --output-on-failure \
-            --repeat until-fail:10 -R '^saltscore\.portable_(timing|tss|timed_mutex)$'
+            --repeat until-fail:10 -R '^saltscore\.(portable_(timing|tss|timed_mutex)|c11_threads_facade)
+
+
 
