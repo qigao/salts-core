@@ -4,7 +4,7 @@
  */
 #include <salts/error_codes.h>
 #include <salts/readiness.h>
-#include "../src/platform/readiness_internal.h"
+#include "../platform/src/readiness_internal.h"
 #include <salts/thread.h>
 #include <stdatomic.h>
 #include <stddef.h>
