@@ -44,7 +44,8 @@ if(SALTSCORE_ENABLE_EPOLL_READINESS AND
 endif()
 set(_saltscore_platform_sources
     src/platform/clock.c src/platform/random.c src/platform/readiness.c
-    src/platform/portable_atomic.c src/platform/portable_once.c)
+    src/platform/portable_atomic.c src/platform/portable_once.c
+    src/platform/c11_threads.c)
 if(WIN32)
   list(APPEND _saltscore_platform_sources
     src/platform/thread_win32.c src/platform/portable_thread_win32.c src/platform/portable_tss_win32.c)
