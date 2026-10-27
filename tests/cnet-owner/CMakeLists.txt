@@ -4,7 +4,20 @@
 if(NOT TARGET saltscore_cnet OR NOT TARGET Salts::TinyTest)
   message(FATAL_ERROR "Need actual CNet implementation and native TinyTest")
 endif()
-add_library(saltscore_cnet_original_test_owner STATIC ${_saltscore_cnet_sources})
+# _saltscore_cnet_sources is declared by Core at the repository root.
+# Relative entries must not be interpreted relative to tests/cnet-owner;
+# preserve generator-expression OBJECTS references unchanged.
+set(_core_owner_native_sources)
+foreach(_unit IN LISTS _saltscore_cnet_sources)
+  if(_unit MATCHES "^\\$<TARGET_OBJECTS:")
+    list(APPEND _core_owner_native_sources "${_unit}")
+  else()
+    list(APPEND _core_owner_native_sources
+      "${PROJECT_SOURCE_DIR}/${_unit}")
+  endif()
+endforeach()
+add_library(saltscore_cnet_original_test_owner STATIC
+  ${_core_owner_native_sources})
 target_compile_features(saltscore_cnet_original_test_owner PUBLIC c_std_11)
 # Match the original first-party CNet test-profile flags exactly.
 # None are installed, exported or applied to the real Salts::CNet DSO.
