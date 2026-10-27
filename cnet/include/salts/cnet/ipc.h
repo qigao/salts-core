@@ -1,7 +1,7 @@
 #ifndef CNET_IPC_H
 #define CNET_IPC_H
 
-#include <cnet/cnet.h>
+#include <salts/cnet/cnet.h>
 
 #ifdef __cplusplus
 extern "C" {

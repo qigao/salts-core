@@ -1,8 +1,8 @@
 #ifndef CNET_MANAGED_DIAL_H
 #define CNET_MANAGED_DIAL_H
 
-#include <cnet/manager.h>
-#include <cnet/recovery_policy.h>
+#include <salts/cnet/manager.h>
+#include <salts/cnet/recovery_policy.h>
 
 #ifdef __cplusplus
 extern "C" {

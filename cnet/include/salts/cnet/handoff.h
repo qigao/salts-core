@@ -1,7 +1,7 @@
 #ifndef CNET_HANDOFF_H
 #define CNET_HANDOFF_H
 
-#include <cnet/cnet.h>
+#include <salts/cnet/cnet.h>
 
 #ifdef __cplusplus
 extern "C" {

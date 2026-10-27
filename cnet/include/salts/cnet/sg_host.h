@@ -1,8 +1,8 @@
 #ifndef CNET_SG_HOST_H
 #define CNET_SG_HOST_H
 
-#include <cnet/cnet.h>
-#include <salts/native_io_sharded.h>
+#include <salts/cnet/cnet.h>
+#include <salts/native_io/sharded.h>
 
 #ifdef __cplusplus
 extern "C" {

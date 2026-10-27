@@ -1,7 +1,7 @@
 #ifndef CNET_CLIENT_POOL_H
 #define CNET_CLIENT_POOL_H
 
-#include <cnet/manager.h>
+#include <salts/cnet/manager.h>
 
 #ifdef __cplusplus
 extern "C" {

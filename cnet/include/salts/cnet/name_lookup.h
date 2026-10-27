@@ -1,6 +1,6 @@
 #ifndef CNET_NAME_LOOKUP_H
 #define CNET_NAME_LOOKUP_H
-#include <cnet/cnet.h>
+#include <salts/cnet/cnet.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
