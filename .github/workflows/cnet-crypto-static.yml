@@ -197,7 +197,8 @@ jobs:
           $configure = @(
             '-S', $src, '-B', $build, '-G', 'Visual Studio 18 2026', '-A', 'x64',
             '-DRE2C_REBUILD_LEXERS=OFF', '-DRE2C_REBUILD_PARSERS=OFF',
-            '-DRE2C_REBUILD_SYNTAX=OFF', '-DRE2C_REBUILD_DOCS=OFF')
+            '-DRE2C_REBUILD_SYNTAX=OFF', '-DRE2C_REBUILD_DOCS=OFF',
+            '-DRE2C_BUILD_TESTS=OFF')
           & cmake @configure
           if ($LASTEXITCODE -ne 0) { throw 'MSVC re2c bootstrap configure failed' }
           & cmake --build $build --config Release --target re2c --parallel 2
