@@ -175,6 +175,17 @@ jobs:
       VCPKG_SCRIPTS_SHA: 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Restore pinned re2c via curl and GitHub Packages (no Mono)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python cmake/ci/github-packages.py re2c "$env:RUNNER_TEMP/qigao-re2c-binary"
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned re2c fetch failed' }
       - name: Fetch immutable Crypto and verified GmSSL source port
         shell: pwsh
         run: |
@@ -260,6 +271,48 @@ jobs:
           if (Select-String -Path $deps -Pattern 'gmssl.*dll|crypto_tls.*dll|crypto_provider.*dll|saltscore_cnet.*dll') {
             throw 'Forbidden Crypto/GmSSL/CNet second runtime imported by static candidate'
           }
+      - name: M2 full original CNet Owner with STATIC Crypto and real Windows IOCP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $build = Join-Path $env:RUNNER_TEMP 'core-static-owner-build'
+          $sdk = Join-Path $env:RUNNER_TEMP 'crypto-installed'
+          $toolchain = Join-Path $env:VCPKG_ROOT 'scripts/buildsystems/vcpkg.cmake'
+          $params = @(
+            '-S', '.', '-B', $build, '-G', 'Visual Studio 18 2026', '-A', 'x64',
+            '-DBUILD_TESTING=ON',
+            "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
+            '-DVCPKG_TARGET_TRIPLET=x64-windows',
+            '-DVCPKG_MANIFEST_FEATURES=cnet',
+            '-DSALTSCORE_BUILD_URI=ON',
+            '-DSALTSCORE_BUILD_CNET=ON',
+            '-DSALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST=ON',
+            "-DSALTSCORE_CRYPTO_TEST_FIXTURES=$env:RUNNER_TEMP/crypto-src/tests/fixtures",
+            "-DCMAKE_PREFIX_PATH=$sdk")
+          & cmake @params
+          if ($LASTEXITCODE -ne 0) { throw 'Original Owner static CNet configure failed' }
+          & cmake --build $build --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'Original Owner static CNet compile/link failed' }
+          & ctest --test-dir $build -C Release --output-on-failure --no-tests=error -R '^saltscore[.]cnet_crypto_static_original_owner_tls12_tls13$' --repeat until-fail:3
+          if ($LASTEXITCODE -ne 0) { throw 'M2 genuine IOCP Crypto TLS Owner failed' }
+          & ctest --test-dir $build -C Release --output-on-failure --no-tests=error -R '^saltscore[.]cnet_(tcp_loopback|tls_ca_san)$'
+          if ($LASTEXITCODE -ne 0) { throw 'Incumbent GmSSL regression failed' }
+          $binary = Join-Path $build 'bin/Release/saltscore_cnet_crypto_static_original_owner.exe'
+          if (-not (Test-Path $binary)) { throw 'Original Owner candidate binary missing' }
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $vsroot = & $vswhere -latest -products '*' -property installationPath
+          $dumpbin = Get-ChildItem -Path (Join-Path $vsroot 'VC/Tools/MSVC') -Filter dumpbin.exe -Recurse |
+            Where-Object { $_.FullName -match 'Hostx64\\x64' } | Select-Object -First 1
+          if (-not $dumpbin) { throw 'MSVC dumpbin missing' }
+          $imports = Join-Path $env:RUNNER_TEMP 'cnet-static-owner-imports.txt'
+          & $dumpbin.FullName /DEPENDENTS $binary | Out-File -FilePath $imports -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw 'M2 PE import dump failed' }
+          if (-not (Select-String -Path $imports -Pattern 'saltscore_core' -Quiet)) {
+            throw 'Shared foundation Owner missing from candidate PE imports'
+          }
+          if (Select-String -Path $imports -Pattern 'gmssl.*dll|crypto_tls.*dll|crypto_provider.*dll|saltscore_cnet.*dll') {
+            throw 'SECURITY FAIL: original candidate imported duplicate native provider'
+          }
       - name: Preserve exact-head Windows static evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -268,5 +321,7 @@ jobs:
           path: |
             ${{ runner.temp }}/crypto-static-audit.json
             ${{ runner.temp }}/cnet-static-imports.txt
+            ${{ runner.temp }}/cnet-static-owner-imports.txt
             ${{ runner.temp }}/core-static-build/Testing/Temporary/LastTest.log
+            ${{ runner.temp }}/core-static-owner-build/Testing/Temporary/LastTest.log
           if-no-files-found: warn
