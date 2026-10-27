@@ -100,10 +100,11 @@ jobs:
             echo "Forbidden split native provider in static candidate" >&2
             exit 1
           fi
-          # Save nm output before checking. grep -q can SIGPIPE nm with
-          # pipefail and create a false negative on large static executables.
+          # Persist the complete nm output before checking: grep -q under
+          # pipefail can SIGPIPE nm and falsely fail a successful static link.
           nm -g "$binary" > "$RUNNER_TEMP/cnet-static-symbols.txt"
-          grep -E '[[:space:]][Tt][[:space:]]_?crypto_tls_provider_create
+          grep -E '[[:space:]][Tt][[:space:]]_?crypto_tls_provider_create$' "$RUNNER_TEMP/cnet-static-symbols.txt" > /dev/null
+          grep -E '[[:space:]][Tt][[:space:]]_?crypto_tls_cipher_bio_create$' "$RUNNER_TEMP/cnet-static-symbols.txt" > /dev/null
       - name: Preserve exact-head candidate evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -115,32 +116,6 @@ jobs:
             ${{ runner.temp }}/cnet-static-symbols.txt
             ${{ runner.temp }}/core-static-build/Testing/Temporary/LastTest.log
           if-no-files-found: warn
- \
-            "$RUNNER_TEMP/cnet-static-symbols.txt" > /dev/null
-          grep -E '[[:space:]][Tt][[:space:]]_?crypto_tls_cipher_bio_create
-      - name: Preserve exact-head candidate evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cnet-static-m0-${{ matrix.triplet }}
-          path: |
-            ${{ runner.temp }}/crypto-static-audit.json
-            ${{ runner.temp }}/cnet-static-imports.txt
-            ${{ runner.temp }}/core-static-build/Testing/Temporary/LastTest.log
-          if-no-files-found: warn
- \
-            "$RUNNER_TEMP/cnet-static-symbols.txt" > /dev/null
-      - name: Preserve exact-head candidate evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cnet-static-m0-${{ matrix.triplet }}
-          path: |
-            ${{ runner.temp }}/crypto-static-audit.json
-            ${{ runner.temp }}/cnet-static-imports.txt
-            ${{ runner.temp }}/core-static-build/Testing/Temporary/LastTest.log
-          if-no-files-found: warn
-
 
   windows-static-admission:
     runs-on: windows-2025
