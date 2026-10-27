@@ -1,0 +1,193 @@
+name: TEMPORARY two-module ASN1 and Crypto qualification
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/qualify-standalone-asn1-export.yml"
+      - "tests/asn1-crypto-format-qualification/**"
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  asn1-installed:
+    name: Sibling ASN1 source, install, C11/C++17 / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/crypto
+          ref: d7b90d81cbace4907b2918c8e031737ddcf629e6
+          path: repo
+          persist-credentials: false
+      - name: Standalone ASN1 and root ASN1-only build (no GmSSL)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C repo rev-parse HEAD)" = "d7b90d81cbace4907b2918c8e031737ddcf629e6"
+          python3 repo/tools/check_module_ownership.py
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            generator=(-G 'Visual Studio 18 2026' -A x64)
+            sdk="$(cygpath -m "$RUNNER_TEMP")/asn1-sdk"
+            archive=salts_asn1.lib
+          else
+            generator=(-G Ninja)
+            sdk="$RUNNER_TEMP/asn1-sdk"
+            archive=libsalts_asn1.a
+          fi
+          cmake -S repo/asn1 -B build-asn1 "${generator[@]}" \
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-asn1 --config Release --parallel 2
+          ctest --test-dir build-asn1 -C Release --no-tests=error --output-on-failure
+          cmake --install build-asn1 --config Release --prefix "$sdk"
+          test -s "$sdk/lib/$archive"
+          test -s "$sdk/lib/cmake/ASN1/ASN1Config.cmake"
+          cmake -S repo/asn1/tests/installed -B build-asn1-installed "${generator[@]}" \
+            "-DCMAKE_PREFIX_PATH=$sdk"
+          cmake --build build-asn1-installed --config Release --parallel 2
+          ctest --test-dir build-asn1-installed -C Release --no-tests=error --output-on-failure
+          cmake -S repo -B build-root-codec "${generator[@]}" \
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release \
+            -DSALTS_CRYPTO_BUILD_CRYPTO=OFF
+          cmake --build build-root-codec --config Release --parallel 2
+          ctest --test-dir build-root-codec -C Release --no-tests=error --output-on-failure
+
+  asn1-sanitizers:
+    name: Sibling ASN1 C11/C++17 ASan/UBSan / Linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/crypto
+          ref: d7b90d81cbace4907b2918c8e031737ddcf629e6
+          path: repo
+          persist-credentials: false
+      - name: Original reader/value tests under ASan and UBSan
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S repo/asn1 -B build-asan -G Ninja \
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug \
+            "-DCMAKE_C_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined"
+          cmake --build build-asan --parallel 2
+          ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+            UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+            ctest --test-dir build-asan --no-tests=error --output-on-failure
+
+  crypto-formats:
+    name: Sibling Crypto key formats using ASN1 without GmSSL / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/crypto
+          ref: d7b90d81cbace4907b2918c8e031737ddcf629e6
+          path: repo
+          persist-credentials: false
+      - name: C11 and C++17 ECDSA DER RFC8410 format source conformance
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            generator=(-G 'Visual Studio 18 2026' -A x64)
+            sdk="$(cygpath -m "$RUNNER_TEMP")/asn1-sdk"
+            source="$(cygpath -m "$PWD/repo/crypto")"
+          else
+            generator=(-G Ninja)
+            sdk="$RUNNER_TEMP/asn1-sdk"
+            source="$PWD/repo/crypto"
+          fi
+          cmake -S repo/asn1 -B build-asn1 "${generator[@]}" \
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-asn1 --config Release --parallel 2
+          cmake --install build-asn1 --config Release --prefix "$sdk"
+          cmake -S tests/asn1-crypto-format-qualification -B build-formats \
+            "${generator[@]}" -DCMAKE_BUILD_TYPE=Release \
+            "-DCRYPTO_SOURCE=$source" "-DCMAKE_PREFIX_PATH=$sdk"
+          cmake --build build-formats --config Release --parallel 2
+          ctest --test-dir build-formats -C Release --no-tests=error \
+            --output-on-failure --timeout 120
+
+  full-crypto:
+    name: One-repo installed ASN1 + Crypto static SDK (curl-only) / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            triplet: x64-linux
+          - os: macos-15
+            triplet: arm64-osx
+          - os: windows-2025
+            triplet: qigao-x64-windows-v145
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/crypto
+          ref: d7b90d81cbace4907b2918c8e031737ddcf629e6
+          path: repo
+          persist-credentials: false
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@4d0c635920aa061a41be6c5bc184d7023f5cb834
+        with:
+          mode: read
+          triplet: ${{ matrix.triplet }}
+          host-triplet: ${{ matrix.triplet }}
+          manifest-root: repo/crypto
+      - name: Exact GmSSL plus two static modules and independent installed C11 C++17
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C repo rev-parse HEAD)" = "d7b90d81cbace4907b2918c8e031737ddcf629e6"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            generator=(-G 'Visual Studio 18 2026' -A x64)
+            root="$(cygpath -m "$PWD/repo")"
+            vcpkg="$(cygpath -u "$VCPKG_ROOT")/vcpkg.exe"
+            sdk="$(cygpath -m "$RUNNER_TEMP")/combined-sdk"
+            gmsslarchive=gmssl.lib
+          else
+            generator=(-G Ninja)
+            root="$PWD/repo"
+            vcpkg="$VCPKG_ROOT/vcpkg"
+            sdk="$RUNNER_TEMP/combined-sdk"
+            gmsslarchive=libgmssl.a
+          fi
+          "$vcpkg" install "--x-manifest-root=$root/crypto" \
+            "--x-install-root=$root/crypto/vcpkg_installed" \
+            --triplet "${{ matrix.triplet }}" --only-binarycaching
+          gmssl="$root/crypto/vcpkg_installed/${{ matrix.triplet }}"
+          test -s "$gmssl/lib/$gmsslarchive"
+          cmake -S repo -B build-all "${generator[@]}" \
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release \
+            "-DCRYPTO_GMSSL_ROOT=$gmssl"
+          cmake --build build-all --config Release --parallel 2
+          ctest --test-dir build-all -C Release \
+            --no-tests=error --output-on-failure --timeout 120
+          cmake --install build-all --config Release --prefix "$sdk"
+          python3 repo/crypto/tools/audit_static_crypto.py \
+            --prefix "$sdk" --report "$RUNNER_TEMP/two-module-static-audit.json"
+          cmake -S repo/asn1/tests/installed -B build-consumer-asn1 \
+            "${generator[@]}" -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$sdk"
+          cmake --build build-consumer-asn1 --config Release --parallel 2
+          ctest --test-dir build-consumer-asn1 -C Release \
+            --no-tests=error --output-on-failure --timeout 120
+          cmake -S repo/crypto/tests/asn1/installed -B build-consumer-crypto \
+            "${generator[@]}" -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$sdk"
+          cmake --build build-consumer-crypto --config Release --parallel 2
+          ctest --test-dir build-consumer-crypto -C Release \
+            --no-tests=error --output-on-failure --timeout 120
