@@ -1,5 +1,5 @@
 
-add_library(saltscore_process SHARED process/src/process.c)
+add_library(saltscore_process SHARED cflow-process/src/process.c)
 add_library(Salts::Process ALIAS saltscore_process)
 target_compile_features(saltscore_process PUBLIC c_std_11)
 set_target_properties(saltscore_process PROPERTIES
@@ -26,7 +26,7 @@ install(TARGETS saltscore_process EXPORT SaltsCoreTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES process/include/salts/process.h
+install(FILES cflow-process/include/salts/process.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/salts)
 if(BUILD_TESTING)
   add_executable(saltscore_process_test tests/test_process.c)
