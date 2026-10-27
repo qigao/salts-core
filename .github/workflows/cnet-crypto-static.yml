@@ -100,8 +100,36 @@ jobs:
             echo "Forbidden split native provider in static candidate" >&2
             exit 1
           fi
-          nm -g "$binary" | grep -q 'crypto_tls_provider_create'
-          nm -g "$binary" | grep -q 'crypto_tls_cipher_bio_create'
+          # Save nm output before checking. grep -q can SIGPIPE nm with
+          # pipefail and create a false negative on large static executables.
+          nm -g "$binary" > "$RUNNER_TEMP/cnet-static-symbols.txt"
+          grep -E '[[:space:]][Tt][[:space:]]_?crypto_tls_provider_create
+      - name: Preserve exact-head candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cnet-static-m0-${{ matrix.triplet }}
+          path: |
+            ${{ runner.temp }}/crypto-static-audit.json
+            ${{ runner.temp }}/cnet-static-imports.txt
+            ${{ runner.temp }}/cnet-static-symbols.txt
+            ${{ runner.temp }}/core-static-build/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+ \
+            "$RUNNER_TEMP/cnet-static-symbols.txt" > /dev/null
+          grep -E '[[:space:]][Tt][[:space:]]_?crypto_tls_cipher_bio_create
+      - name: Preserve exact-head candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cnet-static-m0-${{ matrix.triplet }}
+          path: |
+            ${{ runner.temp }}/crypto-static-audit.json
+            ${{ runner.temp }}/cnet-static-imports.txt
+            ${{ runner.temp }}/core-static-build/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+ \
+            "$RUNNER_TEMP/cnet-static-symbols.txt" > /dev/null
       - name: Preserve exact-head candidate evidence
         if: always()
         uses: actions/upload-artifact@v4
