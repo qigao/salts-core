@@ -29,9 +29,13 @@ set_target_properties(saltscore_cnet_original_test_owner PROPERTIES
   POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
 target_include_directories(saltscore_cnet_original_test_owner
   PRIVATE
-    "${PROJECT_SOURCE_DIR}/include"
+    "${PROJECT_SOURCE_DIR}/core/include"
+    "${PROJECT_SOURCE_DIR}/platform/include"
+    "${PROJECT_SOURCE_DIR}/native-io/include"
+    "${PROJECT_SOURCE_DIR}/concurrency/include"
+    "${PROJECT_SOURCE_DIR}/cnet/include"
     "${PROJECT_SOURCE_DIR}/src/cnet"
-    "${PROJECT_SOURCE_DIR}/src/cnet/wsparser"
+    "${PROJECT_SOURCE_DIR}/cnet/src/wsparser"
     "${PROJECT_SOURCE_DIR}/src/native-io"
     "${PROJECT_SOURCE_DIR}/vendor/cnet/monocypher"
     "${PROJECT_SOURCE_DIR}/vendor/cnet/reed")
@@ -54,7 +58,11 @@ target_compile_definitions(saltscore_cnet_owner_original_test PRIVATE
   CNET_INTERNAL_TESTING=1)
 target_include_directories(saltscore_cnet_owner_original_test PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}"
-  "${PROJECT_SOURCE_DIR}/include"
+  "${PROJECT_SOURCE_DIR}/core/include"
+    "${PROJECT_SOURCE_DIR}/platform/include"
+    "${PROJECT_SOURCE_DIR}/native-io/include"
+    "${PROJECT_SOURCE_DIR}/concurrency/include"
+    "${PROJECT_SOURCE_DIR}/cnet/include"
   "${PROJECT_SOURCE_DIR}/src/cnet")
 target_link_libraries(saltscore_cnet_owner_original_test PRIVATE
   saltscore_cnet_original_test_owner Salts::TinyTest)
