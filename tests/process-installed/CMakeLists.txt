@@ -1,0 +1,17 @@
+
+cmake_minimum_required(VERSION 3.20)
+project(SaltsCoreProcessInstalled LANGUAGES C CXX)
+include(CTest)
+find_package(SaltsCore 0.1 CONFIG REQUIRED)
+if(NOT TARGET Salts::Process)
+  message(FATAL_ERROR "Installed Salts::Process missing")
+endif()
+add_executable(process_installed_c ../test_process.c)
+target_link_libraries(process_installed_c PRIVATE Salts::Process)
+set_target_properties(process_installed_c PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME saltscore.process.installed_c COMMAND process_installed_c)
+add_executable(process_installed_cpp process_cpp.cpp)
+target_link_libraries(process_installed_cpp PRIVATE Salts::Process)
+set_target_properties(process_installed_cpp PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+add_test(NAME saltscore.process.installed_cpp COMMAND process_installed_cpp)
