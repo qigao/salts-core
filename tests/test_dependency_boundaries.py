@@ -39,7 +39,7 @@ class DependencyGateTest(unittest.TestCase):
 
     def test_retired_asn1_target_is_forbidden(self):
         self.assertEqual(
-            len(self.check_text("target_link_libraries(app PRIVATE Salts::ASN1)\\n",
+            len(self.check_text("target_link_libraries(app PRIVATE Salts::ASN1)\n",
                                 ".cmake")), 1)
 
     def test_alternate_namespaces_rejected(self):
