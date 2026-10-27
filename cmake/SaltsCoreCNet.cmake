@@ -134,3 +134,16 @@ install(FILES vendor/cnet/reed/LICENSE
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/reed)
 install(FILES vendor/cnet/monocypher/UPSTREAM.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/monocypher)
+
+# Original Salts native CNet Owner conformance migrated into Core. Compile a
+# TEST-LOCAL complete Owner once per test executable, never install it or link
+# a second CNet owner beside the production DSO in the same image.
+option(SALTSCORE_CNET_OWNER_SOURCE_TESTS
+  "Qualify original CNet Owner and actual retained NativeIO terminal" OFF)
+if(SALTSCORE_CNET_OWNER_SOURCE_TESTS)
+  if(NOT BUILD_TESTING OR NOT SALTSCORE_BUILD_TINYTEST OR
+     NOT TARGET Salts::TinyTest)
+    message(FATAL_ERROR "CNet original source tests require BUILD_TESTING and Core TinyTest")
+  endif()
+  add_subdirectory(tests/cnet-owner)
+endif()
