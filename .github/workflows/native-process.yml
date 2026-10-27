@@ -2,8 +2,8 @@ name: SaltsCore standalone Process with no CMeta
 on:
   pull_request:
     paths:
-      - "src/process/**"
-      - "include/salts/process.h"
+      - "process/src/**"
+      - "process/include/salts/process.h"
       - "cmake/SaltsCoreProcess.cmake"
       - "cmake/SaltsCoreExtraModules.cmake"
       - "tests/test_process.c"
@@ -31,7 +31,7 @@ jobs:
           set -euo pipefail
           python3 tools/check_dependency_boundaries.py
           if grep -nE 'cmeta_process|tstr_|vstr_|SALTS_C_API|#include "cmeta_|#include "platform.h"' \
-            src/process/process.c include/salts/process.h; then exit 1; fi
+            process/src/process.c process/include/salts/process.h; then exit 1; fi
       - name: Compile real native child process owner and execute
         shell: bash
         run: |

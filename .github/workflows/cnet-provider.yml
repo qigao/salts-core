@@ -2,8 +2,8 @@ name: SaltsCore CNet pinned-provider qualification
 on:
   pull_request:
     paths:
-      - "src/cnet/**"
-      - "include/cnet/**"
+      - "cnet/src/**"
+      - "cnet/include/cnet/**"
       - "vendor/cnet/**"
       - "cmake/SaltsCoreCNet.cmake"
       - "CMakeLists.txt"
