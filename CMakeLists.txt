@@ -15,7 +15,7 @@ include(CTest)
 find_package(Threads REQUIRED)
 
 # Keep the minimal foundation target usable without platform/transport providers.
-add_library(saltscore_core SHARED src/bytes.c)
+add_library(saltscore_core SHARED core/src/bytes.c)
 add_library(Salts::Core ALIAS saltscore_core)
 target_compile_features(saltscore_core PUBLIC c_std_11)
 set_target_properties(saltscore_core PROPERTIES
@@ -24,7 +24,7 @@ set_target_properties(saltscore_core PROPERTIES
   VERSION "${PROJECT_VERSION}" SOVERSION "${SALTSCORE_NATIVE_SOVERSION}")
 target_include_directories(saltscore_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/core/include>
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/core/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 # Public mem_pool_t and mem_buffer_t contain C11 atomic fields on MSVC.
 # Consumers including cmeta_buffer.h require the same C compiler setting.
@@ -44,23 +44,23 @@ if(SALTSCORE_ENABLE_EPOLL_READINESS AND
   message(FATAL_ERROR "epoll readiness is available only on Linux")
 endif()
 set(_saltscore_platform_sources
-    src/platform/clock.c src/platform/random.c src/platform/readiness.c
-    src/platform/portable_atomic.c src/platform/portable_once.c
-    src/platform/c11_threads.c src/platform/fastpath.c)
+    platform/src/clock.c platform/src/random.c platform/src/readiness.c
+    platform/src/portable_atomic.c platform/src/portable_once.c
+    platform/src/c11_threads.c platform/src/fastpath.c)
 if(WIN32)
   list(APPEND _saltscore_platform_sources
-    src/platform/thread_win32.c src/platform/portable_thread_win32.c src/platform/portable_tss_win32.c)
+    platform/src/thread_win32.c platform/src/portable_thread_win32.c platform/src/portable_tss_win32.c)
 else()
   list(APPEND _saltscore_platform_sources
-    src/platform/thread_posix.c src/platform/portable_thread_posix.c src/platform/portable_tss_posix.c)
+    platform/src/thread_posix.c platform/src/portable_thread_posix.c platform/src/portable_tss_posix.c)
 endif()
 if(UNIX)
-  list(APPEND _saltscore_platform_sources src/platform/readiness_poll.c)
+  list(APPEND _saltscore_platform_sources platform/src/readiness_poll.c)
   if(APPLE)
-    list(APPEND _saltscore_platform_sources src/platform/readiness_kqueue.c)
+    list(APPEND _saltscore_platform_sources platform/src/readiness_kqueue.c)
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
          SALTSCORE_ENABLE_EPOLL_READINESS)
-    list(APPEND _saltscore_platform_sources src/platform/readiness_epoll.c)
+    list(APPEND _saltscore_platform_sources platform/src/readiness_epoll.c)
   endif()
 endif()
 add_library(saltscore_platform SHARED ${_saltscore_platform_sources})
@@ -73,7 +73,8 @@ target_compile_features(saltscore_platform PUBLIC c_std_11)
 # Export one owner-controlled C ABI to TinyCC, MSVC, and llvm-mingw clients.
 target_compile_definitions(saltscore_platform PRIVATE SALTS_CORE_PLATFORM_BUILD=1)
 target_include_directories(saltscore_platform PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/platform/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/core/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_link_libraries(saltscore_platform PUBLIC Threads::Threads)
 # Windows MSVC C11 atomic contract is mandatory for the readiness handles.
@@ -105,16 +106,16 @@ endif()
 # Core-owned buffer/pool, byte utility and sole native Base64 implementation.
 # No third-party Base64 DSO, vcpkg port or alternate codec is required.
 target_sources(saltscore_core PRIVATE
-  src/core/cmeta_buffer.c src/core/ring_buffer.c core/src/base64_utils.c
-  src/runtime_abi.c src/utf8.c)
+  core/src/cmeta_buffer.c core/src/ring_buffer.c core/src/base64_utils.c
+  core/src/runtime_abi.c core/src/utf8.c)
 target_link_libraries(saltscore_core PUBLIC Salts::Platform)
 
 # The original bounded primitives have no Reflection/CFlow dependency.
 # Keep all six original source units together for full API surface coverage.
 add_library(saltscore_concurrency SHARED
-  src/concurrency/deadline_queue.c src/concurrency/disruptor.c
-  src/concurrency/rcu.c src/concurrency/spsc_ring.c
-  src/concurrency/thread_pool.c src/concurrency/thread_pool_lf.c)
+  concurrency/src/deadline_queue.c concurrency/src/disruptor.c
+  concurrency/src/rcu.c concurrency/src/spsc_ring.c
+  concurrency/src/thread_pool.c concurrency/src/thread_pool_lf.c)
 add_library(Salts::Concurrency ALIAS saltscore_concurrency)
 set_target_properties(saltscore_concurrency PROPERTIES
   EXPORT_NAME Concurrency C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
@@ -122,7 +123,7 @@ set_target_properties(saltscore_concurrency PROPERTIES
   VERSION "${PROJECT_VERSION}" SOVERSION "${SALTSCORE_NATIVE_SOVERSION}")
 target_compile_features(saltscore_concurrency PUBLIC c_std_11)
 target_include_directories(saltscore_concurrency PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/concurrency/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_link_libraries(saltscore_concurrency PUBLIC Salts::Platform)
 if(MSVC)
@@ -138,9 +139,9 @@ endif()
 
 # Portable coroutine engine (minicoro remains private, no CMeta facade).
 add_library(saltscore_coroutine SHARED
-  src/coroutine/coro.c
-  src/coroutine/coro_pool.c
-  src/coroutine/coro_executor.c)
+  coroutine/src/coro.c
+  coroutine/src/coro_pool.c
+  coroutine/src/coro_executor.c)
 add_library(Salts::Coroutine ALIAS saltscore_coroutine)
 set_target_properties(saltscore_coroutine PROPERTIES
   EXPORT_NAME Coroutine C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
@@ -148,7 +149,7 @@ set_target_properties(saltscore_coroutine PROPERTIES
   VERSION "${PROJECT_VERSION}" SOVERSION "${SALTSCORE_NATIVE_SOVERSION}")
 target_compile_features(saltscore_coroutine PUBLIC c_std_11)
 target_include_directories(saltscore_coroutine
-  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/coroutine/include>
          $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/vendor/minicoro)
 target_link_libraries(saltscore_coroutine PUBLIC Salts::Concurrency)
@@ -161,34 +162,34 @@ endif()
 
 # Platform native completion/readiness ownership (no CFlow or CMeta).
 add_library(saltscore_native_io SHARED
-  src/native-io/native_io.c
-  src/native-io/native_io_accept_escrow.c
-  src/native-io/native_io_sharded.c
-  src/native-io/native_ipc.c)
+  native-io/src/native_io.c
+  native-io/src/native_io_accept_escrow.c
+  native-io/src/native_io_sharded.c
+  native-io/src/native_ipc.c)
 add_library(Salts::NativeIO ALIAS saltscore_native_io)
 if(WIN32)
   target_sources(saltscore_native_io PRIVATE
-    src/native-io/native_io_iocp.c src/native-io/native_ipc_windows.c)
+    native-io/src/native_io_iocp.c native-io/src/native_ipc_windows.c)
   target_compile_definitions(saltscore_native_io PRIVATE
     WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0600)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_sources(saltscore_native_io PRIVATE
-    src/native-io/native_io_linux.c src/native-io/native_io_epoll.c
-    src/native-io/native_io_io_uring.c src/native-io/native_io_readiness.c
-    src/native-io/native_ipc_posix.c)
+    native-io/src/native_io_linux.c native-io/src/native_io_epoll.c
+    native-io/src/native_io_io_uring.c native-io/src/native_io_readiness.c
+    native-io/src/native_ipc_posix.c)
   target_compile_definitions(saltscore_native_io PRIVATE
     _DEFAULT_SOURCE=1 _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700)
 elseif((APPLE OR CMAKE_SYSTEM_NAME MATCHES "^(FreeBSD|OpenBSD|NetBSD|DragonFly)$")
        AND CMAKE_SIZEOF_VOID_P EQUAL 8)
   target_sources(saltscore_native_io PRIVATE
-    src/native-io/native_io_bsd.c src/native-io/native_io_kqueue.c
-    src/native-io/native_io_readiness.c src/native-io/native_ipc_posix.c)
+    native-io/src/native_io_bsd.c native-io/src/native_io_kqueue.c
+    native-io/src/native_io_readiness.c native-io/src/native_ipc_posix.c)
   if(APPLE)
     target_compile_definitions(saltscore_native_io PRIVATE _DARWIN_C_SOURCE=1)
   endif()
 else()
   target_sources(saltscore_native_io PRIVATE
-    src/native-io/native_io_unsupported.c src/native-io/native_ipc_posix.c)
+    native-io/src/native_io_unsupported.c native-io/src/native_ipc_posix.c)
 endif()
 set_target_properties(saltscore_native_io PROPERTIES
   EXPORT_NAME NativeIO C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
@@ -196,7 +197,8 @@ set_target_properties(saltscore_native_io PROPERTIES
   VERSION "${PROJECT_VERSION}" SOVERSION "${SALTSCORE_NATIVE_SOVERSION}")
 target_compile_features(saltscore_native_io PUBLIC c_std_11)
 target_include_directories(saltscore_native_io PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/native-io/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/core/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_link_libraries(saltscore_native_io
   PUBLIC Salts::Platform
@@ -217,28 +219,28 @@ if(SALTSCORE_BUILD_URI)
   add_custom_command(
     OUTPUT "${_saltscore_uri_generated}"
     COMMAND "${SALTSCORE_RE2C_EXECUTABLE}" -o "${_saltscore_uri_generated}"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/uri/parser/uri_lexer.re"
-    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/uri/parser/uri_lexer.re"
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/uri/parser/uri_parser_internal.h"
+      "${CMAKE_CURRENT_SOURCE_DIR}/uri/src/parser/uri_lexer.re"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/uri/src/parser/uri_lexer.re"
+            "${CMAKE_CURRENT_SOURCE_DIR}/uri/src/parser/uri_parser_internal.h"
             "${SALTSCORE_RE2C_EXECUTABLE}"
     COMMENT "Generating source-compatible URI lexer with re2c"
     VERBATIM)
   add_library(saltscore_uri STATIC
-    src/uri/uri_parser.c "${_saltscore_uri_generated}")
+    uri/src/uri_parser.c "${_saltscore_uri_generated}")
   add_library(Salts::URI ALIAS saltscore_uri)
   target_compile_features(saltscore_uri PUBLIC c_std_11)
   set_target_properties(saltscore_uri PROPERTIES
     EXPORT_NAME URI C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
     C_VISIBILITY_PRESET hidden)
   target_include_directories(saltscore_uri
-    PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/uri/include>
            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/uri/parser")
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/uri/src/parser")
   install(TARGETS saltscore_uri EXPORT SaltsCoreTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-  install(FILES include/uri_parser.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+  install(FILES uri/include/uri_parser.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 endif()
 
 # Provider-free C11 WebSocket frame parser. This is a private CNet build
@@ -247,13 +249,13 @@ option(SALTSCORE_BUILD_CNET "Build standalone CNet with required pinned provider
 option(SALTSCORE_BUILD_WEBSOCKET_PARSER "Qualify the CNet-private WebSocket frame parser" OFF)
 if(SALTSCORE_BUILD_WEBSOCKET_PARSER OR SALTSCORE_BUILD_CNET)
   add_library(saltscore_wsparser OBJECT
-    src/cnet/wsparser/websocket_frame_parser.c)
+    cnet/src/wsparser/websocket_frame_parser.c)
   target_compile_features(saltscore_wsparser PUBLIC c_std_11)
   set_target_properties(saltscore_wsparser PROPERTIES
     C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
     POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
   target_include_directories(saltscore_wsparser PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/cnet/wsparser")
+    "${CMAKE_CURRENT_SOURCE_DIR}/cnet/src/wsparser")
 endif()
 
 # Optional CNet uses exactly the native Core targets and explicit provider
@@ -305,16 +307,21 @@ install(TARGETS saltscore_core saltscore_platform saltscore_concurrency saltscor
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(DIRECTORY include/salts_core include/salts
+# Each module owns its headers; the installed SDK retains one flat include ABI.
+install(DIRECTORY core/include/salts_core platform/include/salts_core
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  FILES_MATCHING PATTERN "*.h")
+install(DIRECTORY platform/include/salts concurrency/include/salts
+                  native-io/include/salts fs/include/salts process/include/salts
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.h")
 
-install(FILES include/coro.h include/coro_pool.h include/coro_executor.h
+install(FILES coroutine/include/coro.h coroutine/include/coro_pool.h coroutine/include/coro_executor.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES vendor/minicoro/LICENSE
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/minicoro)
 
-install(FILES core/include/base64_utils.h include/vstr.h include/cmeta_api.h include/cmeta_buffer.h include/ring_buffer.h
+install(FILES core/include/base64_utils.h core/include/vstr.h core/include/cmeta_api.h core/include/cmeta_buffer.h core/include/ring_buffer.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 set(_saltscore_package_dir "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsCore")
