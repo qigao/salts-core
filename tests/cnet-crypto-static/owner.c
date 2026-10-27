@@ -40,8 +40,30 @@ typedef struct observed_peer {
     size_t plaintext_received;
     size_t borrowed_received;
     cnet_error last_error;
+    char failure_stage[32]; /* owned copy of a callback-borrowed stage */
     mem_slice_t retained;
 } observed_peer;
+
+/* Callback error stage strings are borrowed for the duration of poll.
+ * Never keep their raw pointers across the NativeIO Owner terminal.
+ */
+static void remember_terminal_error(observed_peer *peer,
+                                   const cnet_error *error)
+{
+    size_t n;
+    if (!peer || !error) return;
+    peer->last_error = *error;
+    peer->last_error.stage = NULL;
+    if (!error->stage) return;
+    for (n = 0u; n < sizeof(peer->failure_stage) &&
+                  error->stage[n]; ++n) {}
+    if (n == sizeof(peer->failure_stage)) {
+        peer->failed++;
+        return;
+    }
+    memcpy(peer->failure_stage, error->stage, n + 1u);
+    peer->last_error.stage = peer->failure_stage;
+}
 
 static void on_state(void *user, cnet_connection handle,
                      cnet_connection_state state, const cnet_error *error)
@@ -53,7 +75,7 @@ static void on_state(void *user, cnet_connection handle,
         peer->terminal++;
     if (state == CNET_CONNECTION_FAILED || error) {
         peer->failed++;
-        if (error) peer->last_error = *error;
+        if (error) remember_terminal_error(peer, error);
     }
 }
 
@@ -369,6 +391,8 @@ static int run_protocol(uint32_t protocol, bool with_alpn,
         CHECK(accepted.slot && accepted.generation);
         CHECK(server_seen.connected == 0u);
         CHECK(server_seen.failed == 1u && server_seen.terminal == 1u);
+        CHECK(server_seen.last_error.stage != NULL &&
+              strcmp(server_seen.last_error.stage, "handshake") == 0);
         CHECK(client_seen.sent == 0u && server_seen.plaintext_received == 0u
               && client_seen.plaintext_received == 0u);
         rc = 0;
@@ -510,7 +534,7 @@ static void external_state(void *user, cnet_connection handle,
     if (state == CNET_CONNECTION_FAILED) ++p->failed;
     if (state == CNET_CONNECTION_FAILED ||
         state == CNET_CONNECTION_CLOSED) ++p->terminal;
-    if (error != NULL) p->last_error = *error;
+    if (error != NULL) remember_terminal_error(p, error);
 }
 
 static int run_external_san(unsigned port, uint32_t protocol, bool accept_peer)
