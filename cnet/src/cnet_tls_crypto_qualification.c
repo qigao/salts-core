@@ -11,6 +11,7 @@
 #include "cnet_crypto_owner_admission.h"
 
 #include <crypto/tls_ext.h>
+#include <crypto/tls_auth.h>
 #include <crypto/tls_peer.h>
 #include <salts/error_codes.h>
 
@@ -26,12 +27,15 @@ struct cnet_tls_context {
     atomic_uint references;
     crypto_tls_provider *provider; /* borrowed; host keeps it alive */
     crypto_tls_session_options options;
+    crypto_tls_auth_options_v1_3 auth;
+    bool has_auth;
     size_t capacity;
     bool server;
     char hostname[CNET_TLS_SERVER_NAME_CAPACITY];
     char ca_file[CNET_CRYPTO_PATH_BYTES];
     char cert_file[CNET_CRYPTO_PATH_BYTES];
     char key_file[CNET_CRYPTO_PATH_BYTES];
+    char key_password[CRYPTO_TLS_AUTH_MAX_PASSWORD_BYTES + 1u];
     size_t alpn_count;
     char alpn_storage[CRYPTO_TLS_ALPN_MAX_PROTOCOLS][CRYPTO_TLS_ALPN_MAX_NAME_BYTES + 1u];
     const char *alpn_names[CRYPTO_TLS_ALPN_MAX_PROTOCOLS];
@@ -131,6 +135,7 @@ static void checked_copy(char *to, size_t capacity, const char *source)
 
 static int new_context(crypto_tls_provider *provider,
                        const crypto_tls_session_options *options,
+                       const crypto_tls_auth_options_v1_3 *auth,
                        size_t cipher_capacity,
                        const char *const *alpn_names, size_t alpn_count,
                        cnet_tls_context **out_context)
@@ -165,6 +170,39 @@ static int new_context(crypto_tls_provider *provider,
                      options->private_key_file);
         ctx->options.private_key_file = ctx->key_file;
     }
+    if (options->private_key_password != NULL) {
+        checked_copy(ctx->key_password, sizeof(ctx->key_password),
+                     options->private_key_password);
+        ctx->options.private_key_password = ctx->key_password;
+    }
+    /* The public context MUST own every borrowed path/password before
+     * the NativeIO Owner admits the first connection. The Crypto v1.3
+     * constructor consumes these pointers synchronously in state_init().
+     */
+    if (auth != NULL) {
+        ctx->auth = *auth;
+        ctx->has_auth = true;
+        if (auth->client_ca_file != NULL) {
+            checked_copy(ctx->ca_file, sizeof(ctx->ca_file),
+                         auth->client_ca_file);
+            ctx->auth.client_ca_file = ctx->ca_file;
+        }
+        if (auth->client_certificate_file != NULL) {
+            checked_copy(ctx->cert_file, sizeof(ctx->cert_file),
+                         auth->client_certificate_file);
+            ctx->auth.client_certificate_file = ctx->cert_file;
+        }
+        if (auth->client_private_key_file != NULL) {
+            checked_copy(ctx->key_file, sizeof(ctx->key_file),
+                         auth->client_private_key_file);
+            ctx->auth.client_private_key_file = ctx->key_file;
+        }
+        if (auth->client_private_key_password != NULL) {
+            checked_copy(ctx->key_password, sizeof(ctx->key_password),
+                         auth->client_private_key_password);
+            ctx->auth.client_private_key_password = ctx->key_password;
+        }
+    }
     if (alpn_count > CRYPTO_TLS_ALPN_MAX_PROTOCOLS ||
         (alpn_count != 0u && alpn_names == NULL)) {
         free(ctx);
@@ -191,6 +229,8 @@ int cnet_crypto_tls_test_client_context(
     size_t cipher_capacity, cnet_tls_context **out_context)
 {
     crypto_tls_session_options options = {0};
+    crypto_tls_auth_options_v1_3 auth = {0};
+    const crypto_tls_auth_options_v1_3 *selected_auth = NULL;
     int status;
     if (out_context == NULL) return SALTS_EINVAL;
     *out_context = NULL;
@@ -199,7 +239,15 @@ int cnet_crypto_tls_test_client_context(
         policy, effective_dns_name, exact_protocol, cipher_capacity,
         CNET_CRYPTO_OWNER_TEST_ONLY, &options);
     if (status != SALTS_OK) return status;
-    return new_context(provider, &options, cipher_capacity,
+    if (policy->cert_file != NULL) {
+        auth.struct_size = (uint32_t)sizeof(auth);
+        auth.client_auth = CRYPTO_TLS_CLIENT_AUTH_NONE;
+        auth.client_certificate_file = policy->cert_file;
+        auth.client_private_key_file = policy->key_file;
+        auth.client_private_key_password = policy->key_password;
+        selected_auth = &auth;
+    }
+    return new_context(provider, &options, selected_auth, cipher_capacity,
                        policy->alpn_protocols, policy->alpn_protocol_count,
                        out_context);
 }
@@ -210,6 +258,8 @@ int cnet_crypto_tls_test_server_context(
     cnet_tls_context **out_context)
 {
     crypto_tls_session_options options = {0};
+    crypto_tls_auth_options_v1_3 auth = {0};
+    const crypto_tls_auth_options_v1_3 *selected_auth = NULL;
     int status;
     if (out_context == NULL) return SALTS_EINVAL;
     *out_context = NULL;
@@ -218,7 +268,13 @@ int cnet_crypto_tls_test_server_context(
         policy, exact_protocol, cipher_capacity,
         CNET_CRYPTO_OWNER_TEST_ONLY, &options);
     if (status != SALTS_OK) return status;
-    return new_context(provider, &options, cipher_capacity,
+    if (policy->client_auth == CNET_TLS_CLIENT_AUTH_REQUIRED) {
+        auth.struct_size = (uint32_t)sizeof(auth);
+        auth.client_auth = CRYPTO_TLS_CLIENT_AUTH_REQUIRED;
+        auth.client_ca_file = policy->ca_file;
+        selected_auth = &auth;
+    }
+    return new_context(provider, &options, selected_auth, cipher_capacity,
                        policy->alpn_protocols, policy->alpn_protocol_count,
                        out_context);
 }
@@ -241,8 +297,12 @@ void cnet_tls_context_release(cnet_tls_context *ctx)
 {
     if (ctx != NULL &&
         atomic_fetch_sub_explicit(&ctx->references, 1u,
-                                  memory_order_acq_rel) == 1u)
+                                  memory_order_acq_rel) == 1u) {
+        volatile char *wipe = (volatile char *)ctx->key_password;
+        size_t i;
+        for (i = 0u; i < sizeof(ctx->key_password); ++i) wipe[i] = 0;
         free(ctx);
+    }
 }
 
 /* A success transfers exactly one caller-owned context reference to state.
@@ -283,8 +343,11 @@ int cnet_tls_state_init(cnet_tls_state *state, cnet_tls_context *ctx,
     result = crypto_tls_cipher_bio_acquire_io(eng->bio, &eng->io);
     if (result != CRYPTO_TLS_OK) goto failed;
     eng->io_leased = true;
-    result = crypto_tls_session_create(ctx->provider, &ctx->options,
-                                       &eng->io, &eng->session);
+    result = ctx->has_auth
+        ? crypto_tls_session_create_auth_v1_3(
+            ctx->provider, &ctx->options, &ctx->auth, &eng->io, &eng->session)
+        : crypto_tls_session_create(
+            ctx->provider, &ctx->options, &eng->io, &eng->session);
     if (result != CRYPTO_TLS_OK) goto failed;
     if (ctx->alpn_count != 0u) {
         if (crypto_tls_extension_abi_version() != CRYPTO_TLS_EXTENSION_ABI_VERSION)
@@ -355,6 +418,14 @@ int cnet_tls_handshake(cnet_tls_state *state, bool *out_complete)
     eng->handshake_started = true;
     result = crypto_tls_session_handshake(eng->session);
     if (result == CRYPTO_TLS_OK) {
+        if (state->server && state->context->has_auth &&
+            state->context->auth.client_auth == CRYPTO_TLS_CLIENT_AUTH_REQUIRED) {
+            uint32_t authenticated = 0u;
+            if (crypto_tls_session_client_authenticated_v1_3(
+                    eng->session, &authenticated) != CRYPTO_TLS_OK
+                || authenticated != 1u)
+                return SALTS_EPROTO; /* NEVER publish CONNECTED */
+        }
         if (state->context->alpn_count != 0u) {
             crypto_tls_session_info_v1_1 info = {0};
             info.struct_size = (uint32_t)sizeof(info);
