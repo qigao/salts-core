@@ -15,7 +15,7 @@ include(CTest)
 find_package(Threads REQUIRED)
 
 # Keep the minimal foundation target usable without platform/transport providers.
-add_library(saltscore_core SHARED core/src/bytes.c)
+add_library(saltscore_core SHARED utils/src/bytes.c)
 add_library(Salts::Core ALIAS saltscore_core)
 target_compile_features(saltscore_core PUBLIC c_std_11)
 set_target_properties(saltscore_core PROPERTIES
@@ -69,6 +69,11 @@ set_target_properties(saltscore_platform PROPERTIES
   EXPORT_NAME Platform C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   C_VISIBILITY_PRESET default WINDOWS_EXPORT_ALL_SYMBOLS ON
   VERSION "${PROJECT_VERSION}" SOVERSION "${SALTSCORE_NATIVE_SOVERSION}")
+# Atomic public header is owned by original Concurrency module; Platform's
+# portable C11 atomic sources only borrow the header without owning its ABI.
+target_include_directories(saltscore_platform PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/concurrency/include")
+
 target_compile_features(saltscore_platform PUBLIC c_std_11)
 # Export one owner-controlled C ABI to TinyCC, MSVC, and llvm-mingw clients.
 target_compile_definitions(saltscore_platform PRIVATE SALTS_CORE_PLATFORM_BUILD=1)
@@ -106,8 +111,8 @@ endif()
 # Core-owned buffer/pool, byte utility and sole native Base64 implementation.
 # No third-party Base64 DSO, vcpkg port or alternate codec is required.
 target_sources(saltscore_core PRIVATE
-  core/src/cmeta_buffer.c core/src/ring_buffer.c core/src/base64_utils.c
-  core/src/runtime_abi.c core/src/utf8.c)
+  utils/src/cmeta_buffer.c utils/src/ring_buffer.c utils/src/base64_utils.c
+  utils/src/runtime_abi.c utils/src/utf8.c)
 target_link_libraries(saltscore_core PUBLIC Salts::Platform)
 
 # The original bounded primitives have no Reflection/CFlow dependency.
@@ -219,9 +224,9 @@ if(SALTSCORE_BUILD_URI)
   add_custom_command(
     OUTPUT "${_saltscore_uri_generated}"
     COMMAND "${SALTSCORE_RE2C_EXECUTABLE}" -o "${_saltscore_uri_generated}"
-      "${CMAKE_CURRENT_SOURCE_DIR}/uri/src/parser/uri_lexer.re"
-    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/uri/src/parser/uri_lexer.re"
-            "${CMAKE_CURRENT_SOURCE_DIR}/uri/src/parser/uri_parser_internal.h"
+      "${CMAKE_CURRENT_SOURCE_DIR}/uri/parser/uri_lexer.re"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/uri/parser/uri_lexer.re"
+            "${CMAKE_CURRENT_SOURCE_DIR}/uri/parser/uri_parser_internal.h"
             "${SALTSCORE_RE2C_EXECUTABLE}"
     COMMENT "Generating source-compatible URI lexer with re2c"
     VERBATIM)
@@ -308,11 +313,11 @@ install(TARGETS saltscore_core saltscore_platform saltscore_concurrency saltscor
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # Each module owns its headers; the installed SDK retains one flat include ABI.
-install(DIRECTORY core/include/salts_core platform/include/salts_core
+install(DIRECTORY utils/include/salts_core platform/include/salts_core
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.h")
 install(DIRECTORY platform/include/salts concurrency/include/salts
-                  native-io/include/salts fs/include/salts process/include/salts
+                  native-io/include/salts cflow-fs/include/salts cflow-process/include/salts
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.h")
 
@@ -321,7 +326,7 @@ install(FILES coroutine/include/coro.h coroutine/include/coro_pool.h coroutine/i
 install(FILES vendor/minicoro/LICENSE
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/minicoro)
 
-install(FILES core/include/base64_utils.h core/include/vstr.h core/include/cmeta_api.h core/include/cmeta_buffer.h core/include/ring_buffer.h
+install(FILES utils/include/base64_utils.h utils/include/vstr.h utils/include/cmeta_api.h utils/include/cmeta_buffer.h utils/include/ring_buffer.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 set(_saltscore_package_dir "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsCore")
