@@ -1,8 +1,8 @@
 #ifndef CNET_TRANSPORT_H
 #define CNET_TRANSPORT_H
 
-#include <cnet/cnet.h>
-#include <salts/native_io.h>
+#include <salts/cnet/cnet.h>
+#include <salts/native_io/native_io.h>
 
 #include <stdbool.h>
 #include <stddef.h>

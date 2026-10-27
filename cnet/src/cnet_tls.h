@@ -1,7 +1,7 @@
 #ifndef CNET_TLS_H
 #define CNET_TLS_H
 
-#include <cnet/cnet.h>
+#include <salts/cnet/cnet.h>
 
 #include <stdbool.h>
 #include <stddef.h>

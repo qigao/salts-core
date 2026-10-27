@@ -5,7 +5,7 @@
   #error "cnet_test_internal.h is available only to the private CNet test target"
 #endif
 
-#include <cnet/cnet.h>
+#include <salts/cnet/cnet.h>
 
 #include <stddef.h>
 

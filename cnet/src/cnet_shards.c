@@ -1,6 +1,6 @@
 #include "cnet_shards.h"
 
-#include <salts/thread.h>
+#include <salts/platform/thread.h>
 
 #include <stdatomic.h>
 #include <stdbool.h>

@@ -2,7 +2,7 @@
 
 #include "cnet_transport.h"
 
-#include <uri_parser.h>
+#include <salts/uri/parser.h>
 
 #include <stdbool.h>
 #include <stddef.h>

@@ -1,6 +1,6 @@
 #include "cnet_transport.h"
 
-#include <salts/error_codes.h>
+#include <salts/core/error_codes.h>
 
 #include <string.h>
 
