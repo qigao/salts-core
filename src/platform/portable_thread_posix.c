@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <time.h>
 #include <stdint.h>
+#include <string.h>
 
 /* The worker and caller each hold one reference. Detach drops only the
  * caller's reference; the live worker must never access freed storage.
@@ -19,6 +20,21 @@ struct salts_platform_thread {
 };
 struct salts_platform_mutex { pthread_mutex_t native; };
 struct salts_platform_condition { pthread_cond_t native; };
+static __thread salts_platform_thread *salts_platform_current;
+
+static uint64_t os_thread_id(pthread_t value) {
+    uint64_t id = 0;
+    typedef char pthread_id_fits[(sizeof(pthread_t) <= sizeof(uint64_t)) ? 1 : -1];
+    (void)sizeof(pthread_id_fits);
+    memcpy(&id, &value, sizeof(value));
+    return id;
+}
+uint64_t SALTS_CORE_PLATFORM_CALL salts_platform_thread_current_id(void) {
+    return os_thread_id(pthread_self());
+}
+uint64_t SALTS_CORE_PLATFORM_CALL salts_platform_thread_id(const salts_platform_thread *thread) {
+    return thread ? os_thread_id(thread->native) : 0u;
+}
 
 static void release_thread(salts_platform_thread *thread) {
     uint32_t before = 0;
@@ -28,7 +44,9 @@ static void release_thread(salts_platform_thread *thread) {
 }
 static void *thread_entry(void *context) {
     salts_platform_thread *thread = (salts_platform_thread *)context;
+    salts_platform_current = thread;
     thread->result = thread->callback(thread->argument);
+    salts_platform_current = NULL;
     release_thread(thread);
     return NULL;
 }
@@ -65,6 +83,15 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_thread_detach(salts_platform_thread 
     *owner = NULL;
     release_thread(thread);
     return SALTS_OK;
+}
+void SALTS_CORE_PLATFORM_CALL salts_platform_thread_exit(int result) {
+    salts_platform_thread *thread = salts_platform_current;
+    if (thread) {
+        thread->result = result;
+        salts_platform_current = NULL;
+        release_thread(thread);
+    }
+    pthread_exit(NULL);
 }
 void SALTS_CORE_PLATFORM_CALL salts_platform_thread_yield(void) { (void)sched_yield(); }
 int SALTS_CORE_PLATFORM_CALL salts_platform_thread_sleep_ns(uint64_t duration_ns) {

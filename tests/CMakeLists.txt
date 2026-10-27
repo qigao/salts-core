@@ -260,3 +260,24 @@ target_compile_features(saltscore_portable_timed_mutex_test PRIVATE c_std_11)
 target_link_libraries(saltscore_portable_timed_mutex_test PRIVATE Salts::Platform)
 add_test(NAME saltscore.portable_timed_mutex COMMAND saltscore_portable_timed_mutex_test)
 set_tests_properties(saltscore.portable_timed_mutex PROPERTIES TIMEOUT 35)
+
+
+# Explicit C11 threads.h source-compatibility admission (not a global CRT override).
+add_executable(saltscore_c11_threads_test test_c11_threads.c)
+target_include_directories(saltscore_c11_threads_test BEFORE PRIVATE
+  "${PROJECT_SOURCE_DIR}/include/salts_core/c11")
+target_compile_definitions(saltscore_c11_threads_test PRIVATE
+  SALTS_C11_THREADS_EXPERIMENTAL=1)
+set_target_properties(saltscore_c11_threads_test PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+target_link_libraries(saltscore_c11_threads_test PRIVATE Salts::Platform)
+add_test(NAME saltscore.c11_threads_facade COMMAND saltscore_c11_threads_test)
+set_tests_properties(saltscore.c11_threads_facade PROPERTIES TIMEOUT 35)
+
+
+# Regression for Windows cmeta_hrtime once-atomic QPC frequency publication.
+add_executable(saltscore_clock_atomic_owner_test test_clock_atomic_owner.c)
+target_compile_features(saltscore_clock_atomic_owner_test PRIVATE c_std_11)
+target_link_libraries(saltscore_clock_atomic_owner_test PRIVATE Salts::Platform)
+add_test(NAME saltscore.clock_atomic_owner COMMAND saltscore_clock_atomic_owner_test)
+set_tests_properties(saltscore.clock_atomic_owner PROPERTIES TIMEOUT 30)
