@@ -1,6 +1,6 @@
 
 # One native C11 filesystem owner; no CMeta/CFlow/old Salts references.
-add_library(saltscore_fs SHARED fs/src/fs.c fs/src/fs_root.c)
+add_library(saltscore_fs SHARED cflow-fs/src/fs.c cflow-fs/src/fs_root.c)
 add_library(Salts::FS ALIAS saltscore_fs)
 target_compile_features(saltscore_fs PUBLIC c_std_11)
 set_target_properties(saltscore_fs PROPERTIES
@@ -25,7 +25,7 @@ install(TARGETS saltscore_fs EXPORT SaltsCoreTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES fs/include/salts/fs.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/salts)
+install(FILES cflow-fs/include/salts/fs.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/salts)
 if(BUILD_TESTING)
   add_executable(saltscore_fs_test tests/test_fs.c)
   target_compile_features(saltscore_fs_test PRIVATE c_std_11)
