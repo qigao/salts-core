@@ -72,9 +72,17 @@ class DependencyGateTest(unittest.TestCase):
 
     def test_dependency_names_in_comments_do_not_create_imports(self):
         self.assertEqual(self.check_text(
-            "# Old Crypto::TLS cannot be linked\n"
+            "// Old Crypto::TLS cannot be linked\n"
             "/* SaltsCore::CNet historical layout */\n"
             "int normal(void);\n"), [])
+        self.assertEqual(self.check_text(
+            "# historical Crypto::TLS no longer imported\n", ".cmake"), [])
+
+    def test_noncomment_preprocessor_line_remains_scanned(self):
+        # Bare '# Old ...' is not a valid C comment/directive, so do not
+        # exempt it as though it were a CMake-only '#' comment.
+        self.assertEqual(
+            len(self.check_text("# Old Crypto::TLS import\n")), 1)
 
     def test_preprocessor_macro_never_hidden_as_comment(self):
         self.assertEqual(
