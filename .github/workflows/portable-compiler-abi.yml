@@ -41,7 +41,7 @@ jobs:
           New-Item -ItemType Directory -Force build-portable | Out-Null
           $dll = 'build-portable/salts_portable.dll'
           $exe = 'build-portable/tcc_portable.exe'
-          & $clang.FullName '-std=c11' '-O2' '-shared' '-DSALTS_CORE_PLATFORM_BUILD=1' '-D_WIN32_WINNT=0x0601' '-Iinclude' 'src/platform/portable_atomic.c' 'src/platform/portable_thread_win32.c' 'src/platform/portable_tss_win32.c' 'src/platform/portable_once.c' 'src/platform/c11_threads.c' 'src/platform/clock.c' '-o' $dll
+          & $clang.FullName '-std=c11' '-O2' '-Werror=unknown-attributes' '-shared' '-DSALTS_CORE_PLATFORM_BUILD=1' '-D_WIN32_WINNT=0x0601' '-Iinclude' 'src/platform/portable_atomic.c' 'src/platform/portable_thread_win32.c' 'src/platform/portable_tss_win32.c' 'src/platform/portable_once.c' 'src/platform/c11_threads.c' 'src/platform/clock.c' '-o' $dll
           if ($LASTEXITCODE -ne 0) { throw 'Portable Platform provider failed to compile/link with llvm-mingw' }
           & $tcc.FullName '-std=c11' '-Iinclude' 'tests/portable_tcc_windows_client.c' '-o' $exe
           if ($LASTEXITCODE -ne 0) { throw 'TinyCC portable consumer compile failed' }
@@ -80,7 +80,7 @@ jobs:
             $e = "build-portable/tcc_portable_$($pair.suffix).exe"
             $te = "build-portable/tcc_portable_tss_$($pair.suffix).exe"
             $ce = "build-portable/tcc_c11_threads_$($pair.suffix).exe"
-            & $ll '-std=c11' '-O2' '-shared' '-DSALTS_CORE_PLATFORM_BUILD=1' '-D_WIN32_WINNT=0x0601' '-Iinclude' 'src/platform/portable_atomic.c' 'src/platform/portable_thread_win32.c' 'src/platform/portable_tss_win32.c' 'src/platform/portable_once.c' 'src/platform/c11_threads.c' 'src/platform/clock.c' '-o' $d
+            & $ll '-std=c11' '-O2' '-Werror=unknown-attributes' '-shared' '-DSALTS_CORE_PLATFORM_BUILD=1' '-D_WIN32_WINNT=0x0601' '-Iinclude' 'src/platform/portable_atomic.c' 'src/platform/portable_thread_win32.c' 'src/platform/portable_tss_win32.c' 'src/platform/portable_once.c' 'src/platform/c11_threads.c' 'src/platform/clock.c' '-o' $d
             if ($LASTEXITCODE -ne 0) { throw "llvm-mingw provider build failed for $($pair.suffix)" }
             & $tt.FullName '-std=c11' '-Iinclude' 'tests/portable_tcc_windows_client.c' '-o' $e
             if ($LASTEXITCODE -ne 0) { throw "TinyCC consumer build failed for $($pair.suffix)" }
