@@ -86,3 +86,34 @@ jobs:
             UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
             ctest --test-dir build-x509 --no-tests=error \
               --output-on-failure --timeout 120
+
+  saltsnet-owner:
+    name: SaltsNet no local ASN1/X509, MIB CLI-only / Linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/salts-net
+          ref: f628cf922a6815e881416643ccdcb4a3c18820e5
+          path: net
+          persist-credentials: false
+      - name: Verify no ASN1 module and compile MIB CLI without a library
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C net rev-parse HEAD)" = "f628cf922a6815e881416643ccdcb4a3c18820e5"
+          python3 net/tools/check_single_asn1_owner.py
+          test ! -d net/snmp/asn1
+          ! grep -R -E 'SaltsNet::SNMPSupport|SaltsNet::Asn1Parser|add_library\\(saltsnet_snmp_support' \
+            net/snmp/mib net/snmp/CMakeLists.txt
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends re2c
+          cc -O2 -o "$PWD/lemon" net/tools/lemon/lemon.c
+          cmake -S net/snmp/mib -B build-mib -G Ninja \
+            -DRE2C_EXECUTABLE="$(command -v re2c)" \
+            "-DLEMON_EXECUTABLE=$PWD/lemon" \
+            "-DLEMPAR=$PWD/net/tools/lemon/lempar.c" \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-mib --parallel 2
+          ./build-mib/mib_compiler --help
