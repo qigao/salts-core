@@ -190,16 +190,24 @@ jobs:
             $info = [System.Diagnostics.ProcessStartInfo]::new()
             $info.FileName = $recursiveClient
             $info.UseShellExecute = $false
+            $info.RedirectStandardError = $true
+            $info.RedirectStandardOutput = $true
             $proc = [System.Diagnostics.Process]::Start($info)
             if (-not $proc) { throw "Could not launch native ARM64 recursive client" }
-            if (-not $proc.WaitForExit(15000)) {
+            $completed = $proc.WaitForExit(15000)
+            if (-not $completed) {
               $proc.Kill($true)
               $proc.WaitForExit()
-              $proc.Dispose()
-              throw "Native ARM64 recursive mutex HANG on attempt $i (15s watchdog)"
             }
+            $stderrText = $proc.StandardError.ReadToEnd()
+            $stdoutText = $proc.StandardOutput.ReadToEnd()
+            if ($stderrText) { Write-Host $stderrText }
+            if ($stdoutText) { Write-Host $stdoutText }
             $exitCode = $proc.ExitCode
             $proc.Dispose()
+            if (-not $completed) {
+              throw "Native ARM64 recursive mutex HANG attempt=$i last-stage-above (15s watchdog)"
+            }
             if ($exitCode -ne 0) {
               throw "Native ARM64 TinyCC C11 recursive mutex FAILED attempt=$i exit=$exitCode"
             }
