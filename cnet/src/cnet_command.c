@@ -1,8 +1,8 @@
 #include "cnet_command.h"
 
-#include <cmeta_buffer.h>
+#include <salts/core/buffer.h>
 #if defined(CNET_INTERNAL_PROFILING)
-  #include <salts/clock.h>
+  #include <salts/platform/clock.h>
 #endif
 
 #include <stdbool.h>

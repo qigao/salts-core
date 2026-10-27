@@ -1,5 +1,5 @@
-#include <cnet/client_pool.h>
-#include <salts/thread.h>
+#include <salts/cnet/client_pool.h>
+#include <salts/platform/thread.h>
 
 #include <stdatomic.h>
 #include <stdlib.h>

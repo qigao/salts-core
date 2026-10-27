@@ -1,8 +1,8 @@
 #ifndef CNET_WEBSOCKET_TRANSPORT_H
 #define CNET_WEBSOCKET_TRANSPORT_H
 
-#include <cnet/cnet.h>
-#include <cnet/websocket.h>
+#include <salts/cnet/cnet.h>
+#include <salts/cnet/websocket.h>
 
 #ifdef __cplusplus
 extern "C" {

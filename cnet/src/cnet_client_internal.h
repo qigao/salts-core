@@ -1,7 +1,7 @@
 #ifndef CNET_CLIENT_INTERNAL_H
 #define CNET_CLIENT_INTERNAL_H
 
-#include <cnet/cnet.h>
+#include <salts/cnet/cnet.h>
 
 #include "cnet_tls.h"
 

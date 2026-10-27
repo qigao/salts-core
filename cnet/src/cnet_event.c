@@ -1,8 +1,8 @@
 #include "cnet_event.h"
 
-#include <cnet/cnet.h>
-#include <salts/disruptor.h>
-#include <cmeta_buffer.h>
+#include <salts/cnet/cnet.h>
+#include <salts/concurrency/disruptor.h>
+#include <salts/core/buffer.h>
 
 #include <limits.h>
 #include <stdatomic.h>

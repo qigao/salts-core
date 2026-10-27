@@ -1,6 +1,6 @@
-#include <cnet/cnet.h>
-#include <cnet/ipc.h>
-#include <cnet/websocket_transport.h>
+#include <salts/cnet/cnet.h>
+#include <salts/cnet/ipc.h>
+#include <salts/cnet/websocket_transport.h>
 
 #include "cnet_client_internal.h"
 #include "cnet_dispatcher.h"
@@ -9,8 +9,8 @@
 #include "cnet_transport.h"
 #include "cnet_uri.h"
 
-#include <salts/clock.h>
-#include <salts/thread.h>
+#include <salts/platform/clock.h>
+#include <salts/platform/thread.h>
 
 #include <limits.h>
 #include <stdatomic.h>

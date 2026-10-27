@@ -3,7 +3,7 @@
 
 #include "cnet_session.h"
 
-#include <cmeta_buffer.h>
+#include <salts/core/buffer.h>
 
 #include <stdatomic.h>
 #include <stddef.h>

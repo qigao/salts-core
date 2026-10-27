@@ -1,10 +1,10 @@
-#include <cnet/cnet.h>
+#include <salts/cnet/cnet.h>
 
 #include "cnet_module.h"
 #include "cnet_transport.h"
 
-#include <salts/clock.h>
-#include <salts/thread.h>
+#include <salts/platform/clock.h>
+#include <salts/platform/thread.h>
 
 #include <limits.h>
 #include <stdbool.h>
