@@ -1,0 +1,114 @@
+name: CNet sole static Crypto M0 admission
+on:
+  pull_request:
+    paths:
+      - "CMakeLists.txt"
+      - "tests/cnet-crypto-static/**"
+      - "docs/M0-CNET-STATIC-CRYPTO-ADMISSION.md"
+      - ".github/workflows/cnet-crypto-static.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  posix-static-admission:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            triplet: x64-linux
+          - runner: macos-15
+            triplet: arm64-osx
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 70
+    env:
+      CRYPTO_SHA: b09a981c1922db01070509c98511d291c98ee81e
+      PORT_SHA: d2ce09ebd3cf127338eea5c8d87a588aeb9d127c
+      VCPKG_SCRIPTS_SHA: 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
+      VCPKG_DEFAULT_TRIPLET: ${{ matrix.triplet }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux native prerequisites
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build pkg-config             autoconf automake libtool nasm curl zip unzip tar
+      - name: Install macOS native prerequisites
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install ninja pkg-config autoconf automake libtool nasm
+      - name: Fetch immutable Crypto and official private GmSSL port input
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/crypto-src" "$RUNNER_TEMP/vcpkg-cache"
+          curl -fLsS --retry 3             "https://api.github.com/repos/qigao/crypto/tarball/$CRYPTO_SHA"             -o "$RUNNER_TEMP/crypto-source.tar.gz"
+          tar -xzf "$RUNNER_TEMP/crypto-source.tar.gz"             --strip-components=1 -C "$RUNNER_TEMP/crypto-src"
+          curl -fLsS --retry 3             "https://api.github.com/repos/qigao/vcpkg-cache/tarball/$PORT_SHA"             -o "$RUNNER_TEMP/vcpkg-cache.tar.gz"
+          tar -xzf "$RUNNER_TEMP/vcpkg-cache.tar.gz"             --strip-components=1 -C "$RUNNER_TEMP/vcpkg-cache"
+          python3 "$RUNNER_TEMP/crypto-src/tools/verify_vcpkg_gmssl.py"             --port "$RUNNER_TEMP/vcpkg-cache/ports/gmssl"
+      - name: Bootstrap pinned canonical vcpkg scripts (no Mono or NuGet)
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/vcpkg"
+          mkdir -p "$root"
+          git -C "$root" init -q
+          git -C "$root" remote add origin https://github.com/microsoft/vcpkg.git
+          git -C "$root" fetch --no-tags origin "$VCPKG_SCRIPTS_SHA"
+          git -C "$root" checkout --detach FETCH_HEAD
+          test "$(git -C "$root" rev-parse HEAD)" = "$VCPKG_SCRIPTS_SHA"
+          "$root/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$root" >> "$GITHUB_ENV"
+      - name: Build and audit ONE installed static Salts::Crypto
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="$RUNNER_TEMP/crypto-src/vcpkg_installed/$VCPKG_DEFAULT_TRIPLET"
+          export VCPKG_OVERLAY_PORTS="$RUNNER_TEMP/vcpkg-cache/ports"
+          "$VCPKG_ROOT/vcpkg" install             --x-manifest-root="$RUNNER_TEMP/crypto-src"             --x-install-root="$RUNNER_TEMP/crypto-src/vcpkg_installed"             --triplet="$VCPKG_DEFAULT_TRIPLET" --overlay-ports="$VCPKG_OVERLAY_PORTS"
+          python3 "$RUNNER_TEMP/crypto-src/tools/verify_vcpkg_gmssl.py"             --port "$VCPKG_OVERLAY_PORTS/gmssl" --prefix "$prefix"
+          cmake -S "$RUNNER_TEMP/crypto-src" -B "$RUNNER_TEMP/crypto-build" -G Ninja             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON             "-DCRYPTO_GMSSL_ROOT=$prefix"             "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/crypto-installed"
+          cmake --build "$RUNNER_TEMP/crypto-build" --parallel 2
+          ctest --test-dir "$RUNNER_TEMP/crypto-build" -C Release             --output-on-failure --no-tests=error
+          cmake --install "$RUNNER_TEMP/crypto-build" --config Release
+          python3 "$RUNNER_TEMP/crypto-src/tools/audit_static_crypto.py"             --prefix "$RUNNER_TEMP/crypto-installed"             --report "$RUNNER_TEMP/crypto-static-audit.json"
+      - name: Verify exact CNet policy + C11/C++17 static binary admission
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B "$RUNNER_TEMP/core-static-build" -G Ninja             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON             -DSALTSCORE_BUILD_CNET=OFF             -DSALTSCORE_CNET_STATIC_CRYPTO_ADMISSION=ON             "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/crypto-installed"
+          cmake --build "$RUNNER_TEMP/core-static-build" --parallel 2
+          ctest --test-dir "$RUNNER_TEMP/core-static-build" -C Release             --output-on-failure --no-tests=error             -R '^saltscore[.]cnet_crypto_static_(policy|cpp17)$'             --repeat until-fail:3
+      - name: Audit static target consumer does not load a second provider
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$RUNNER_TEMP/crypto-static-audit.json"
+          binary="$RUNNER_TEMP/core-static-build/tests/cnet-crypto-static/saltscore_cnet_crypto_static_admission"
+          test -x "$binary"
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            readelf -d "$binary" > "$RUNNER_TEMP/cnet-static-imports.txt"
+          else
+            otool -L "$binary" > "$RUNNER_TEMP/cnet-static-imports.txt"
+          fi
+          if grep -Ei 'libgmssl|libcrypto_tls|libcrypto_provider|libsaltscore_cnet'             "$RUNNER_TEMP/cnet-static-imports.txt"; then
+            echo "Forbidden split native provider in static candidate" >&2
+            exit 1
+          fi
+          nm -g "$binary" | grep -q 'crypto_tls_provider_create'
+          nm -g "$binary" | grep -q 'crypto_tls_cipher_bio_create'
+      - name: Preserve exact-head candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cnet-static-m0-${{ matrix.triplet }}
+          path: |
+            ${{ runner.temp }}/crypto-static-audit.json
+            ${{ runner.temp }}/cnet-static-imports.txt
+            ${{ runner.temp }}/core-static-build/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
