@@ -109,6 +109,7 @@ jobs:
             $te = "build-portable/tcc_portable_tss_$($pair.suffix).exe"
             $ce = "build-portable/tcc_c11_threads_$($pair.suffix).exe"
             $re = "build-portable/tcc_c11_recursive_$($pair.suffix).exe"
+            $cl = "build-portable/clang_c11_recursive_$($pair.suffix).exe"
             & $ll '-std=c11' '-O2' '-Werror=unknown-attributes' '-shared' '-DSALTS_CORE_PLATFORM_BUILD=1' '-D_WIN32_WINNT=0x0601' '-Iinclude' 'src/platform/portable_atomic.c' 'src/platform/portable_thread_win32.c' 'src/platform/portable_tss_win32.c' 'src/platform/portable_once.c' 'src/platform/c11_threads.c' 'src/platform/clock.c' '-o' $d
             if ($LASTEXITCODE -ne 0) { throw "llvm-mingw provider build failed for $($pair.suffix)" }
             & $tt.FullName '-std=c11' '-Iinclude' 'tests/portable_tcc_windows_client.c' '-o' $e
@@ -119,7 +120,9 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "TinyCC $($pair.suffix) C11 threads.h direct DLL linking failed" }
             & $tt.FullName '-std=c11' '-DSALTS_C11_THREADS_EXPERIMENTAL=1' '-Iinclude/salts_core/c11' '-Iinclude' 'tests/test_c11_recursive.c' $d '-o' $re
             if ($LASTEXITCODE -ne 0) { throw "TinyCC $($pair.suffix) recursive C11 mutex source did not link" }
-            foreach ($path in @($d,$e,$te,$ce,$re)) {
+            & $ll '-std=c11' '-O2' '-Werror=unknown-attributes' '-DSALTS_C11_THREADS_EXPERIMENTAL=1' '-Iinclude/salts_core/c11' '-Iinclude' 'tests/test_c11_recursive.c' $d '-o' $cl
+            if ($LASTEXITCODE -ne 0) { throw "LLVM Clang recursive C11 control failed for $($pair.suffix)" }
+            foreach ($path in @($d,$e,$te,$ce,$re,$cl)) {
               [byte[]]$bytes = [IO.File]::ReadAllBytes((Resolve-Path $path).Path)
               if ($bytes.Length -lt 128 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) {
                 throw "Not PE/MZ: $path"
@@ -143,7 +146,7 @@ jobs:
             }
           }
           $sealed = @{}
-          foreach ($name in @('salts_portable_arm64.dll','tcc_portable_arm64.exe','tcc_portable_tss_arm64.exe','tcc_c11_threads_arm64.exe','tcc_c11_recursive_arm64.exe')) {
+          foreach ($name in @('salts_portable_arm64.dll','tcc_portable_arm64.exe','tcc_portable_tss_arm64.exe','tcc_c11_threads_arm64.exe','tcc_c11_recursive_arm64.exe','clang_c11_recursive_arm64.exe')) {
             $sealed[$name] = (Get-FileHash "build-portable/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
           }
           $sealed | ConvertTo-Json -Depth 3 | Set-Content build-portable/arm64-manifest.json -Encoding utf8
@@ -156,6 +159,7 @@ jobs:
             build-portable/tcc_portable_tss_arm64.exe
             build-portable/tcc_c11_threads_arm64.exe
             build-portable/tcc_c11_recursive_arm64.exe
+            build-portable/clang_c11_recursive_arm64.exe
             build-portable/arm64-manifest.json
           if-no-files-found: error
 
@@ -176,7 +180,7 @@ jobs:
             throw 'Native Windows ARM64 hardware is required'
           }
           $manifest = Get-Content native-arm64/arm64-manifest.json -Raw | ConvertFrom-Json -AsHashtable
-          foreach ($name in @('salts_portable_arm64.dll','tcc_portable_arm64.exe','tcc_portable_tss_arm64.exe','tcc_c11_threads_arm64.exe','tcc_c11_recursive_arm64.exe')) {
+          foreach ($name in @('salts_portable_arm64.dll','tcc_portable_arm64.exe','tcc_portable_tss_arm64.exe','tcc_c11_threads_arm64.exe','tcc_c11_recursive_arm64.exe','clang_c11_recursive_arm64.exe')) {
             $path = (Resolve-Path "native-arm64/$name").Path
             [byte[]]$data = [IO.File]::ReadAllBytes($path)
             $pe = [BitConverter]::ToInt32($data, 0x3c)
@@ -202,6 +206,28 @@ jobs:
           for ($i=1; $i -le 10; $i++) {
             & $c11Client
             if ($LASTEXITCODE -ne 0) { throw "Native ARM64 TinyCC C11 threads.h direct link failed $i" }
+          }
+          $clangControl = (Resolve-Path native-arm64/clang_c11_recursive_arm64.exe).Path
+          Write-Host "ARM64 Clang-control recursive C11 / same provider DLL"
+          for ($attempt=1; $attempt -le 3; $attempt++) {
+            $control = [System.Diagnostics.ProcessStartInfo]::new()
+            $control.FileName = $clangControl
+            $control.UseShellExecute = $false
+            $control.RedirectStandardError = $true
+            $control.RedirectStandardOutput = $true
+            $cp = [System.Diagnostics.Process]::Start($control)
+            if (-not $cp) { throw "Cannot start native ARM64 Clang recursive control" }
+            $controlCompleted = $cp.WaitForExit(15000)
+            if (-not $controlCompleted) { $cp.Kill($true); $cp.WaitForExit() }
+            $controlErr = $cp.StandardError.ReadToEnd()
+            $controlOut = $cp.StandardOutput.ReadToEnd()
+            if ($controlErr) { Write-Host $controlErr }
+            if ($controlOut) { Write-Host $controlOut }
+            $controlExit = $cp.ExitCode
+            $cp.Dispose()
+            if (-not $controlCompleted -or $controlExit -ne 0) {
+              throw "ARM64 Clang control failed: attempt=$attempt completed=$controlCompleted exit=$controlExit"
+            }
           }
           $recursiveClient = (Resolve-Path native-arm64/tcc_c11_recursive_arm64.exe).Path
           # Qualify repeated real ARM64 CV admission, not one lucky pass.
