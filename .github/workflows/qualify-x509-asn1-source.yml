@@ -1,0 +1,88 @@
+name: TEMPORARY X509 DER shared ASN1 source conformance
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/qualify-x509-asn1-source.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  x509:
+    name: X509 DER real certs + negative corpus C11 / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/crypto
+          ref: a79683990d820d6e57a95c0e9755c2de639af11b
+          path: repo
+          persist-credentials: false
+      - name: Qualify one exact source head, install ASN1, test X509 without GmSSL
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C repo rev-parse HEAD)" = "a79683990d820d6e57a95c0e9755c2de639af11b"
+          python3 repo/tools/check_module_ownership.py
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            gen=(-G 'Visual Studio 18 2026' -A x64)
+            sdk="$(cygpath -m "$RUNNER_TEMP")/asn1-sdk"
+            crypto_source="$(cygpath -m "$PWD/repo/crypto")"
+          else
+            gen=(-G Ninja)
+            sdk="$RUNNER_TEMP/asn1-sdk"
+            crypto_source="$PWD/repo/crypto"
+          fi
+          cmake -S repo/asn1 -B build-asn1 "${gen[@]}" \
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-asn1 --config Release --parallel 2
+          ctest --test-dir build-asn1 -C Release --output-on-failure --no-tests=error
+          cmake --install build-asn1 --config Release --prefix "$sdk"
+          cmake -S repo/crypto/tests/x509/standalone -B build-x509 "${gen[@]}" \
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release \
+            "-DCRYPTO_X509_SOURCE_ROOT=$crypto_source" "-DCMAKE_PREFIX_PATH=$sdk"
+          cmake --build build-x509 --config Release --parallel 2
+          ctest --test-dir build-x509 -C Release --output-on-failure \
+            --no-tests=error --timeout 120
+
+  sanitizers:
+    name: X509 DER real certs + negative corpus ASan UBSan / Linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/crypto
+          ref: a79683990d820d6e57a95c0e9755c2de639af11b
+          path: repo
+          persist-credentials: false
+      - name: One ASN1 parser and X509 source under ASan UBSan LeakSanitizer
+        shell: bash
+        run: |
+          set -euo pipefail
+          common="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          cmake -S repo/asn1 -B build-asn1 -G Ninja \
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug \
+            "-DCMAKE_C_FLAGS=$common" "-DCMAKE_CXX_FLAGS=$common" \
+            "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined"
+          cmake --build build-asn1 --parallel 2
+          ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+            UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+            ctest --test-dir build-asn1 --no-tests=error --output-on-failure
+          cmake --install build-asn1 --prefix "$RUNNER_TEMP/asn1-sdk"
+          cmake -S repo/crypto/tests/x509/standalone -B build-x509 -G Ninja \
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug \
+            "-DCMAKE_C_FLAGS=$common" \
+            "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined" \
+            "-DCRYPTO_X509_SOURCE_ROOT=$PWD/repo/crypto" \
+            "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/asn1-sdk"
+          cmake --build build-x509 --parallel 2
+          ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+            UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+            ctest --test-dir build-x509 --no-tests=error \
+              --output-on-failure --timeout 120
