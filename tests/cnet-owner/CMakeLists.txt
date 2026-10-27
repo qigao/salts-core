@@ -6,7 +6,11 @@ if(NOT TARGET saltscore_cnet OR NOT TARGET Salts::TinyTest)
 endif()
 add_library(saltscore_cnet_original_test_owner STATIC ${_saltscore_cnet_sources})
 target_compile_features(saltscore_cnet_original_test_owner PUBLIC c_std_11)
-target_compile_definitions(saltscore_cnet_original_test_owner PRIVATE CNET_INTERNAL_TESTING=1)
+# Match the original first-party CNet test-profile flags exactly.
+# None are installed, exported or applied to the real Salts::CNet DSO.
+target_compile_definitions(saltscore_cnet_original_test_owner PUBLIC
+  CNET_INTERNAL_PROFILING=1 CNET_INTERNAL_MULTI_OWNER_POC=1
+  CNET_INTERNAL_TESTING=1)
 set_target_properties(saltscore_cnet_original_test_owner PROPERTIES
   C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
   POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
