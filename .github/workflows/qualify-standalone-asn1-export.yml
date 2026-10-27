@@ -40,7 +40,8 @@ jobs:
             sdk="$RUNNER_TEMP/asn1-sdk"
             archive=libsalts_asn1.a
           fi
-          cmake -S repo/asn1 -B build-asn1 "${generator[@]}" -DBUILD_TESTING=ON
+          cmake -S repo/asn1 -B build-asn1 "${generator[@]}" \
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_BUILD_TYPE=Release
           cmake --build build-asn1 --config Release --parallel 2
           ctest --test-dir build-asn1 -C Release --no-tests=error --output-on-failure
           cmake --install build-asn1 --config Release --prefix "$sdk"
@@ -51,7 +52,8 @@ jobs:
           cmake --build build-asn1-installed --config Release --parallel 2
           ctest --test-dir build-asn1-installed -C Release --no-tests=error --output-on-failure
           cmake -S repo -B build-root-codec "${generator[@]}" \
-            -DBUILD_TESTING=ON -DSALTS_CRYPTO_BUILD_CRYPTO=OFF
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release \
+            -DSALTS_CRYPTO_BUILD_CRYPTO=OFF
           cmake --build build-root-codec --config Release --parallel 2
           ctest --test-dir build-root-codec -C Release --no-tests=error --output-on-failure
 
@@ -110,11 +112,12 @@ jobs:
             source="$PWD/repo/crypto"
           fi
           cmake -S repo/asn1 -B build-asn1 "${generator[@]}" \
-            -DBUILD_TESTING=ON
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_BUILD_TYPE=Release
           cmake --build build-asn1 --config Release --parallel 2
           cmake --install build-asn1 --config Release --prefix "$sdk"
           cmake -S tests/asn1-crypto-format-qualification -B build-formats \
-            "${generator[@]}" "-DCRYPTO_SOURCE=$source" "-DCMAKE_PREFIX_PATH=$sdk"
+            "${generator[@]}" -DCMAKE_BUILD_TYPE=Release \
+            "-DCRYPTO_SOURCE=$source" "-DCMAKE_PREFIX_PATH=$sdk"
           cmake --build build-formats --config Release --parallel 2
           ctest --test-dir build-formats -C Release --no-tests=error \
             --output-on-failure --timeout 120
