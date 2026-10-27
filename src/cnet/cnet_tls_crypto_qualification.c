@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0
  * PRIVATE, TEST-ONLY candidate CNet TLS state backed by the installed,
- * single-owner opaque Crypto TLS DSO and host-only bounded CipherBIO.
+ * sole STATIC Salts::Crypto archive and bounded CipherBIO.
  *
  * This file intentionally does not replace src/cnet/cnet_tls.c, does not
  * compile into SaltsCore::CNet and never imports <gmssl/...>. Missing
@@ -32,6 +32,9 @@ struct cnet_tls_context {
     char ca_file[CNET_CRYPTO_PATH_BYTES];
     char cert_file[CNET_CRYPTO_PATH_BYTES];
     char key_file[CNET_CRYPTO_PATH_BYTES];
+    size_t alpn_count;
+    char alpn_storage[CRYPTO_TLS_ALPN_MAX_PROTOCOLS][CRYPTO_TLS_ALPN_MAX_NAME_BYTES + 1u];
+    const char *alpn_names[CRYPTO_TLS_ALPN_MAX_PROTOCOLS];
 };
 
 typedef struct cnet_crypto_state {
@@ -129,9 +132,11 @@ static void checked_copy(char *to, size_t capacity, const char *source)
 static int new_context(crypto_tls_provider *provider,
                        const crypto_tls_session_options *options,
                        size_t cipher_capacity,
+                       const char *const *alpn_names, size_t alpn_count,
                        cnet_tls_context **out_context)
 {
     cnet_tls_context *ctx;
+    size_t i;
     if (out_context == NULL || options == NULL || provider == NULL)
         return SALTS_EINVAL;
     *out_context = NULL;
@@ -160,6 +165,22 @@ static int new_context(crypto_tls_provider *provider,
                      options->private_key_file);
         ctx->options.private_key_file = ctx->key_file;
     }
+    if (alpn_count > CRYPTO_TLS_ALPN_MAX_PROTOCOLS ||
+        (alpn_count != 0u && alpn_names == NULL)) {
+        free(ctx);
+        return SALTS_EINVAL;
+    }
+    /* Borrowed policy input ends here; reusable context owns its ALPN text. */
+    for (i = 0u; i < alpn_count; ++i) {
+        size_t length = strlen(alpn_names[i]);
+        if (length == 0u || length > CRYPTO_TLS_ALPN_MAX_NAME_BYTES) {
+            free(ctx);
+            return SALTS_EINVAL;
+        }
+        memcpy(ctx->alpn_storage[i], alpn_names[i], length + 1u);
+        ctx->alpn_names[i] = ctx->alpn_storage[i];
+    }
+    ctx->alpn_count = alpn_count;
     *out_context = ctx;
     return SALTS_OK;
 }
@@ -178,7 +199,9 @@ int cnet_crypto_tls_test_client_context(
         policy, effective_dns_name, exact_protocol, cipher_capacity,
         CNET_CRYPTO_OWNER_TEST_ONLY, &options);
     if (status != SALTS_OK) return status;
-    return new_context(provider, &options, cipher_capacity, out_context);
+    return new_context(provider, &options, cipher_capacity,
+                       policy->alpn_protocols, policy->alpn_protocol_count,
+                       out_context);
 }
 
 int cnet_crypto_tls_test_server_context(
@@ -195,7 +218,9 @@ int cnet_crypto_tls_test_server_context(
         policy, exact_protocol, cipher_capacity,
         CNET_CRYPTO_OWNER_TEST_ONLY, &options);
     if (status != SALTS_OK) return status;
-    return new_context(provider, &options, cipher_capacity, out_context);
+    return new_context(provider, &options, cipher_capacity,
+                       policy->alpn_protocols, policy->alpn_protocol_count,
+                       out_context);
 }
 
 const char *cnet_crypto_tls_test_context_server_name(
@@ -261,6 +286,13 @@ int cnet_tls_state_init(cnet_tls_state *state, cnet_tls_context *ctx,
     result = crypto_tls_session_create(ctx->provider, &ctx->options,
                                        &eng->io, &eng->session);
     if (result != CRYPTO_TLS_OK) goto failed;
+    if (ctx->alpn_count != 0u) {
+        if (crypto_tls_extension_abi_version() != CRYPTO_TLS_EXTENSION_ABI_VERSION)
+            goto failed;
+        result = crypto_tls_session_set_alpn_v1_1(
+            eng->session, ctx->alpn_names, ctx->alpn_count);
+        if (result != CRYPTO_TLS_OK) goto failed;
+    }
 
     state->engine = eng;
     state->context = ctx;
@@ -323,6 +355,19 @@ int cnet_tls_handshake(cnet_tls_state *state, bool *out_complete)
     eng->handshake_started = true;
     result = crypto_tls_session_handshake(eng->session);
     if (result == CRYPTO_TLS_OK) {
+        if (state->context->alpn_count != 0u) {
+            crypto_tls_session_info_v1_1 info = {0};
+            info.struct_size = (uint32_t)sizeof(info);
+            if (crypto_tls_session_get_info_v1_1(eng->session, &info) != CRYPTO_TLS_OK ||
+                info.alpn_size > CRYPTO_TLS_ALPN_MAX_NAME_BYTES ||
+                info.alpn_size >= sizeof(state->negotiated_alpn))
+                return SALTS_EPROTO;
+            if (info.alpn_size != 0u) {
+                memcpy(state->negotiated_alpn, info.alpn, info.alpn_size);
+                state->negotiated_alpn[info.alpn_size] = '\0';
+                state->negotiated_alpn_size = info.alpn_size;
+            }
+        }
         CRYPTO_TEST_DIAG("handshake_complete", state, result, 0u);
         state->handshake_complete = true;
         *out_complete = true;
@@ -641,7 +686,10 @@ int cnet_tls_get_negotiated_alpn(const cnet_tls_state *state,
     *out_size = 0u;
     if (get_engine(state) == NULL) return SALTS_EINVAL;
     if (!state->handshake_complete) return SALTS_ENOTCONN;
-    return SALTS_ENOENT; /* ALPN explicitly not admitted by M3.6 policy */
+    if (state->negotiated_alpn_size == 0u) return SALTS_ENOENT;
+    *out_data = state->negotiated_alpn; /* bounded state-owned borrow */
+    *out_size = state->negotiated_alpn_size;
+    return SALTS_OK;
 }
 
 static int inspected(const cnet_tls_state *state,

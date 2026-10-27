@@ -55,7 +55,8 @@ static int pump_pair(cnet_tls_state *client, cnet_tls_state *server,
     return rc < 0 ? rc : 0;
 }
 
-static int run_one(crypto_tls_provider *provider, uint32_t protocol)
+static int run_one(crypto_tls_provider *provider, uint32_t protocol,
+                   bool with_alpn)
 {
     cnet_tls_client_config client_policy = {0};
     cnet_tls_server_config server_policy = {0};
@@ -76,6 +77,8 @@ static int run_one(crypto_tls_provider *provider, uint32_t protocol)
     unsigned steps;
     int rc = 1;
     const size_t capacity = CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY;
+    static const char *const client_offers[] = {"h2", "http/1.1"};
+    static const char *const server_offers[] = {"h2"};
 
     client_policy.size = sizeof(client_policy);
     client_policy.ca_file = SDK_CA_FILE;
@@ -83,6 +86,12 @@ static int run_one(crypto_tls_provider *provider, uint32_t protocol)
     server_policy.size = sizeof(server_policy);
     server_policy.cert_file = SDK_SERVER_CERT_FILE;
     server_policy.key_file = SDK_SERVER_KEY_FILE;
+    if (with_alpn) {
+        client_policy.alpn_protocols = client_offers;
+        client_policy.alpn_protocol_count = 2u;
+        server_policy.alpn_protocols = server_offers;
+        server_policy.alpn_protocol_count = 1u;
+    }
 
     CHECK(cnet_crypto_tls_test_client_context(
         provider, &client_policy, "localhost", protocol,
@@ -163,10 +172,21 @@ static int run_one(crypto_tls_provider *provider, uint32_t protocol)
     CHECK(unsupported_size == 0u);
     {
         const unsigned char *alpn = (const unsigned char *)1;
-        size_t size = 17u;
-        CHECK(cnet_tls_get_negotiated_alpn(
-            &client, &alpn, &size) == SALTS_ENOENT);
-        CHECK(alpn == NULL && size == 0u);
+        const unsigned char *server_alpn = (const unsigned char *)1;
+        size_t size = 17u, server_size = 17u;
+        int status = cnet_tls_get_negotiated_alpn(&client, &alpn, &size);
+        int server_status = cnet_tls_get_negotiated_alpn(
+            &server, &server_alpn, &server_size);
+        if (with_alpn) {
+            CHECK(status == SALTS_OK && alpn != NULL && size == 2u);
+            CHECK(memcmp(alpn, "h2", 2u) == 0);
+            CHECK(server_status == SALTS_OK && server_alpn != NULL &&
+                  server_size == 2u && memcmp(server_alpn, "h2", 2u) == 0);
+        } else {
+            CHECK(status == SALTS_ENOENT && alpn == NULL && size == 0u);
+            CHECK(server_status == SALTS_ENOENT &&
+                  server_alpn == NULL && server_size == 0u);
+        }
     }
 
     /* The probe is explicitly non-consumptive: it may move decrypted
@@ -266,12 +286,13 @@ cleanup:
     if (server.engine != NULL) cnet_tls_state_destroy(&server);
     if (client_context != NULL) cnet_tls_context_release(client_context);
     if (server_context != NULL) cnet_tls_context_release(server_context);
-    if (rc) fprintf(stderr, "CNet TLS state protocol=0x%x failed: "
+    if (rc) fprintf(stderr, "CNet TLS state protocol=0x%x alpn=%d failed: "
                     "handshake=%d/%d, delivered=%zu, received=%zu/%zu, moved=%zu\n",
-                    protocol, client_ready, server_ready, delivered,
+                    protocol, (int)with_alpn, client_ready, server_ready, delivered,
                     received_bytes, sizeof(payload), moved);
-    else printf("CNet TLS state 0x%x genuine handshake/plaintext/probe/exporter/"
-                "quiescent release PASS\n", protocol);
+    else printf("CNet TLS state 0x%x ALPN=%d genuine handshake/plaintext/"
+                "probe/exporter/quiescent release PASS\n",
+                protocol, (int)with_alpn);
     return rc;
 }
 
@@ -283,8 +304,10 @@ int main(void)
         crypto_tls_provider_create(CRYPTO_TLS_ABI_VERSION,
                                    &provider) != CRYPTO_TLS_OK)
         return 2;
-    if (run_one(provider, CRYPTO_TLS_1_2) != 0) goto done;
-    if (run_one(provider, CRYPTO_TLS_1_3) != 0) goto done;
+    if (run_one(provider, CRYPTO_TLS_1_2, false) != 0) goto done;
+    if (run_one(provider, CRYPTO_TLS_1_2, true) != 0) goto done;
+    if (run_one(provider, CRYPTO_TLS_1_3, false) != 0) goto done;
+    if (run_one(provider, CRYPTO_TLS_1_3, true) != 0) goto done;
     rc = 0;
 done:
     if (crypto_tls_provider_destroy(&provider) != CRYPTO_TLS_OK)
