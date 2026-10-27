@@ -96,9 +96,9 @@ target_include_directories(saltscore_cnet
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/cnet/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
   PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/cnet"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cnet/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/cnet/src/wsparser"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/native-io"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native-io/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/monocypher"
     "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/reed")
 target_link_libraries(saltscore_cnet
