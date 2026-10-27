@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0
- * Real ORIGINAL CNet client / Owner command+event runtime over the mutually
- * exclusive test Crypto TLS DSO. Both peers are real CNet clients using
- * native platform NativeIO; ONE shared Crypto TLS/GmSSL binary is loaded.
+ * Real ORIGINAL CNet client / Owner command+event runtime with
+ * ONE sole static Salts::Crypto archive in the final executable.
+ * Both peers are real CNet clients using native platform NativeIO.
  * Public factory fallback is explicitly disabled: only exact test-private
  * verified CA/hostname and one TLS protocol are admitted.
  */
@@ -130,7 +130,7 @@ static int pump(cnet_client *dialer, cnet_client *acceptor)
     } \
 } while (0)
 
-static int run_protocol(uint32_t protocol)
+static int run_protocol(uint32_t protocol, bool with_alpn)
 {
     crypto_tls_provider *provider = NULL;
     cnet_tls_client profile = {0};
@@ -152,6 +152,7 @@ static int run_protocol(uint32_t protocol)
         "Original CNet Owner / Crypto opaque TLS and retained NativeIO completion";
     mem_buffer_t *send_backing = NULL;
     char uri[128], version[32], cipher[128], fingerprint[80];
+    char selected_alpn[256] = {0};
     unsigned char client_binding[CNET_TLS_CHANNEL_BINDING_BYTES] = {0};
     unsigned char server_binding[CNET_TLS_CHANNEL_BINDING_BYTES] = {0};
     uint16_t port = 0u;
@@ -162,6 +163,10 @@ static int run_protocol(uint32_t protocol)
     unsigned poll_count;
     const char *expected_version =
         protocol == CRYPTO_TLS_1_2 ? "TLSv1.2" : "TLSv1.3";
+    char client_h2[] = "h2", client_http[] = "http/1.1";
+    char server_h2[] = "h2";
+    const char *const client_offers[] = {client_h2, client_http};
+    const char *const server_offers[] = {server_h2};
 
     CHECK(crypto_tls_provider_create(CRYPTO_TLS_ABI_VERSION, &provider)
           == CRYPTO_TLS_OK);
@@ -171,6 +176,12 @@ static int run_protocol(uint32_t protocol)
     server_policy.size = sizeof(server_policy);
     server_policy.cert_file = SDK_SERVER_CERT_FILE;
     server_policy.key_file = SDK_SERVER_KEY_FILE;
+    if (with_alpn) {
+        client_policy.alpn_protocols = client_offers;
+        client_policy.alpn_protocol_count = 2u;
+        server_policy.alpn_protocols = server_offers;
+        server_policy.alpn_protocol_count = 1u;
+    }
 
     CHECK(cnet_crypto_test_bind_client(
         &profile, provider, &client_policy, "localhost", protocol,
@@ -178,6 +189,15 @@ static int run_protocol(uint32_t protocol)
     CHECK(cnet_crypto_test_bind_server(
         &identity, provider, &server_policy, protocol,
         CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY) == SALTS_OK);
+    if (with_alpn) {
+        /* Reusable client/server policies are synchronously consumed.
+         * Force mutation before original CNet Owner admits the TCP session;
+         * selected ALPN must still be h2, not x2.
+         */
+        client_h2[0] = 'x';
+        client_http[0] = 'x';
+        server_h2[0] = 'x';
+    }
     CHECK(cnet_listener_init(&listener, &listen_cfg) == SALTS_OK);
     listener_live = 1;
     CHECK(cnet_listener_port(&listener, &port) == SALTS_OK && port != 0u);
@@ -226,6 +246,23 @@ static int run_protocol(uint32_t protocol)
     CHECK(strcmp(version, expected_version) == 0);
     CHECK(cnet_tls_negotiated_cipher(&dialer, dialed, cipher,
            sizeof(cipher), &name_size) == SALTS_OK && name_size > 0u);
+    if (with_alpn) {
+        CHECK(cnet_tls_negotiated_alpn(
+            &dialer, dialed, selected_alpn, sizeof(selected_alpn),
+            &name_size) == SALTS_OK);
+        CHECK(name_size == 2u && strcmp(selected_alpn, "h2") == 0);
+        CHECK(cnet_tls_negotiated_alpn(
+            &acceptor, accepted, selected_alpn, sizeof(selected_alpn),
+            &name_size) == SALTS_OK);
+        CHECK(name_size == 2u && strcmp(selected_alpn, "h2") == 0);
+        CHECK(cnet_tls_negotiated_alpn(
+            &dialer, dialed, selected_alpn, 2u, &name_size)
+            == SALTS_EMSGSIZE && name_size == 0u);
+    } else {
+        CHECK(cnet_tls_negotiated_alpn(
+            &dialer, dialed, selected_alpn, sizeof(selected_alpn),
+            &name_size) == SALTS_ENOENT && name_size == 0u);
+    }
     CHECK(cnet_tls_peer_certificate_sha256(
         &dialer, dialed, fingerprint) == SALTS_OK);
     CHECK(strlen(fingerprint) == 64u);
@@ -311,7 +348,7 @@ done:
         server_seen.failed, client_seen.sent, server_seen.plaintext_received,
         client_seen.last_error.status,
         client_seen.last_error.stage ? client_seen.last_error.stage : "(none)");
-    else printf("Original CNet Owner + shared Crypto TLS 0x%x native"
+    else printf("Original CNet Owner + sole static Crypto TLS 0x%x native"
                 " handshake/callback/slice/exporter/close PASS\\n", protocol);
     return rc;
 }
@@ -324,7 +361,9 @@ int main(void)
     if (cnet_tls_client_init(&dummy, &default_policy) != SALTS_ENOTSUP ||
         dummy.impl != NULL)
         return 2; /* Never admit implicit root stores/default TLS range. */
-    if (run_protocol(CRYPTO_TLS_1_2) != 0) return 1;
-    if (run_protocol(CRYPTO_TLS_1_3) != 0) return 1;
+    if (run_protocol(CRYPTO_TLS_1_2, false) != 0) return 1;
+    if (run_protocol(CRYPTO_TLS_1_2, true) != 0) return 1;
+    if (run_protocol(CRYPTO_TLS_1_3, false) != 0) return 1;
+    if (run_protocol(CRYPTO_TLS_1_3, true) != 0) return 1;
     return 0;
 }

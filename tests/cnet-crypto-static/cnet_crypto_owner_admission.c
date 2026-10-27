@@ -3,6 +3,7 @@
  */
 #include "cnet_crypto_owner_admission.h"
 #include "cnet_tls.h" /* canonical private CNet hostname capacity */
+#include <crypto/tls_ext.h>
 #include <salts/error_codes.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -62,6 +63,42 @@ static bool admissible_dns_identity(const char *name)
     return !numeric_v4 || dots == 0u;
 }
 
+/* Public CNet ALPN is broader. Strictly admit only the existing Crypto
+ * bounded printable-text subset; never truncate or silently omit an offer.
+ * No output is published until validation succeeds.
+ */
+static int admit_text_alpn(const char *const *names, size_t count)
+{
+    size_t wire_bytes = 0u, i, j, k;
+    if (count == 0u) return names == NULL ? SALTS_OK : SALTS_EINVAL;
+    if (names == NULL) return SALTS_EINVAL;
+    if (count > CRYPTO_TLS_ALPN_MAX_PROTOCOLS) return SALTS_ENOTSUP;
+    if (crypto_tls_extension_abi_version() != CRYPTO_TLS_EXTENSION_ABI_VERSION)
+        return SALTS_ENOTSUP;
+    for (i = 0u; i < count; ++i) {
+        size_t length = 0u;
+        if (names[i] == NULL) return SALTS_EINVAL;
+        while (length <= CRYPTO_TLS_ALPN_MAX_NAME_BYTES &&
+               names[i][length] != '\0') ++length;
+        if (length == 0u) return SALTS_EINVAL;
+        if (length > CRYPTO_TLS_ALPN_MAX_NAME_BYTES)
+            return SALTS_ENOTSUP;
+        if (wire_bytes > 128u - (length + 1u))
+            return SALTS_ENOTSUP;
+        for (j = 0u; j < length; ++j) {
+            const unsigned char c = (unsigned char)names[i][j];
+            if (c < 0x21u || c > 0x7eu) return SALTS_ENOTSUP;
+        }
+        for (k = 0u; k < i; ++k) {
+            if (strlen(names[k]) == length &&
+                memcmp(names[k], names[i], length) == 0)
+                return SALTS_ENOTSUP;
+        }
+        wire_bytes += length + 1u;
+    }
+    return SALTS_OK;
+}
+
 static int admit_common(uint32_t protocol, size_t capacity,
                         cnet_crypto_owner_use use,
                         crypto_tls_session_options *out)
@@ -100,10 +137,12 @@ int cnet_crypto_owner_admit_client(const cnet_tls_client_config *config,
         return SALTS_EINVAL;
     if (config->security_profile != CNET_TLS_SECURITY_PROFILE_STANDARD ||
         config->ca_path != NULL || config->cert_file != NULL ||
-        config->key_file != NULL || config->alpn_protocols != NULL ||
-        config->alpn_protocol_count != 0u)
+        config->key_file != NULL)
         return SALTS_ENOTSUP;
     if (config->key_password != NULL) return SALTS_EINVAL;
+    status = admit_text_alpn(config->alpn_protocols,
+                             config->alpn_protocol_count);
+    if (status != SALTS_OK) return status;
     /* Public CNet supports implicit OS roots. Crypto currently does NOT.
      * Missing or blank explicit CA is a hard rejection, not a fallback.
      */
@@ -139,8 +178,7 @@ int cnet_crypto_owner_admit_server(const cnet_tls_server_config *config,
         return SALTS_EINVAL;
     if (config->security_profile != CNET_TLS_SECURITY_PROFILE_STANDARD ||
         config->client_auth == CNET_TLS_CLIENT_AUTH_REQUIRED ||
-        config->ca_path != NULL || config->alpn_protocols != NULL ||
-        config->alpn_protocol_count != 0u)
+        config->ca_path != NULL)
         return SALTS_ENOTSUP;
     /* With client auth disabled, CA parameters are not relevant and
      * must not be silently ignored. Private-key passwords are not yet
@@ -148,6 +186,9 @@ int cnet_crypto_owner_admit_server(const cnet_tls_server_config *config,
      */
     if (config->ca_file != NULL || config->key_password != NULL)
         return SALTS_ENOTSUP;
+    status = admit_text_alpn(config->alpn_protocols,
+                             config->alpn_protocol_count);
+    if (status != SALTS_OK) return status;
     if (!bounded_nonempty(config->cert_file, CNET_CRYPTO_TEST_PATH_LIMIT) ||
         !bounded_nonempty(config->key_file, CNET_CRYPTO_TEST_PATH_LIMIT))
         return SALTS_EINVAL;

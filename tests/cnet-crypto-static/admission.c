@@ -32,7 +32,15 @@ int main(void)
     crypto_tls_session_options out = {0};
     cnet_tls_client_config client = {0};
     cnet_tls_server_config server = {0};
-    const char *const alpn[] = {"h2"};
+    const char *const alpn[] = {"h2", "http/1.1"};
+    const char *const duplicate_alpn[] = {"h2", "h2"};
+    const char *const nine_alpn[] = {
+        "h2", "http/1.1", "a", "b", "c", "d", "e", "f", "g"};
+    const char *const invalid_ascii_alpn[] = {"h2\001x"};
+    char too_long_alpn[129];
+    char sixty_four_a[65], sixty_four_b[65];
+    const char *long_name[1] = {too_long_alpn};
+    const char *long_pair[2] = {sixty_four_a, sixty_four_b};
     char oversized_identity[300];
 
     /* Force a physical shared SaltsCore Core import in the same process
@@ -122,13 +130,60 @@ int main(void)
         CNET_CRYPTO_OWNER_TEST_ONLY, &out), SALTS_ENOTSUP);
     client.cert_file = client.key_file = NULL;
 
+    /* Same CNet config structure, exact representable text subset.
+     * Rejection must never partially publish an options descriptor.
+     */
     client.alpn_protocols = alpn;
+    client.alpn_protocol_count = 2u;
+    REQUIRE(cnet_crypto_owner_admit_client(
+        &client, "localhost", CRYPTO_TLS_1_3,
+        CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY,
+        CNET_CRYPTO_OWNER_TEST_ONLY, &out) == SALTS_OK);
+    client.alpn_protocols = duplicate_alpn;
+    REJECT(cnet_crypto_owner_admit_client(
+        &client, "localhost", CRYPTO_TLS_1_3,
+        CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY,
+        CNET_CRYPTO_OWNER_TEST_ONLY, &out), SALTS_ENOTSUP);
+    client.alpn_protocols = invalid_ascii_alpn;
     client.alpn_protocol_count = 1u;
     REJECT(cnet_crypto_owner_admit_client(
         &client, "localhost", CRYPTO_TLS_1_3,
         CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY,
         CNET_CRYPTO_OWNER_TEST_ONLY, &out), SALTS_ENOTSUP);
+    memset(too_long_alpn, 'x', sizeof(too_long_alpn) - 1u);
+    too_long_alpn[sizeof(too_long_alpn) - 1u] = '\0';
+    client.alpn_protocols = long_name;
+    REJECT(cnet_crypto_owner_admit_client(
+        &client, "localhost", CRYPTO_TLS_1_3,
+        CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY,
+        CNET_CRYPTO_OWNER_TEST_ONLY, &out), SALTS_ENOTSUP);
+    memset(sixty_four_a, 'a', 64u);
+    memset(sixty_four_b, 'b', 64u);
+    sixty_four_a[64] = sixty_four_b[64] = '\0';
+    client.alpn_protocols = long_pair;
+    client.alpn_protocol_count = 2u;
+    REJECT(cnet_crypto_owner_admit_client(
+        &client, "localhost", CRYPTO_TLS_1_3,
+        CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY,
+        CNET_CRYPTO_OWNER_TEST_ONLY, &out), SALTS_ENOTSUP);
+    client.alpn_protocols = nine_alpn;
+    client.alpn_protocol_count = 9u;
+    REJECT(cnet_crypto_owner_admit_client(
+        &client, "localhost", CRYPTO_TLS_1_3,
+        CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY,
+        CNET_CRYPTO_OWNER_TEST_ONLY, &out), SALTS_ENOTSUP);
+    client.alpn_protocols = alpn;
+    client.alpn_protocol_count = 0u;
+    REJECT(cnet_crypto_owner_admit_client(
+        &client, "localhost", CRYPTO_TLS_1_3,
+        CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY,
+        CNET_CRYPTO_OWNER_TEST_ONLY, &out), SALTS_EINVAL);
     client.alpn_protocols = NULL;
+    client.alpn_protocol_count = 1u;
+    REJECT(cnet_crypto_owner_admit_client(
+        &client, "localhost", CRYPTO_TLS_1_3,
+        CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY,
+        CNET_CRYPTO_OWNER_TEST_ONLY, &out), SALTS_EINVAL);
     client.alpn_protocol_count = 0u;
 
     client.security_profile = CNET_TLS_SECURITY_PROFILE_SHANGMI_TLS13;
@@ -178,7 +233,15 @@ int main(void)
     server.client_auth = CNET_TLS_CLIENT_AUTH_NONE;
     server.ca_file = NULL;
     server.alpn_protocols = alpn;
-    server.alpn_protocol_count = 1u;
+    server.alpn_protocol_count = 2u;
+    REQUIRE(cnet_crypto_owner_admit_server(
+        &server, CRYPTO_TLS_1_3, CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY,
+        CNET_CRYPTO_OWNER_TEST_ONLY, &out) == SALTS_OK);
+    server.alpn_protocols = duplicate_alpn;
+    REJECT(cnet_crypto_owner_admit_server(
+        &server, CRYPTO_TLS_1_3, CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY,
+        CNET_CRYPTO_OWNER_TEST_ONLY, &out), SALTS_ENOTSUP);
+    server.alpn_protocols = long_pair;
     REJECT(cnet_crypto_owner_admit_server(
         &server, CRYPTO_TLS_1_3, CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY,
         CNET_CRYPTO_OWNER_TEST_ONLY, &out), SALTS_ENOTSUP);
@@ -194,7 +257,7 @@ int main(void)
         &server, CRYPTO_TLS_1_2, CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY,
         CNET_CRYPTO_OWNER_TEST_ONLY, &out), SALTS_EINVAL);
 
-    puts("CNet real policy -> Crypto strict test admission: positive TLS1.2/1.3, "
-         "production/system trust/CA path/mTLS/ALPN/ShangMi/TLCP/IP/ABI negatives PASS");
+    puts("CNet real policy -> one static Crypto: TLS1.2/1.3, bounded ALPN positive,"
+         " overflow/duplicate/binary ALPN and system CA/mTLS/TLCP/IP negatives PASS");
     return 0;
 }
