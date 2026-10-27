@@ -69,6 +69,15 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
     saltscore_cnet_monocypher saltscore_cnet_reed
     c-ares::cares kcp::kcp
     $<$<PLATFORM_ID:Windows>:crypt32>)
+  # Original CNet resolver uses POSIX strnlen. Preserve strict C11 and
+  # explicit system feature admission, never suppress implicit prototypes.
+  if(APPLE)
+    target_compile_definitions(saltscore_cnet_crypto_static_original_owner
+      PRIVATE _DARWIN_C_SOURCE=1)
+  elseif(UNIX)
+    target_compile_definitions(saltscore_cnet_crypto_static_original_owner
+      PRIVATE _DEFAULT_SOURCE=1 _POSIX_C_SOURCE=200809L)
+  endif()
   # Production Salts::CNet and GmSSL::GmSSL are NOT linked here.
   if(APPLE)
     target_link_libraries(saltscore_cnet_crypto_static_original_owner PRIVATE
