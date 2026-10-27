@@ -1,7 +1,7 @@
 /************************** INCLUDE ***************************/
 #ifndef ring_H
 #define ring_H
-#include <cmeta_api.h>
+#include <salts/core/api.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>

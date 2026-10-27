@@ -1,4 +1,4 @@
-#include "ring_buffer.h"
+#include "salts/core/ring_buffer.h"
 
 #include <assert.h>
 

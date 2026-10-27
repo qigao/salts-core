@@ -1,7 +1,7 @@
 #ifndef SALTS_MEM_H
 #define SALTS_MEM_H
 
-#include "cmeta_api.h"
+#include "salts/core/api.h"
 #ifdef __cplusplus
   #include <atomic>
   #define ATOMIC_SIZE_T std::atomic<size_t>
@@ -11,7 +11,7 @@
   #define ATOMIC_SIZE_T _Atomic size_t
   #define ATOMIC_UINT32_T _Atomic uint32_t
 #endif
-#include <salts/thread.h>
+#include <salts/platform/thread.h>
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
