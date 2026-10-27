@@ -37,6 +37,11 @@ SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL salts_platform_thread_yiel
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_thread_sleep_ns(uint64_t duration_ns);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_call_once(salts_platform_once *flag, salts_platform_once_fn callback);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_create(salts_platform_mutex **out);
+/* A distinct recursive mutex is provider-owned; the public handle remains
+ * opaque across TinyCC/MSVC/Clang. Condition waits require recursion depth 1.
+ * Destroy on an actively held recursive mutex returns SALTS_EBUSY.
+ */
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_create_recursive(salts_platform_mutex **out);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_lock(salts_platform_mutex *mutex);
 /* Relative MONOTONIC timeout, not C11's absolute UTC mtx_timedlock.
  * 0 = one nonblocking acquisition attempt; a held lock times out.

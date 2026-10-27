@@ -21,7 +21,14 @@ struct salts_platform_thread {
     int result;
     salts_atomic32 refs;
 };
-struct salts_platform_mutex { SRWLOCK native; };
+struct salts_platform_mutex {
+    int recursive;
+    salts_atomic32 active_depth; /* includes threads released into condition wait */
+    union {
+        SRWLOCK srw;
+        CRITICAL_SECTION critical;
+    } native;
+};
 struct salts_platform_condition { CONDITION_VARIABLE native; };
 #if defined(_MSC_VER)
 static __declspec(thread) salts_platform_thread *salts_platform_current;
@@ -102,28 +109,52 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_thread_sleep_ns(uint64_t duration_ns
     Sleep((DWORD)((duration_ns + 999999ull) / 1000000ull));
     return SALTS_OK;
 }
-int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_create(salts_platform_mutex **out) {
+static int mutex_create_internal(salts_platform_mutex **out, int recursive) {
     salts_platform_mutex *m;
     if (!out || *out) return SALTS_EINVAL;
-    m = (salts_platform_mutex *)malloc(sizeof(*m));
+    m = (salts_platform_mutex *)calloc(1u, sizeof(*m));
     if (!m) return SALTS_ENOMEM;
-    InitializeSRWLock(&m->native);
-    *out = m; return SALTS_OK;
+    m->recursive = recursive;
+    if (salts_atomic32_init(&m->active_depth, 0u) != SALTS_OK) {
+        free(m); return SALTS_EINVAL;
+    }
+    if (recursive) InitializeCriticalSection(&m->native.critical);
+    else InitializeSRWLock(&m->native.srw);
+    *out = m;
+    return SALTS_OK;
+}
+int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_create(salts_platform_mutex **out) {
+    return mutex_create_internal(out, 0);
+}
+int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_create_recursive(salts_platform_mutex **out) {
+    return mutex_create_internal(out, 1);
+}
+static int count_recursive_lock(salts_platform_mutex *m) {
+    uint32_t before = 0;
+    if (!m->recursive) return SALTS_OK;
+    return salts_atomic32_fetch_add(&m->active_depth, 1u,
+                 SALTS_MEMORY_ACQ_REL, &before);
+}
+static int try_acquire_native(salts_platform_mutex *m) {
+    if (m->recursive) return TryEnterCriticalSection(&m->native.critical) ? 1 : 0;
+    return TryAcquireSRWLockExclusive(&m->native.srw) ? 1 : 0;
 }
 int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_lock(salts_platform_mutex *m) {
     if (!m) return SALTS_EINVAL;
-    AcquireSRWLockExclusive(&m->native); return SALTS_OK;
+    if (m->recursive) EnterCriticalSection(&m->native.critical);
+    else AcquireSRWLockExclusive(&m->native.srw);
+    return count_recursive_lock(m);
 }
-/* GetTickCount64 is monotonic and independent of wall clock adjustments.
- * Positive fractional milliseconds round up, as with timed condition wait.
- * SRWLOCK has no timed-wait primitive, so retry with bounded OS yielding.
+/* GetTickCount64 is monotonic, independent of realtime changes.
+ * Both recursive CRITICAL_SECTION and plain SRWLOCK use bounded OS
+ * sleep/yield acquisition; no volatile spinning or compiler-native locks.
  */
 int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_timedlock_ns(
     salts_platform_mutex *m, uint64_t timeout_ns) {
     ULONGLONG start, elapsed, requested_ms;
     if (!m || timeout_ns > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS)
         return SALTS_EINVAL;
-    if (TryAcquireSRWLockExclusive(&m->native)) return SALTS_OK;
+    if (try_acquire_native(m)) return count_recursive_lock(m);
     if (timeout_ns == 0) return SALTS_ETIMEDOUT;
     requested_ms = (ULONGLONG)((timeout_ns + 999999ull) / 1000000ull);
     start = GetTickCount64();
@@ -133,22 +164,45 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_timedlock_ns(
         if (requested_ms - elapsed > 2ull) Sleep(1);
         else (void)SwitchToThread();
         if (GetTickCount64() - start >= requested_ms) return SALTS_ETIMEDOUT;
-        if (TryAcquireSRWLockExclusive(&m->native)) return SALTS_OK;
+        if (try_acquire_native(m)) return count_recursive_lock(m);
     }
 }
 int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_unlock(salts_platform_mutex *m) {
+    uint32_t old = 0;
     if (!m) return SALTS_EINVAL;
-    ReleaseSRWLockExclusive(&m->native); return SALTS_OK;
+    if (m->recursive) {
+        /* The caller must own one recursive level (C11 precondition).
+         * Condition wait is permitted only at depth one.
+         */
+        LeaveCriticalSection(&m->native.critical);
+        return salts_atomic32_fetch_add(&m->active_depth, UINT32_MAX,
+                                        SALTS_MEMORY_ACQ_REL, &old);
+    }
+    ReleaseSRWLockExclusive(&m->native.srw);
+    return SALTS_OK;
 }
 int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_destroy(salts_platform_mutex **owner) {
     salts_platform_mutex *m;
+    uint32_t depth = 0;
     if (!owner || !(m = *owner)) return SALTS_EINVAL;
-    /* No Windows OS primitive can guard a destroy racing a new entrant;
-     * the caller must guarantee quiescence before destroy. */
-    if (!TryAcquireSRWLockExclusive(&m->native)) return SALTS_EBUSY;
-    ReleaseSRWLockExclusive(&m->native);
+    /* Caller must quiesce new entrants. Critically: recursive TryEnter
+     * succeeds for its own owner, so reject live depths before probing.
+     */
+    if (m->recursive) {
+        if (salts_atomic32_load(&m->active_depth, SALTS_MEMORY_ACQUIRE, &depth)
+            != SALTS_OK) return SALTS_EINVAL;
+        if (depth) return SALTS_EBUSY;
+    }
+    if (!try_acquire_native(m)) return SALTS_EBUSY;
+    if (m->recursive) {
+        LeaveCriticalSection(&m->native.critical);
+        DeleteCriticalSection(&m->native.critical);
+    } else {
+        ReleaseSRWLockExclusive(&m->native.srw);
+    }
     *owner = NULL;
-    free(m); return SALTS_OK;
+    free(m);
+    return SALTS_OK;
 }
 int SALTS_CORE_PLATFORM_CALL salts_platform_condition_create(salts_platform_condition **out) {
     salts_platform_condition *c;
@@ -160,15 +214,28 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_condition_create(salts_platform_cond
 }
 int SALTS_CORE_PLATFORM_CALL salts_platform_condition_wait(salts_platform_condition *c, salts_platform_mutex *m) {
     if (!c || !m) return SALTS_EINVAL;
-    return SleepConditionVariableSRW(&c->native, &m->native, INFINITE, 0) ? SALTS_OK : SALTS_EBUSY;
+    if (m->recursive)
+        return SleepConditionVariableCS(&c->native, &m->native.critical,
+                                         INFINITE) ? SALTS_OK : SALTS_EBUSY;
+    return SleepConditionVariableSRW(&c->native, &m->native.srw,
+                                      INFINITE, 0) ? SALTS_OK : SALTS_EBUSY;
 }
 int SALTS_CORE_PLATFORM_CALL salts_platform_condition_timedwait_ns(
     salts_platform_condition *c, salts_platform_mutex *m, uint64_t timeout_ns) {
     DWORD milliseconds;
     if (!c || !m || timeout_ns > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS)
         return SALTS_EINVAL;
+    /* A zero relative deadline is already expired: do not enter the
+     * Win32 condition-variable wait kernel path at all. Keeping the
+     * calling mutex owned is exactly the timed-out postcondition and
+     * avoids an unnecessary release/reacquire at zero milliseconds.
+     * Positive deadlines still use true OS condition waits.
+     */
+    if (timeout_ns == 0) return SALTS_ETIMEDOUT;
     milliseconds = (DWORD)((timeout_ns + 999999ull) / 1000000ull);
-    if (SleepConditionVariableSRW(&c->native, &m->native, milliseconds, 0))
+    if ((m->recursive ?
+          SleepConditionVariableCS(&c->native, &m->native.critical, milliseconds) :
+          SleepConditionVariableSRW(&c->native, &m->native.srw, milliseconds, 0)))
         return SALTS_OK;
     return GetLastError() == ERROR_TIMEOUT ? SALTS_ETIMEDOUT : SALTS_EBUSY;
 }

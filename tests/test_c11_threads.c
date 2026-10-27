@@ -49,7 +49,22 @@ int main(void) {
     struct timespec sleep_time={0,2000000L}, remaining={0,0};
     struct timespec deadline;
     int i, result;
-    if (mtx_init(&gate,mtx_recursive) != thrd_error) return 1;
+    {
+        mtx_t recursive;
+        struct timespec future;
+        future.tv_sec = time(NULL) + 3;
+        future.tv_nsec = 0;
+        if (mtx_init(&recursive, mtx_recursive | mtx_timed) != thrd_success) return 1;
+        if (mtx_lock(&recursive) != thrd_success ||
+            mtx_trylock(&recursive) != thrd_success ||
+            mtx_timedlock(&recursive, &future) != thrd_success) return 24;
+        /* Recursive depth must be honored by the native provider. */
+        if (salts_platform_mutex_destroy(&recursive.owner) != SALTS_EBUSY) return 25;
+        if (mtx_unlock(&recursive) || mtx_unlock(&recursive) ||
+            mtx_unlock(&recursive)) return 26;
+        mtx_destroy(&recursive);
+        if (recursive.owner) return 27;
+    }
     if (mtx_init(&gate,mtx_timed) || cnd_init(&ready_condition)) return 2;
     if (mtx_lock(&gate)) return 3;
     if (mtx_trylock(&gate) != thrd_busy) return 4;

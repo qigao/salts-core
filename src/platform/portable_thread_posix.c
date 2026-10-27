@@ -18,7 +18,11 @@ struct salts_platform_thread {
     int result;
     salts_atomic32 refs;
 };
-struct salts_platform_mutex { pthread_mutex_t native; };
+struct salts_platform_mutex {
+    pthread_mutex_t native;
+    int recursive;
+    salts_atomic32 active_depth; /* 0 only when no recursive owner/condition waiter */
+};
 struct salts_platform_condition { pthread_cond_t native; };
 static __thread salts_platform_thread *salts_platform_current;
 
@@ -109,16 +113,53 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_thread_sleep_ns(uint64_t duration_ns
     return SALTS_OK;
 }
 
-int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_create(salts_platform_mutex **out) {
+static int mutex_create_internal(salts_platform_mutex **out, int recursive) {
     salts_platform_mutex *m;
+    pthread_mutexattr_t attr;
+    int rc, attr_ready = 0;
     if (!out || *out) return SALTS_EINVAL;
-    m = (salts_platform_mutex *)malloc(sizeof(*m));
+    m = (salts_platform_mutex *)calloc(1u, sizeof(*m));
     if (!m) return SALTS_ENOMEM;
-    if (pthread_mutex_init(&m->native, NULL) != 0) { free(m); return SALTS_EBUSY; }
-    *out = m; return SALTS_OK;
+    m->recursive = recursive;
+    if (salts_atomic32_init(&m->active_depth, 0u) != SALTS_OK) {
+        free(m);
+        return SALTS_EINVAL;
+    }
+    if (recursive) {
+        rc = pthread_mutexattr_init(&attr);
+        if (rc != 0) { free(m); return SALTS_EBUSY; }
+        attr_ready = 1;
+        rc = pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+        if (rc != 0) {
+            (void)pthread_mutexattr_destroy(&attr);
+            free(m);
+            return SALTS_ENOTSUP;
+        }
+    }
+    rc = pthread_mutex_init(&m->native, attr_ready ? &attr : NULL);
+    if (attr_ready) (void)pthread_mutexattr_destroy(&attr);
+    if (rc != 0) { free(m); return SALTS_EBUSY; }
+    *out = m;
+    return SALTS_OK;
+}
+int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_create(salts_platform_mutex **out) {
+    return mutex_create_internal(out, 0);
+}
+int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_create_recursive(salts_platform_mutex **out) {
+    return mutex_create_internal(out, 1);
+}
+static int count_recursive_lock(salts_platform_mutex *m) {
+    uint32_t old = 0;
+    if (!m->recursive) return SALTS_OK;
+    return salts_atomic32_fetch_add(&m->active_depth, 1u,
+                     SALTS_MEMORY_ACQ_REL, &old);
 }
 int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_lock(salts_platform_mutex *m) {
-    return m && pthread_mutex_lock(&m->native) == 0 ? SALTS_OK : SALTS_EINVAL;
+    int rc;
+    if (!m) return SALTS_EINVAL;
+    rc = pthread_mutex_lock(&m->native);
+    if (rc != 0) return rc == EDEADLK ? SALTS_EBUSY : SALTS_EINVAL;
+    return count_recursive_lock(m);
 }
 /* Portable timed mutex: pthread_mutex_timedlock uses CLOCK_REALTIME on many
  * systems; retry pthread_mutex_trylock under CLOCK_MONOTONIC instead.
@@ -146,7 +187,7 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_timedlock_ns(
     if (!m || duration_ns > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS)
         return SALTS_EINVAL;
     rc = pthread_mutex_trylock(&m->native);
-    if (rc == 0) return SALTS_OK;
+    if (rc == 0) return count_recursive_lock(m);
     if (rc != EBUSY) return SALTS_EBUSY;
     if (duration_ns == 0) return SALTS_ETIMEDOUT;
     rc = portable_monotonic_now_ns(&start);
@@ -166,22 +207,35 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_timedlock_ns(
         if (now >= start && now - start >= duration_ns)
             return SALTS_ETIMEDOUT;
         rc = pthread_mutex_trylock(&m->native);
-        if (rc == 0) return SALTS_OK;
+        if (rc == 0) return count_recursive_lock(m);
         if (rc != EBUSY) return SALTS_EBUSY;
     }
 }
 int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_unlock(salts_platform_mutex *m) {
-    return m && pthread_mutex_unlock(&m->native) == 0 ? SALTS_OK : SALTS_EINVAL;
+    uint32_t depth = 0;
+    if (!m) return SALTS_EINVAL;
+    if (pthread_mutex_unlock(&m->native) != 0) return SALTS_EINVAL;
+    if (m->recursive &&
+        salts_atomic32_fetch_add(&m->active_depth, UINT32_MAX,
+                                 SALTS_MEMORY_ACQ_REL, &depth) != SALTS_OK)
+        return SALTS_EINVAL;
+    return SALTS_OK;
 }
 int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_destroy(salts_platform_mutex **owner) {
     salts_platform_mutex *m;
+    uint32_t depth = 0;
     int rc;
     if (!owner || !(m = *owner)) return SALTS_EINVAL;
-    /* pthread_mutex_destroy on a locked mutex is undefined by POSIX.
-     * Reject an already held lock BEFORE attempting destruction. This
-     * trylock is not a concurrent-close barrier: the caller still must
-     * guarantee that no new entrants or waiters can arrive.
+    /* A recursive pthread trylock succeeds when called by the SAME
+     * thread that owns the lock. Check the owner-depth before probing,
+     * otherwise a held recursive lock could be destroyed (UB).
+     * Caller must still guarantee no racing new entrants or waiters.
      */
+    if (m->recursive) {
+        if (salts_atomic32_load(&m->active_depth, SALTS_MEMORY_ACQUIRE,
+                                &depth) != SALTS_OK) return SALTS_EINVAL;
+        if (depth != 0) return SALTS_EBUSY;
+    }
     rc = pthread_mutex_trylock(&m->native);
     if (rc != 0) return rc == EBUSY ? SALTS_EBUSY : SALTS_EINVAL;
     if (pthread_mutex_unlock(&m->native) != 0) return SALTS_EBUSY;
@@ -214,7 +268,7 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_condition_create(salts_platform_cond
     *out = c; return SALTS_OK;
 }
 int SALTS_CORE_PLATFORM_CALL salts_platform_condition_wait(salts_platform_condition *c, salts_platform_mutex *m) {
-    if (!c || !m) return SALTS_EINVAL;
+    if (!c || !m) return SALTS_EINVAL; /* recursive caller: depth exactly 1 */
     return pthread_cond_wait(&c->native, &m->native) == 0 ? SALTS_OK : SALTS_EINVAL;
 }
 int SALTS_CORE_PLATFORM_CALL salts_platform_condition_timedwait_ns(
@@ -224,6 +278,10 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_condition_timedwait_ns(
     int rc;
     if (!c || !m || timeout_ns > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS ||
         seconds > (uint64_t)INT64_MAX) return SALTS_EINVAL;
+    /* Consistent with Win32: already-expired relative wait does not
+     * release and re-acquire the caller's mutex. The caller still owns it.
+     */
+    if (timeout_ns == 0) return SALTS_ETIMEDOUT;
 #if defined(__APPLE__)
     deadline.tv_sec = (time_t)seconds;
     if (deadline.tv_sec < 0 || (uint64_t)deadline.tv_sec != seconds) return SALTS_EINVAL;
