@@ -206,6 +206,27 @@ jobs:
             for i in 1 2 3 4 5; do "./build-portable/$fixture"; done
           done
 
+
+      - name: Require real installed Salts::Platform SDK from native TinyCC
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-sdk -G Ninja -DCMAKE_C_COMPILER=gcc \
+            -DBUILD_TESTING=OFF "-DCMAKE_INSTALL_PREFIX=$PWD/portable-installed"
+          cmake --build build-sdk --parallel 2
+          cmake --install build-sdk
+          test -f portable-installed/include/salts_core/c11/threads.h
+          test -s portable-installed/lib/libsaltscore_platform.so
+          "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -std=c11 \
+            -DSALTS_C11_THREADS_EXPERIMENTAL=1 \
+            -Iportable-installed/include/salts_core/c11 \
+            -Iportable-installed/include \
+            tests/test_c11_threads.c \
+            -Lportable-installed/lib -lsaltscore_platform \
+            -o build-portable/tcc_installed_c11
+          export LD_LIBRARY_PATH="$PWD/portable-installed/lib:$(printenv LD_LIBRARY_PATH || true)"
+          for i in 1 2 3 4 5; do ./build-portable/tcc_installed_c11; done
+
   macos-native-tinycc:
     strategy:
       fail-fast: false
