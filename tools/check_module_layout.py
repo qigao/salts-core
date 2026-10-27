@@ -76,4 +76,28 @@ for file in (ROOT / "tests").rglob("*"):
         raise SystemExit(f"test imports removed root source via relative include: {file}")
     if re.search(r"\$\{PROJECT_SOURCE_DIR\}/(?:src|include)/", text):
         raise SystemExit(f"test links removed root source directory: {file}")
+# A workflow that still watches the retired root silently misses source edits.
+# Direct cross-compiler commands using old root headers/sources are also invalid.
+# Scan executable workflows, not only CMake and CTest source lists.
+WORKFLOWS = ROOT / ".github" / "workflows"
+OLD_SOURCE = re.compile(
+    r"(?<![A-Za-z0-9_./-])src/(?:core|platform|concurrency|coroutine|"
+    r"native-io|cnet|uri|fs|process)/"
+)
+OLD_INCLUDE = re.compile(
+    r"(?<![A-Za-z0-9_./-])include/(?:salts/|salts_core/|cnet/|"
+    r"coro|vstr|cmeta|ring_buffer|base64_utils|uri_parser)"
+)
+OLD_COMPILER_INCLUDE = re.compile(r"(?<!\S)-Iinclude(?=[/'\" \t]|$)")
+for workflow in WORKFLOWS.glob("*.yml"):
+    for line_number, line in enumerate(
+        workflow.read_text(encoding="utf-8").splitlines(), 1
+    ):
+        if (OLD_SOURCE.search(line) or OLD_INCLUDE.search(line)
+                or OLD_COMPILER_INCLUDE.search(line)):
+            raise SystemExit(
+                f"obsolete root path in workflow "
+                f"{workflow.relative_to(ROOT)}:{line_number}: {line.strip()}"
+            )
+
 print("PASS: one source/header owner per existing SaltsCore module; no root include/src")
