@@ -413,16 +413,38 @@ static int run_external_san(unsigned port, uint32_t protocol, bool accept_peer)
         CHECK(cnet_client_poll(&dialer, 2u, &events) == SALTS_OK);
         if (observed.connected || observed.failed) break;
     }
-    if (accept_peer)
+    if (accept_peer) {
+        static const uint8_t ready[] = {'o', 'k'};
         CHECK(observed.connected == 1u && observed.failed == 0u);
-    else
+        /* TCP/TLS CONNECTED is not proof that our encrypted Finished
+         * reached the independent OpenSSL peer. Wait for actual SERVER
+         * APPLICATION DATA, emitted only AFTER Python SSL handshake().
+         * Keep real IOCP/epoll/kqueue active until this terminal evidence.
+         */
+        CHECK(cnet_set_receive_slice_handler(
+            &dialer, connection, on_owned, &observed) == SALTS_OK);
+        CHECK(cnet_receive(&dialer, connection, sizeof(ready)) == SALTS_OK);
+        deadline = cmeta_monotonic_ms() + APP_TIMEOUT_MS;
+        while (cmeta_monotonic_ms() < deadline &&
+               observed.retained.buffer == NULL) {
+            CHECK(cnet_client_poll(&dialer, 2u, &events) == SALTS_OK);
+        }
+        CHECK(observed.plaintext_received == 1u &&
+              observed.retained.buffer != NULL &&
+              observed.retained.length == sizeof(ready) &&
+              memcmp(observed.retained.data, ready, sizeof(ready)) == 0);
+    } else {
         CHECK(observed.connected == 0u && observed.failed >= 1u);
+    }
     rc = 0;
 done:
     if (dialer_live) {
         if (cnet_client_stop(&dialer, 5000u) != SALTS_OK) rc = 1;
         if (cnet_client_destroy(&dialer) != SALTS_OK) rc = 1;
     }
+    /* Deliberately keep the Core-owned slice through client destruction. */
+    if (observed.retained.buffer != NULL)
+        mem_slice_release(&observed.retained);
     if (cnet_tls_client_destroy(&profile) != SALTS_OK) rc = 1;
     if (provider && crypto_tls_provider_destroy(&provider) != CRYPTO_TLS_OK)
         rc = 1;

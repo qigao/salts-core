@@ -50,7 +50,11 @@ def one_session(ctx, binary, protocol, identity):
                     with ctx.wrap_socket(conn, server_side=True) as tls:
                         observed["completed"] = True
                         observed["version"] = tls.version()
-                        tls.settimeout(1.0)
+                        # This is a real authenticated Finished and app-data
+                        # barrier; a client CONNECTED callback alone can
+                        # precede the peer seeing the final TLS1.3 Finished.
+                        tls.sendall(b"ok")
+                        tls.settimeout(3.0)
                         try:
                             tls.recv(1)
                         except (socket.timeout, ssl.SSLError, OSError):
