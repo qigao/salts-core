@@ -1,5 +1,5 @@
-#include <salts/native_io.h>
-#include <salts/native_ipc.h>
+#include <salts/native_io/native_io.h>
+#include <salts/native_io/ipc.h>
 
 #include <limits.h>
 #include <stdlib.h>
