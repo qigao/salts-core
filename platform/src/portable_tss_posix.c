@@ -1,4 +1,4 @@
-#include <salts_core/platform_thread.h>
+#include <salts/platform/portable_thread.h>
 #ifndef _WIN32
 #include <pthread.h>
 #include <stdlib.h>
@@ -36,7 +36,7 @@ static void cleanup(void *opaque) {
     if (key->destructor && value) key->destructor(value);
     release(key);
 }
-int SALTS_CORE_PLATFORM_CALL salts_platform_tss_create(salts_platform_tss **out,
+int SALTS_PLATFORM_CALL salts_platform_tss_create(salts_platform_tss **out,
                                                         salts_platform_tss_destructor destructor) {
     salts_platform_tss *key;
     if (!out || *out) return SALTS_EINVAL;
@@ -48,7 +48,7 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_tss_create(salts_platform_tss **out,
     *out = key;
     return SALTS_OK;
 }
-int SALTS_CORE_PLATFORM_CALL salts_platform_tss_set(salts_platform_tss *key, void *value) {
+int SALTS_PLATFORM_CALL salts_platform_tss_set(salts_platform_tss *key, void *value) {
     struct tss_slot *slot;
     int rc;
     if (!key) return SALTS_EINVAL;
@@ -72,14 +72,14 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_tss_set(salts_platform_tss *key, voi
     }
     return SALTS_OK;
 }
-int SALTS_CORE_PLATFORM_CALL salts_platform_tss_get(salts_platform_tss *key, void **out) {
+int SALTS_PLATFORM_CALL salts_platform_tss_get(salts_platform_tss *key, void **out) {
     struct tss_slot *slot;
     if (!key || !out) return SALTS_EINVAL;
     slot = (struct tss_slot *)pthread_getspecific(key->native);
     *out = slot ? slot->value : NULL;
     return SALTS_OK;
 }
-int SALTS_CORE_PLATFORM_CALL salts_platform_tss_destroy(salts_platform_tss **owner) {
+int SALTS_PLATFORM_CALL salts_platform_tss_destroy(salts_platform_tss **owner) {
     salts_platform_tss *key;
     uint32_t active;
     if (!owner || !(key = *owner)) return SALTS_EINVAL;

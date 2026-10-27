@@ -1,8 +1,8 @@
 #ifndef SALTS_READINESS_INTERNAL_H
 #define SALTS_READINESS_INTERNAL_H
 
-#include <salts/error_codes.h>
-#include <salts/readiness.h>
+#include <salts/core/error_codes.h>
+#include <salts/platform/readiness.h>
 
 #include <errno.h>
 

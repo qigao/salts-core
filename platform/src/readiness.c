@@ -1,7 +1,7 @@
 #include "readiness_internal.h"
 
-#include <salts/error_codes.h>
-#include <salts/thread.h>
+#include <salts/core/error_codes.h>
+#include <salts/platform/thread.h>
 
 #include <errno.h>
 #include <limits.h>

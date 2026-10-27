@@ -1,4 +1,4 @@
-#include <salts_core/platform_thread.h>
+#include <salts/platform/portable_thread.h>
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN 1
@@ -30,10 +30,10 @@ static _Thread_local salts_platform_thread *salts_platform_current;
 #else
 #error "Windows Platform Thread TLS requires supported compiler TLS, not a global fallback"
 #endif
-uint64_t SALTS_CORE_PLATFORM_CALL salts_platform_thread_current_id(void) {
+uint64_t SALTS_PLATFORM_CALL salts_platform_thread_current_id(void) {
     return (uint64_t)GetCurrentThreadId();
 }
-uint64_t SALTS_CORE_PLATFORM_CALL salts_platform_thread_id(const salts_platform_thread *thread) {
+uint64_t SALTS_PLATFORM_CALL salts_platform_thread_id(const salts_platform_thread *thread) {
     return thread ? (uint64_t)thread->id : 0u;
 }
 
@@ -51,7 +51,7 @@ static unsigned __stdcall thread_entry(void *opaque) {
     release_thread(thread);
     return 0;
 }
-int SALTS_CORE_PLATFORM_CALL salts_platform_thread_create(salts_platform_thread **out,
+int SALTS_PLATFORM_CALL salts_platform_thread_create(salts_platform_thread **out,
                               salts_platform_thread_fn fn, void *arg) {
     salts_platform_thread *thread;
     uintptr_t native;
@@ -67,7 +67,7 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_thread_create(salts_platform_thread 
     *out = thread;
     return SALTS_OK;
 }
-int SALTS_CORE_PLATFORM_CALL salts_platform_thread_join(salts_platform_thread **owner, int *result) {
+int SALTS_PLATFORM_CALL salts_platform_thread_join(salts_platform_thread **owner, int *result) {
     salts_platform_thread *thread;
     if (!owner || !(thread = *owner)) return SALTS_EINVAL;
     if (GetCurrentThreadId() == thread->id) return SALTS_EINVAL;
@@ -78,7 +78,7 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_thread_join(salts_platform_thread **
     release_thread(thread);
     return SALTS_OK;
 }
-int SALTS_CORE_PLATFORM_CALL salts_platform_thread_detach(salts_platform_thread **owner) {
+int SALTS_PLATFORM_CALL salts_platform_thread_detach(salts_platform_thread **owner) {
     salts_platform_thread *thread;
     if (!owner || !(thread = *owner)) return SALTS_EINVAL;
     if (!CloseHandle(thread->native)) return SALTS_EBUSY;
@@ -86,7 +86,7 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_thread_detach(salts_platform_thread 
     release_thread(thread);
     return SALTS_OK;
 }
-void SALTS_CORE_PLATFORM_CALL salts_platform_thread_exit(int result) {
+void SALTS_PLATFORM_CALL salts_platform_thread_exit(int result) {
     salts_platform_thread *thread = salts_platform_current;
     if (thread) {
         thread->result = result;
@@ -96,13 +96,13 @@ void SALTS_CORE_PLATFORM_CALL salts_platform_thread_exit(int result) {
     _endthreadex(0);
     for (;;) ExitThread(0); /* The CRT entrypoint must not return. */
 }
-void SALTS_CORE_PLATFORM_CALL salts_platform_thread_yield(void) { (void)SwitchToThread(); }
-int SALTS_CORE_PLATFORM_CALL salts_platform_thread_sleep_ns(uint64_t duration_ns) {
+void SALTS_PLATFORM_CALL salts_platform_thread_yield(void) { (void)SwitchToThread(); }
+int SALTS_PLATFORM_CALL salts_platform_thread_sleep_ns(uint64_t duration_ns) {
     if (duration_ns > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS) return SALTS_EINVAL;
     Sleep((DWORD)((duration_ns + 999999ull) / 1000000ull));
     return SALTS_OK;
 }
-int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_create(salts_platform_mutex **out) {
+int SALTS_PLATFORM_CALL salts_platform_mutex_create(salts_platform_mutex **out) {
     salts_platform_mutex *m;
     if (!out || *out) return SALTS_EINVAL;
     m = (salts_platform_mutex *)malloc(sizeof(*m));
@@ -110,7 +110,7 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_create(salts_platform_mutex **
     InitializeSRWLock(&m->native);
     *out = m; return SALTS_OK;
 }
-int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_lock(salts_platform_mutex *m) {
+int SALTS_PLATFORM_CALL salts_platform_mutex_lock(salts_platform_mutex *m) {
     if (!m) return SALTS_EINVAL;
     AcquireSRWLockExclusive(&m->native); return SALTS_OK;
 }
@@ -118,7 +118,7 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_lock(salts_platform_mutex *m) 
  * Positive fractional milliseconds round up, as with timed condition wait.
  * SRWLOCK has no timed-wait primitive, so retry with bounded OS yielding.
  */
-int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_timedlock_ns(
+int SALTS_PLATFORM_CALL salts_platform_mutex_timedlock_ns(
     salts_platform_mutex *m, uint64_t timeout_ns) {
     ULONGLONG start, elapsed, requested_ms;
     if (!m || timeout_ns > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS)
@@ -136,11 +136,11 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_timedlock_ns(
         if (TryAcquireSRWLockExclusive(&m->native)) return SALTS_OK;
     }
 }
-int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_unlock(salts_platform_mutex *m) {
+int SALTS_PLATFORM_CALL salts_platform_mutex_unlock(salts_platform_mutex *m) {
     if (!m) return SALTS_EINVAL;
     ReleaseSRWLockExclusive(&m->native); return SALTS_OK;
 }
-int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_destroy(salts_platform_mutex **owner) {
+int SALTS_PLATFORM_CALL salts_platform_mutex_destroy(salts_platform_mutex **owner) {
     salts_platform_mutex *m;
     if (!owner || !(m = *owner)) return SALTS_EINVAL;
     /* No Windows OS primitive can guard a destroy racing a new entrant;
@@ -150,7 +150,7 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_destroy(salts_platform_mutex *
     *owner = NULL;
     free(m); return SALTS_OK;
 }
-int SALTS_CORE_PLATFORM_CALL salts_platform_condition_create(salts_platform_condition **out) {
+int SALTS_PLATFORM_CALL salts_platform_condition_create(salts_platform_condition **out) {
     salts_platform_condition *c;
     if (!out || *out) return SALTS_EINVAL;
     c = (salts_platform_condition *)malloc(sizeof(*c));
@@ -158,11 +158,11 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_condition_create(salts_platform_cond
     InitializeConditionVariable(&c->native);
     *out = c; return SALTS_OK;
 }
-int SALTS_CORE_PLATFORM_CALL salts_platform_condition_wait(salts_platform_condition *c, salts_platform_mutex *m) {
+int SALTS_PLATFORM_CALL salts_platform_condition_wait(salts_platform_condition *c, salts_platform_mutex *m) {
     if (!c || !m) return SALTS_EINVAL;
     return SleepConditionVariableSRW(&c->native, &m->native, INFINITE, 0) ? SALTS_OK : SALTS_EBUSY;
 }
-int SALTS_CORE_PLATFORM_CALL salts_platform_condition_timedwait_ns(
+int SALTS_PLATFORM_CALL salts_platform_condition_timedwait_ns(
     salts_platform_condition *c, salts_platform_mutex *m, uint64_t timeout_ns) {
     DWORD milliseconds;
     if (!c || !m || timeout_ns > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS)
@@ -172,15 +172,15 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_condition_timedwait_ns(
         return SALTS_OK;
     return GetLastError() == ERROR_TIMEOUT ? SALTS_ETIMEDOUT : SALTS_EBUSY;
 }
-int SALTS_CORE_PLATFORM_CALL salts_platform_condition_signal(salts_platform_condition *c) {
+int SALTS_PLATFORM_CALL salts_platform_condition_signal(salts_platform_condition *c) {
     if (!c) return SALTS_EINVAL;
     WakeConditionVariable(&c->native); return SALTS_OK;
 }
-int SALTS_CORE_PLATFORM_CALL salts_platform_condition_broadcast(salts_platform_condition *c) {
+int SALTS_PLATFORM_CALL salts_platform_condition_broadcast(salts_platform_condition *c) {
     if (!c) return SALTS_EINVAL;
     WakeAllConditionVariable(&c->native); return SALTS_OK;
 }
-int SALTS_CORE_PLATFORM_CALL salts_platform_condition_destroy(salts_platform_condition **owner) {
+int SALTS_PLATFORM_CALL salts_platform_condition_destroy(salts_platform_condition **owner) {
     salts_platform_condition *c;
     if (!owner || !(c = *owner)) return SALTS_EINVAL;
     /* Condition variable must be quiescent: OS has no destroy primitive. */

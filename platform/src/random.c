@@ -1,5 +1,5 @@
-#include <salts/error_codes.h>
-#include <salts/random.h>
+#include <salts/core/error_codes.h>
+#include <salts/platform/random.h>
 
 #include <errno.h>
 #include <limits.h>
