@@ -34,13 +34,13 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ninja-build pkg-config             autoconf automake libtool nasm curl zip unzip tar
+          sudo apt-get install -y --no-install-recommends ninja-build pkg-config             autoconf automake libtool nasm curl zip unzip tar re2c
       - name: Install macOS native prerequisites
         if: runner.os == 'macOS'
         shell: bash
         run: |
           set -euo pipefail
-          brew install ninja pkg-config autoconf automake libtool nasm
+          brew install ninja pkg-config autoconf automake libtool nasm re2c
       - name: Fetch immutable Crypto and official private GmSSL port input
         shell: bash
         run: |
@@ -116,6 +116,42 @@ jobs:
           # as archive symbol cardinality and real TLS1.2/1.3 CTests.
           grep -E '[[:space:]][Tt][[:space:]]_?crypto_tls_session_handshake$' "$RUNNER_TEMP/cnet-static-symbols.txt" > /dev/null
           grep -E '[[:space:]][Tt][[:space:]]_?crypto_tls_cipher_bio_acquire_io$' "$RUNNER_TEMP/cnet-static-symbols.txt" > /dev/null
+      - name: M2 original CNet Owner NativeIO over one static Crypto
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The incumbent historical CNet/GmSSL remains built only for
+          # independent regression. It is never linked to this candidate.
+          cmake -S . -B "$RUNNER_TEMP/core-static-owner-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            "-DVCPKG_TARGET_TRIPLET=$VCPKG_DEFAULT_TRIPLET" \
+            -DVCPKG_MANIFEST_FEATURES=cnet \
+            -DSALTSCORE_BUILD_URI=ON -DSALTSCORE_BUILD_CNET=ON \
+            -DSALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST=ON \
+            "-DSALTSCORE_CRYPTO_TEST_FIXTURES=$RUNNER_TEMP/crypto-src/tests/fixtures" \
+            "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/crypto-installed"
+          cmake --build "$RUNNER_TEMP/core-static-owner-build" --parallel 2
+          ctest --test-dir "$RUNNER_TEMP/core-static-owner-build" -C Release \
+            --output-on-failure --no-tests=error \
+            -R '^saltscore[.]cnet_crypto_static_original_owner_tls12_tls13$' \
+            --repeat until-fail:3
+          ctest --test-dir "$RUNNER_TEMP/core-static-owner-build" -C Release \
+            --output-on-failure --no-tests=error \
+            -R '^saltscore[.]cnet_(tcp_loopback|tls_ca_san)$'
+          candidate="$RUNNER_TEMP/core-static-owner-build/saltscore_cnet_crypto_static_original_owner"
+          test -x "$candidate"
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            readelf -d "$candidate" > "$RUNNER_TEMP/cnet-static-owner-imports.txt"
+          else
+            otool -L "$candidate" > "$RUNNER_TEMP/cnet-static-owner-imports.txt"
+          fi
+          grep -Eiq 'saltscore_core' "$RUNNER_TEMP/cnet-static-owner-imports.txt"
+          if grep -Ei 'libgmssl|libcrypto_tls|libcrypto_provider|libsaltscore_cnet' \
+            "$RUNNER_TEMP/cnet-static-owner-imports.txt"; then
+            echo "SECURITY FAIL: candidate imported a second provider" >&2
+            exit 1
+          fi
       - name: Preserve exact-head candidate evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -125,6 +161,8 @@ jobs:
             ${{ runner.temp }}/crypto-static-audit.json
             ${{ runner.temp }}/cnet-static-imports.txt
             ${{ runner.temp }}/cnet-static-symbols.txt
+            ${{ runner.temp }}/cnet-static-owner-imports.txt
+            ${{ runner.temp }}/core-static-owner-build/Testing/Temporary/LastTest.log
             ${{ runner.temp }}/core-static-build/Testing/Temporary/LastTest.log
           if-no-files-found: warn
 
