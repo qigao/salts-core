@@ -136,4 +136,104 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
         PROPERTIES TIMEOUT 75)
     endforeach()
   endif()
+
+  # M6: the original CNet Owner linked once as a TEST-ONLY SHARED image.
+  # The sole Salts::Crypto STATIC archive belongs exclusively to that image.
+  # Two independently loaded plugins refer to this image, not separate static
+  # Crypto copies. Public Salts::CNet and its GmSSL backend remain untouched.
+  option(SALTSCORE_CNET_M6_SHARED_DSO_TEST
+    "Qualify one physical STATIC Crypto owner across two CNet plugin DSOs" OFF)
+  if(SALTSCORE_CNET_M6_SHARED_DSO_TEST)
+    set(_m6_dso_sources ${_static_owner_sources})
+    list(REMOVE_ITEM _m6_dso_sources tests/cnet-crypto-static/owner.c)
+    list(APPEND _m6_dso_sources
+      tests/cnet-crypto-static/m6_shared_owner.c)
+    add_library(saltscore_cnet_crypto_m6_shared SHARED ${_m6_dso_sources})
+    target_compile_features(saltscore_cnet_crypto_m6_shared PUBLIC c_std_11)
+    set_target_properties(saltscore_cnet_crypto_m6_shared PROPERTIES
+      C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+      WINDOWS_EXPORT_ALL_SYMBOLS ON
+      OUTPUT_NAME saltscore_cnet_m6_static_crypto)
+    target_compile_definitions(saltscore_cnet_crypto_m6_shared PRIVATE
+      "SDK_CA_FILE=\"${_owner_fixtures}/external-io-ca-cert.pem\"")
+    target_include_directories(saltscore_cnet_crypto_m6_shared
+      PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/cnet/include"
+      PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/cnet/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/cnet/src/wsparser"
+        "${CMAKE_CURRENT_SOURCE_DIR}/native-io/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/monocypher"
+        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/reed"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/cnet-crypto-static")
+    target_link_libraries(saltscore_cnet_crypto_m6_shared
+      PUBLIC Salts::Core Salts::NativeIO Salts::Concurrency
+      PRIVATE Salts::Crypto Salts::URI Salts::Platform
+        saltscore_cnet_monocypher saltscore_cnet_reed
+        c-ares::cares kcp::kcp
+        $<$<PLATFORM_ID:Windows>:crypt32>)
+    if(APPLE)
+      target_compile_definitions(saltscore_cnet_crypto_m6_shared
+        PRIVATE _DARWIN_C_SOURCE=1)
+      target_link_libraries(saltscore_cnet_crypto_m6_shared PRIVATE
+        "${SALTSCORE_CNET_COREFOUNDATION}"
+        "${SALTSCORE_CNET_SECURITY}")
+    elseif(UNIX)
+      target_compile_definitions(saltscore_cnet_crypto_m6_shared
+        PRIVATE _DEFAULT_SOURCE=1 _POSIX_C_SOURCE=200809L)
+    endif()
+    if(MSVC)
+      target_compile_options(saltscore_cnet_crypto_m6_shared
+        PRIVATE /experimental:c11atomics)
+    elseif(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+      target_compile_options(saltscore_cnet_crypto_m6_shared PRIVATE
+        -Werror=implicit-function-declaration
+        -Werror=incompatible-pointer-types -Werror=return-type)
+    endif()
+
+    # Both plugin modules link the SHARED candidate, not Salts::Crypto.
+    foreach(_module IN ITEMS a b)
+      add_library(saltscore_cnet_m6_plugin_${_module} MODULE
+        tests/cnet-crypto-static/m6_plugin.c)
+      target_compile_features(saltscore_cnet_m6_plugin_${_module}
+        PRIVATE c_std_11)
+      set_target_properties(saltscore_cnet_m6_plugin_${_module} PROPERTIES
+        C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+        WINDOWS_EXPORT_ALL_SYMBOLS ON)
+      target_include_directories(saltscore_cnet_m6_plugin_${_module} PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/cnet-crypto-static")
+      target_link_libraries(saltscore_cnet_m6_plugin_${_module}
+        PRIVATE saltscore_cnet_crypto_m6_shared Salts::Core Salts::Platform)
+      if(MSVC)
+        target_compile_options(saltscore_cnet_m6_plugin_${_module}
+          PRIVATE /experimental:c11atomics)
+      endif()
+    endforeach()
+
+    # The loader never links Salts::CNet nor Salts::Crypto, and must
+    # unload plugin A while a Provider lease from A is still outstanding.
+    add_executable(saltscore_cnet_m6_two_plugin_loader
+      tests/cnet-crypto-static/m6_loader.c)
+    target_compile_features(saltscore_cnet_m6_two_plugin_loader
+      PRIVATE c_std_11)
+    set_target_properties(saltscore_cnet_m6_two_plugin_loader PROPERTIES
+      C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    target_include_directories(saltscore_cnet_m6_two_plugin_loader PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/cnet-crypto-static")
+    target_link_libraries(saltscore_cnet_m6_two_plugin_loader PRIVATE
+      Salts::Core Salts::Platform ${CMAKE_DL_LIBS})
+    add_dependencies(saltscore_cnet_m6_two_plugin_loader
+      saltscore_cnet_m6_plugin_a saltscore_cnet_m6_plugin_b)
+    if(MSVC)
+      target_compile_options(saltscore_cnet_m6_two_plugin_loader
+        PRIVATE /experimental:c11atomics)
+    endif()
+    add_test(NAME saltscore.cnet_crypto_m6_two_plugin_shared_owner
+      COMMAND saltscore_cnet_m6_two_plugin_loader
+        "$<TARGET_FILE:saltscore_cnet_m6_plugin_a>"
+        "$<TARGET_FILE:saltscore_cnet_m6_plugin_b>")
+    set_tests_properties(saltscore.cnet_crypto_m6_two_plugin_shared_owner
+      PROPERTIES TIMEOUT 120 RESOURCE_LOCK cnet_m6_shared_owner)
+  endif()
+
 endif()
