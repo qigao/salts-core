@@ -16,7 +16,7 @@
 #include <stdlib.h>
 
 #ifndef SDK_CA_FILE
-#error SDK_CA_FILE is mandatory for the shared Owner's real CNet profile
+#error SDK_CA_FILE is mandatory for M6 real CNet profile
 #endif
 
 #if defined(_WIN32)
@@ -187,6 +187,11 @@ M6_EXPORT int cnet_m6_shared_native_smoke(cnet_m6_lease *lease)
     cfg.max_send_bytes = 1024u;
     cfg.receive_buffer_bytes = 1024u;
     cfg.tls_io_buffer_bytes = CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY;
+    /* The original public CNet validator requires TLS buffer and handshake
+     * deadline to be supplied together; a half-configured fixture is EINVAL.
+     * Keep the real native timeout boundary, never weaken validation.
+     */
+    cfg.tls_handshake_timeout_ms = 15000u;
     status = cnet_client_init(&client, &cfg);
     if (status != SALTS_OK) goto done;
     live = 1;
