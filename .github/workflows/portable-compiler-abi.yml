@@ -208,7 +208,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build-portable
-          gcc -std=c11 -O2 -pthread -fPIC -shared -DSALTS_CORE_PLATFORM_BUILD=1 -Iinclude \
+          gcc -std=c11 -O2 -pthread -fPIC -shared -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE=1 -DSALTS_CORE_PLATFORM_BUILD=1 -Iinclude \
             src/platform/portable_atomic.c src/platform/portable_thread_posix.c \
             src/platform/portable_tss_posix.c src/platform/portable_once.c \
             src/platform/c11_threads.c src/platform/clock.c -o build-portable/libsalts_portable.so
@@ -277,7 +277,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build-portable
-          clang -std=c11 -O2 -fPIC -pthread -dynamiclib \
+          clang -std=c11 -O2 -fPIC -pthread -D_DARWIN_C_SOURCE=1 -dynamiclib \
             -DSALTS_CORE_PLATFORM_BUILD=1 -Iinclude \
             src/platform/portable_atomic.c src/platform/portable_thread_posix.c \
             src/platform/portable_tss_posix.c src/platform/portable_once.c \
