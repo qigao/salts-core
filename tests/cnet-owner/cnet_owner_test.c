@@ -12,6 +12,7 @@
 
 #include <limits.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #if defined(_WIN32)
@@ -210,10 +211,29 @@ static int cnet_owner_test_drive_to_state(cnet_owner *owner, cnet_session_table 
     int status = cnet_session_table_state(sessions, handle, &state);
     if (status != SALTS_OK) return status;
     if (state == expected) return SALTS_OK;
-    if (state == CNET_SESSION_TERMINAL) return SALTS_EIO;
+    if (state == CNET_SESSION_TERMINAL) {
+      /* Diagnostic only on an unexpected failure; no retry, no acceptance
+       * reduction, no mutation of the live production Owner. Capture the
+       * original terminal stage before TinyTest reports its assertion. */
+      cnet_session_terminal terminal = {0};
+      const int received = cnet_session_table_take_terminal(
+          sessions, handle, &terminal);
+      fprintf(stderr,
+          "Unexpected CNet Owner terminal during state admission:"
+          " expected=%d terminal-read=%d kind=%d status=%d stage=%d\\n",
+          (int)expected, received, (int)terminal.kind,
+          terminal.status, (int)terminal.stage);
+      return SALTS_EIO;
+    }
     status = cnet_owner_drive(owner, 10u);
     if (status != SALTS_OK) return status;
-    if (cmeta_monotonic_ms() >= deadline) return SALTS_ETIMEDOUT;
+    if (cmeta_monotonic_ms() >= deadline) {
+      fprintf(stderr,
+          "CNet Owner state admission deadline:"
+          " state=%d expected=%d elapsed-limit-ms=%d\\n",
+          (int)state, (int)expected, CNET_OWNER_TEST_TIMEOUT_MS);
+      return SALTS_ETIMEDOUT;
+    }
   }
 }
 
