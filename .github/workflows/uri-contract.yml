@@ -3,8 +3,9 @@ name: SaltsCore URI parser qualification
 on:
   push:
     paths:
-      - "src/uri/**"
-      - "include/uri_parser.h"
+      - "uri/src/**"
+      - "uri/parser/**"
+      - "uri/include/uri_parser.h"
       - "CMakeLists.txt"
       - "tests/test_uri.c"
       - "tests/installed/uri_consumer.*"
@@ -12,8 +13,9 @@ on:
       - ".github/workflows/uri-contract.yml"
   pull_request:
     paths:
-      - "src/uri/**"
-      - "include/uri_parser.h"
+      - "uri/src/**"
+      - "uri/parser/**"
+      - "uri/include/uri_parser.h"
       - "CMakeLists.txt"
       - "tests/test_uri.c"
       - "tests/installed/uri_consumer.*"

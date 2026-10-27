@@ -2,8 +2,8 @@ name: SaltsCore standalone native FS
 on:
   pull_request:
     paths:
-      - "src/fs/**"
-      - "include/salts/fs.h"
+      - "fs/src/**"
+      - "fs/include/salts/fs.h"
       - "cmake/SaltsCoreFS.cmake"
       - "cmake/SaltsCoreExtraModules.cmake"
       - "tests/test_fs.c"
@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/check_dependency_boundaries.py
-          if grep -nE 'cmeta_|CMETA_|SALTS_C_API|TLOG_|#include "platform.h"' src/fs/*.c include/salts/fs.h; then
+          if grep -nE 'cmeta_|CMETA_|SALTS_C_API|TLOG_|#include "platform.h"' fs/src/*.c fs/include/salts/fs.h; then
             echo "Retired CMeta/Salts native API is forbidden in Core FS" >&2
             exit 1
           fi

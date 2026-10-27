@@ -41,9 +41,9 @@ jobs:
           New-Item -ItemType Directory -Force build-portable | Out-Null
           $dll = 'build-portable/salts_portable.dll'
           $exe = 'build-portable/tcc_portable.exe'
-          & $clang.FullName '-std=c11' '-O2' '-Werror=unknown-attributes' '-shared' '-DSALTS_CORE_PLATFORM_BUILD=1' '-D_WIN32_WINNT=0x0601' '-Iinclude' 'src/platform/portable_atomic.c' 'src/platform/portable_thread_win32.c' 'src/platform/portable_tss_win32.c' 'src/platform/portable_once.c' 'src/platform/c11_threads.c' 'src/platform/clock.c' '-o' $dll
+          & $clang.FullName '-std=c11' '-O2' '-Werror=unknown-attributes' '-shared' '-DSALTS_CORE_PLATFORM_BUILD=1' '-D_WIN32_WINNT=0x0601' '-Iplatform/include' '-Icore/include' 'platform/src/portable_atomic.c' 'platform/src/portable_thread_win32.c' 'platform/src/portable_tss_win32.c' 'platform/src/portable_once.c' 'platform/src/c11_threads.c' 'platform/src/clock.c' '-o' $dll
           if ($LASTEXITCODE -ne 0) { throw 'Portable Platform provider failed to compile/link with llvm-mingw' }
-          & $tcc.FullName '-std=c11' '-Iinclude' 'tests/portable_tcc_windows_client.c' '-o' $exe
+          & $tcc.FullName '-std=c11' '-Iplatform/include' '-Icore/include' 'tests/portable_tcc_windows_client.c' '-o' $exe
           if ($LASTEXITCODE -ne 0) { throw 'TinyCC portable consumer compile failed' }
           $provider = (Resolve-Path $dll).Path
           for ($i=1; $i -le 10; $i++) {
@@ -53,14 +53,14 @@ jobs:
           # The STANDARD header must compile/link with real TinyCC,
           # not just through a bespoke LoadLibrary test harness.
           $c11Exe = 'build-portable/tcc_c11_threads.exe'
-          & $tcc.FullName '-std=c11' '-DSALTS_C11_THREADS_EXPERIMENTAL=1' '-Iinclude/salts_core/c11' '-Iinclude' 'tests/test_c11_threads.c' $dll '-o' $c11Exe
+          & $tcc.FullName '-std=c11' '-DSALTS_C11_THREADS_EXPERIMENTAL=1' '-Iplatform/include/salts_core/c11' '-Iplatform/include' '-Icore/include' 'tests/test_c11_threads.c' $dll '-o' $c11Exe
           if ($LASTEXITCODE -ne 0) { throw 'TinyCC C11 threads.h direct DLL linking failed' }
           for ($i=1; $i -le 5; $i++) {
             & (Resolve-Path $c11Exe).Path
             if ($LASTEXITCODE -ne 0) { throw "TinyCC C11 threads.h runtime failed $i" }
           }
           $tssExe = 'build-portable/tcc_portable_tss.exe'
-          & $tcc.FullName '-std=c11' '-Iinclude' 'tests/portable_tcc_tss_windows.c' '-o' $tssExe
+          & $tcc.FullName '-std=c11' '-Iplatform/include' '-Icore/include' 'tests/portable_tcc_tss_windows.c' '-o' $tssExe
           if ($LASTEXITCODE -ne 0) { throw 'TinyCC FLS/timed C client did not compile' }
           for ($i=1; $i -le 10; $i++) {
             & (Resolve-Path $tssExe).Path $provider
@@ -80,13 +80,13 @@ jobs:
             $e = "build-portable/tcc_portable_$($pair.suffix).exe"
             $te = "build-portable/tcc_portable_tss_$($pair.suffix).exe"
             $ce = "build-portable/tcc_c11_threads_$($pair.suffix).exe"
-            & $ll '-std=c11' '-O2' '-Werror=unknown-attributes' '-shared' '-DSALTS_CORE_PLATFORM_BUILD=1' '-D_WIN32_WINNT=0x0601' '-Iinclude' 'src/platform/portable_atomic.c' 'src/platform/portable_thread_win32.c' 'src/platform/portable_tss_win32.c' 'src/platform/portable_once.c' 'src/platform/c11_threads.c' 'src/platform/clock.c' '-o' $d
+            & $ll '-std=c11' '-O2' '-Werror=unknown-attributes' '-shared' '-DSALTS_CORE_PLATFORM_BUILD=1' '-D_WIN32_WINNT=0x0601' '-Iplatform/include' '-Icore/include' 'platform/src/portable_atomic.c' 'platform/src/portable_thread_win32.c' 'platform/src/portable_tss_win32.c' 'platform/src/portable_once.c' 'platform/src/c11_threads.c' 'platform/src/clock.c' '-o' $d
             if ($LASTEXITCODE -ne 0) { throw "llvm-mingw provider build failed for $($pair.suffix)" }
-            & $tt.FullName '-std=c11' '-Iinclude' 'tests/portable_tcc_windows_client.c' '-o' $e
+            & $tt.FullName '-std=c11' '-Iplatform/include' '-Icore/include' 'tests/portable_tcc_windows_client.c' '-o' $e
             if ($LASTEXITCODE -ne 0) { throw "TinyCC consumer build failed for $($pair.suffix)" }
-            & $tt.FullName '-std=c11' '-Iinclude' 'tests/portable_tcc_tss_windows.c' '-o' $te
+            & $tt.FullName '-std=c11' '-Iplatform/include' '-Icore/include' 'tests/portable_tcc_tss_windows.c' '-o' $te
             if ($LASTEXITCODE -ne 0) { throw "TinyCC TSS consumer build failed for $($pair.suffix)" }
-            & $tt.FullName '-std=c11' '-DSALTS_C11_THREADS_EXPERIMENTAL=1' '-Iinclude/salts_core/c11' '-Iinclude' 'tests/test_c11_threads.c' $d '-o' $ce
+            & $tt.FullName '-std=c11' '-DSALTS_C11_THREADS_EXPERIMENTAL=1' '-Iplatform/include/salts_core/c11' '-Iplatform/include' '-Icore/include' 'tests/test_c11_threads.c' $d '-o' $ce
             if ($LASTEXITCODE -ne 0) { throw "TinyCC $($pair.suffix) C11 threads.h direct DLL linking failed" }
             foreach ($path in @($d,$e,$te,$ce)) {
               [byte[]]$bytes = [IO.File]::ReadAllBytes((Resolve-Path $path).Path)
@@ -190,17 +190,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build-portable
-          gcc -std=c11 -O2 -pthread -fPIC -shared -DSALTS_CORE_PLATFORM_BUILD=1 -Iinclude \
-            src/platform/portable_atomic.c src/platform/portable_thread_posix.c \
-            src/platform/portable_tss_posix.c src/platform/portable_once.c \
-            src/platform/c11_threads.c src/platform/clock.c -o build-portable/libsalts_portable.so
-          "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -DSALTS_C11_THREADS_EXPERIMENTAL=1 -Iinclude/salts_core/c11 -Iinclude \
+          gcc -std=c11 -O2 -pthread -fPIC -shared -DSALTS_CORE_PLATFORM_BUILD=1 -Iplatform/include -Icore/include \
+            platform/src/portable_atomic.c platform/src/portable_thread_posix.c \
+            platform/src/portable_tss_posix.c platform/src/portable_once.c \
+            platform/src/c11_threads.c platform/src/clock.c -o build-portable/libsalts_portable.so
+          "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -DSALTS_C11_THREADS_EXPERIMENTAL=1 -Iplatform/include/salts_core/c11 -Iplatform/include -Icore/include \
             tests/test_portable_concurrency.c -Lbuild-portable -lsalts_portable \
             -o build-portable/tcc_platform_consumer
           export LD_LIBRARY_PATH="$PWD/build-portable:$(printenv LD_LIBRARY_PATH || true)"
           for i in 1 2 3 4 5; do ./build-portable/tcc_platform_consumer; done
           for fixture in test_portable_timing test_portable_tss test_portable_timed_mutex test_c11_threads; do
-            "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -DSALTS_C11_THREADS_EXPERIMENTAL=1 -Iinclude/salts_core/c11 -Iinclude \
+            "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -DSALTS_C11_THREADS_EXPERIMENTAL=1 -Iplatform/include/salts_core/c11 -Iplatform/include -Icore/include \
               "tests/$fixture.c" -Lbuild-portable -lsalts_portable \
               -o "build-portable/$fixture"
             for i in 1 2 3 4 5; do "./build-portable/$fixture"; done
@@ -252,17 +252,17 @@ jobs:
           set -euo pipefail
           mkdir -p build-portable
           clang -std=c11 -O2 -fPIC -pthread -dynamiclib \
-            -DSALTS_CORE_PLATFORM_BUILD=1 -Iinclude \
-            src/platform/portable_atomic.c src/platform/portable_thread_posix.c \
-            src/platform/portable_tss_posix.c src/platform/portable_once.c \
-            src/platform/c11_threads.c src/platform/clock.c -o build-portable/libsalts_portable.dylib
-          "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -DSALTS_C11_THREADS_EXPERIMENTAL=1 -Iinclude/salts_core/c11 -Iinclude \
+            -DSALTS_CORE_PLATFORM_BUILD=1 -Iplatform/include -Icore/include \
+            platform/src/portable_atomic.c platform/src/portable_thread_posix.c \
+            platform/src/portable_tss_posix.c platform/src/portable_once.c \
+            platform/src/c11_threads.c platform/src/clock.c -o build-portable/libsalts_portable.dylib
+          "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -DSALTS_C11_THREADS_EXPERIMENTAL=1 -Iplatform/include/salts_core/c11 -Iplatform/include -Icore/include \
             tests/test_portable_concurrency.c -Lbuild-portable -lsalts_portable \
             -o build-portable/tcc_platform_consumer
           export DYLD_LIBRARY_PATH="$PWD/build-portable:$(printenv DYLD_LIBRARY_PATH || true)"
           for i in 1 2 3 4 5; do ./build-portable/tcc_platform_consumer; done
           for fixture in test_portable_timing test_portable_tss test_portable_timed_mutex test_c11_threads; do
-            "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -DSALTS_C11_THREADS_EXPERIMENTAL=1 -Iinclude/salts_core/c11 -Iinclude \
+            "$GITHUB_WORKSPACE/tools/tcc-installed/bin/tcc" -DSALTS_C11_THREADS_EXPERIMENTAL=1 -Iplatform/include/salts_core/c11 -Iplatform/include -Icore/include \
               "tests/$fixture.c" -Lbuild-portable -lsalts_portable \
               -o "build-portable/$fixture"
             for i in 1 2 3 4 5; do "./build-portable/$fixture"; done

@@ -2,7 +2,7 @@
  * machine in the single Salts::Platform shared owner. No OS descriptor,
  * old Salts library, test adapter or provider fallback is involved.
  */
-#include "../src/platform/readiness_internal.h"
+#include "../platform/src/readiness_internal.h"
 #include <salts/error_codes.h>
 #include <salts/readiness.h>
 #include <stddef.h>

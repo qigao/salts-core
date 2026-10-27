@@ -5,8 +5,8 @@ on:
     paths:
       - ".github/workflows/readiness-reference-conformance.yml"
       - "tests/readiness-reference/**"
-      - "src/platform/readiness*"
-      - "include/salts/readiness.h"
+      - "platform/src/readiness*"
+      - "platform/include/salts/readiness.h"
       - "CMakeLists.txt"
   workflow_dispatch:
 

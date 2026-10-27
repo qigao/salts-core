@@ -45,39 +45,39 @@ set_target_properties(saltscore_cnet_reed PROPERTIES
 # Salts source at refactor/cnet-ipc-name-native: native C11 FIFO, indexed peers,
 # and caller-owned IPC path. Keep the entire CNet DSO in one ownership domain.
 set(_saltscore_cnet_sources
-  src/cnet/cnet_client.c
-  src/cnet/cnet_command.c
-  src/cnet/cnet_datagram.c
-  src/cnet/cnet_kcp.c
-  src/cnet/cnet_kcp_fec.c
-  src/cnet/cnet_kcp_secure.c
-  src/cnet/cnet_secure_kcp.c
-  src/cnet/cnet_packet_endpoint.c
-  src/cnet/cnet_dispatcher.c
-  src/cnet/cnet_event.c
-  src/cnet/cnet_listener.c
-  src/cnet/cnet_module.c
-  src/cnet/cnet_owner.c
-  src/cnet/cnet_owner_strategy.c
-  src/cnet/cnet_destination_policy.c
-  src/cnet/cnet_client_pool.c
-  src/cnet/cnet_recovery_policy.c
-  src/cnet/cnet_managed_dial.c
-  src/cnet/cnet_sg_host.c
-  src/cnet/cnet_resolver.c
-  src/cnet/cnet_session.c
-  src/cnet/cnet_shards.c
-  src/cnet/cnet_tls.c
-  src/cnet/cnet_transport.c
-  src/cnet/cnet_transport_pipe.c
-  src/cnet/cnet_transport_ipc.c
-  src/cnet/cnet_ipc.c
-  src/cnet/cnet_transport_vsock.c
-  src/cnet/cnet_uri.c
-  src/cnet/cnet_write_queue.c
-  src/cnet/cnet_websocket.c
-  src/cnet/cnet_manager.c
-  src/cnet/cnet_handoff.c
+  cnet/src/cnet_client.c
+  cnet/src/cnet_command.c
+  cnet/src/cnet_datagram.c
+  cnet/src/cnet_kcp.c
+  cnet/src/cnet_kcp_fec.c
+  cnet/src/cnet_kcp_secure.c
+  cnet/src/cnet_secure_kcp.c
+  cnet/src/cnet_packet_endpoint.c
+  cnet/src/cnet_dispatcher.c
+  cnet/src/cnet_event.c
+  cnet/src/cnet_listener.c
+  cnet/src/cnet_module.c
+  cnet/src/cnet_owner.c
+  cnet/src/cnet_owner_strategy.c
+  cnet/src/cnet_destination_policy.c
+  cnet/src/cnet_client_pool.c
+  cnet/src/cnet_recovery_policy.c
+  cnet/src/cnet_managed_dial.c
+  cnet/src/cnet_sg_host.c
+  cnet/src/cnet_resolver.c
+  cnet/src/cnet_session.c
+  cnet/src/cnet_shards.c
+  cnet/src/cnet_tls.c
+  cnet/src/cnet_transport.c
+  cnet/src/cnet_transport_pipe.c
+  cnet/src/cnet_transport_ipc.c
+  cnet/src/cnet_ipc.c
+  cnet/src/cnet_transport_vsock.c
+  cnet/src/cnet_uri.c
+  cnet/src/cnet_write_queue.c
+  cnet/src/cnet_websocket.c
+  cnet/src/cnet_manager.c
+  cnet/src/cnet_handoff.c
   $<TARGET_OBJECTS:saltscore_wsparser>)
 
 add_library(saltscore_cnet SHARED ${_saltscore_cnet_sources})
@@ -93,12 +93,12 @@ if(WIN32)
 endif()
 target_include_directories(saltscore_cnet
   PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/cnet/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
   PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/cnet"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/cnet/wsparser"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/native-io"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cnet/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cnet/src/wsparser"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native-io/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/monocypher"
     "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/reed")
 target_link_libraries(saltscore_cnet
@@ -127,7 +127,7 @@ install(TARGETS saltscore_cnet EXPORT SaltsCoreTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(DIRECTORY include/cnet
+install(DIRECTORY cnet/include/cnet
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.h")
 install(FILES vendor/cnet/reed/LICENSE

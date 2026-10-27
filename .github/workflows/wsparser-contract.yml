@@ -2,14 +2,14 @@ name: SaltsCore WebSocket frame parser contract
 on:
   push:
     paths:
-      - "src/cnet/wsparser/**"
+      - "cnet/src/wsparser/**"
       - "tests/test_wsparser.c"
       - "tests/CMakeLists.txt"
       - "CMakeLists.txt"
       - ".github/workflows/wsparser-contract.yml"
   pull_request:
     paths:
-      - "src/cnet/wsparser/**"
+      - "cnet/src/wsparser/**"
       - "tests/test_wsparser.c"
       - "tests/CMakeLists.txt"
       - "CMakeLists.txt"

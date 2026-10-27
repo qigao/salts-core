@@ -12,7 +12,7 @@ CNet sources taken from `qigao/salts`, head
 - Salts #1293: caller-owned native IPC path instead of tstr/SDS.
 
 All 51 private CNet source/header files and 13 public CNet headers are
-migrated to `src/cnet` / `include/cnet`. Private Monocypher namespace
+migrated into the existing `cnet/src` / `cnet/include/cnet` module structure. Private Monocypher namespace
 sources and Reed-Solomon source/attribution live under `vendor/cnet`.
 Only *documentation* in headers is changed to reflect the new target owner.
 The RFC 6455 parser is consumed from separate M4.1 (PR #14) and compiled
