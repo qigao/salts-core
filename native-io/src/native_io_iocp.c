@@ -1,3 +1,4 @@
+/* Test-only PR #60: NativeIO source path trigger probe; no behavior change. */
 #include "native_io_internal.h"
 #include "native_io_accept_escrow.h"
 
