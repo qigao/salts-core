@@ -15,12 +15,14 @@ struct salts_c11_thread {
     thrd_start_t callback;
     void *argument;
 };
-#if defined(_WIN32)
+#if defined(_WIN32) && defined(_MSC_VER)
 static __declspec(thread) struct salts_c11_thread *current_thread;
 static __declspec(thread) struct salts_c11_thread foreign_thread;
+#elif defined(__clang__) || defined(__GNUC__)
+static _Thread_local struct salts_c11_thread *current_thread;
+static _Thread_local struct salts_c11_thread foreign_thread;
 #else
-static __thread struct salts_c11_thread *current_thread;
-static __thread struct salts_c11_thread foreign_thread;
+#error "C11 thread facade requires real compiler TLS; no shared global fallback"
 #endif
 
 static int status_to_c11(int rc) {
