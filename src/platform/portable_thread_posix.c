@@ -150,8 +150,9 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_create_recursive(salts_platfor
 }
 static int count_recursive_lock(salts_platform_mutex *m) {
     uint32_t old = 0;
-    return !m->recursive || salts_atomic32_fetch_add(&m->active_depth, 1u,
-                  SALTS_MEMORY_ACQ_REL, &old) == SALTS_OK ? SALTS_OK : SALTS_EINVAL;
+    if (!m->recursive) return SALTS_OK;
+    return salts_atomic32_fetch_add(&m->active_depth, 1u,
+                     SALTS_MEMORY_ACQ_REL, &old);
 }
 int SALTS_CORE_PLATFORM_CALL salts_platform_mutex_lock(salts_platform_mutex *m) {
     int rc;
@@ -266,14 +267,8 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_condition_create(salts_platform_cond
 #endif
     *out = c; return SALTS_OK;
 }
-static int condition_mutex_depth_valid(salts_platform_mutex *m) {
-    uint32_t depth = 0;
-    if (!m->recursive) return 1;
-    return salts_atomic32_load(&m->active_depth, SALTS_MEMORY_ACQUIRE,
-                               &depth) == SALTS_OK && depth == 1u;
-}
 int SALTS_CORE_PLATFORM_CALL salts_platform_condition_wait(salts_platform_condition *c, salts_platform_mutex *m) {
-    if (!c || !m || !condition_mutex_depth_valid(m)) return SALTS_EINVAL;
+    if (!c || !m) return SALTS_EINVAL; /* recursive caller: depth exactly 1 */
     return pthread_cond_wait(&c->native, &m->native) == 0 ? SALTS_OK : SALTS_EINVAL;
 }
 int SALTS_CORE_PLATFORM_CALL salts_platform_condition_timedwait_ns(
@@ -281,8 +276,7 @@ int SALTS_CORE_PLATFORM_CALL salts_platform_condition_timedwait_ns(
     const uint64_t seconds = timeout_ns / 1000000000ull;
     struct timespec deadline;
     int rc;
-    if (!c || !m || !condition_mutex_depth_valid(m) ||
-        timeout_ns > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS ||
+    if (!c || !m || timeout_ns > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS ||
         seconds > (uint64_t)INT64_MAX) return SALTS_EINVAL;
 #if defined(__APPLE__)
     deadline.tv_sec = (time_t)seconds;
