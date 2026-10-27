@@ -185,8 +185,23 @@ jobs:
           }
           $recursiveClient = (Resolve-Path native-arm64/tcc_c11_recursive_arm64.exe).Path
           for ($i=1; $i -le 10; $i++) {
-            & $recursiveClient
-            if ($LASTEXITCODE -ne 0) { throw "Native ARM64 TinyCC C11 recursive mutex failed $i" }
+            Write-Host "ARM64 recursive mutex native attempt $i"
+            $info = [System.Diagnostics.ProcessStartInfo]::new()
+            $info.FileName = $recursiveClient
+            $info.UseShellExecute = $false
+            $proc = [System.Diagnostics.Process]::Start($info)
+            if (-not $proc) { throw "Could not launch native ARM64 recursive client" }
+            if (-not $proc.WaitForExit(15000)) {
+              $proc.Kill($true)
+              $proc.WaitForExit()
+              $proc.Dispose()
+              throw "Native ARM64 recursive mutex HANG on attempt $i (15s watchdog)"
+            }
+            $exitCode = $proc.ExitCode
+            $proc.Dispose()
+            if ($exitCode -ne 0) {
+              throw "Native ARM64 TinyCC C11 recursive mutex FAILED attempt=$i exit=$exitCode"
+            }
           }
   linux-native-tinycc:
     runs-on: ubuntu-22.04
