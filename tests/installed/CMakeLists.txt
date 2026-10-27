@@ -134,3 +134,29 @@ add_executable(portable_concurrency_consumer_cpp portable_concurrency_consumer.c
 target_compile_features(portable_concurrency_consumer_cpp PRIVATE cxx_std_17)
 target_link_libraries(portable_concurrency_consumer_cpp PRIVATE Salts::Platform)
 add_test(NAME sdk.portable_concurrency_cpp COMMAND portable_concurrency_consumer_cpp)
+
+
+# Installed C11 source compatibility: explicitly select our threads.h, never
+# assume the provider's private build tree or system compiler's threads.h.
+get_target_property(_platform_sdk_includes Salts::Platform INTERFACE_INCLUDE_DIRECTORIES)
+set(_salts_sdk_c11_dir "")
+foreach(_candidate IN LISTS _platform_sdk_includes)
+  if(IS_DIRECTORY "${_candidate}") # replaced below with per-item expression
+    if(EXISTS "${_candidate}/salts_core/c11/threads.h")
+      set(_salts_sdk_c11_dir "${_candidate}/salts_core/c11")
+      break()
+    endif()
+  endif()
+endforeach()
+if(_salts_sdk_c11_dir STREQUAL "")
+  message(FATAL_ERROR "Installed Salts::Platform is missing its opt-in C11 threads.h facade")
+endif()
+foreach(_lang IN ITEMS c cpp)
+  add_executable(c11_threads_installed_${_lang} c11_threads_consumer.${_lang})
+  target_include_directories(c11_threads_installed_${_lang} BEFORE PRIVATE
+    "${_salts_sdk_c11_dir}")
+  target_compile_definitions(c11_threads_installed_${_lang} PRIVATE
+    SALTS_C11_THREADS_EXPERIMENTAL=1)
+  target_link_libraries(c11_threads_installed_${_lang} PRIVATE Salts::Platform)
+  add_test(NAME sdk.c11_threads_${_lang} COMMAND c11_threads_installed_${_lang})
+endforeach()
