@@ -20,14 +20,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: qigao/crypto
-          ref: 36baa9fa6d2b008bb9dbf25dbecb8931af3be874
+          ref: 328c5efd7f1fe9b24738a0cdfcf00a40e3f6b68b
           path: repo
           persist-credentials: false
       - name: Qualify one exact source head, install ASN1, test X509 without GmSSL
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C repo rev-parse HEAD)" = "36baa9fa6d2b008bb9dbf25dbecb8931af3be874"
+          test "$(git -C repo rev-parse HEAD)" = "328c5efd7f1fe9b24738a0cdfcf00a40e3f6b68b"
           python3 repo/tools/check_module_ownership.py
           if [[ "$RUNNER_OS" == Windows ]]; then
             gen=(-G 'Visual Studio 18 2026' -A x64)
@@ -58,7 +58,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: qigao/crypto
-          ref: 36baa9fa6d2b008bb9dbf25dbecb8931af3be874
+          ref: 328c5efd7f1fe9b24738a0cdfcf00a40e3f6b68b
           path: repo
           persist-credentials: false
       - name: One ASN1 parser and X509 source under ASan UBSan LeakSanitizer
