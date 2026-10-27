@@ -23,7 +23,13 @@ struct salts_platform_thread {
 };
 struct salts_platform_mutex { SRWLOCK native; };
 struct salts_platform_condition { CONDITION_VARIABLE native; };
+#if defined(_MSC_VER)
 static __declspec(thread) salts_platform_thread *salts_platform_current;
+#elif defined(__clang__) || defined(__GNUC__)
+static _Thread_local salts_platform_thread *salts_platform_current;
+#else
+#error "Windows Platform Thread TLS requires supported compiler TLS, not a global fallback"
+#endif
 uint64_t SALTS_CORE_PLATFORM_CALL salts_platform_thread_current_id(void) {
     return (uint64_t)GetCurrentThreadId();
 }
