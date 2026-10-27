@@ -6,6 +6,7 @@
  * verified CA/hostname and one TLS protocol are admitted.
  */
 #include "public_context.h"
+#include "cnet_crypto_owner_admission.h"
 #include <cnet/cnet.h>
 #include <crypto/tls.h>
 #include <crypto/cipher_bio.h>
@@ -129,6 +130,114 @@ static int pump(cnet_client *dialer, cnet_client *acceptor)
         goto done; \
     } \
 } while (0)
+
+/* Admission must be strict at the existing PUBLIC CNet policy boundary.
+ * A rejected descriptor remains untouched; no caller-owned files, sessions
+ * or NativeIO requests are borrowed before explicit policy acceptance.
+ */
+static int check_m5_policy_admission(void)
+{
+    cnet_tls_client_config client = {0};
+    cnet_tls_server_config server = {0};
+    crypto_tls_session_options out = {0}, marker = {0};
+    size_t capacity = CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY;
+    char too_long[CRYPTO_TLS_AUTH_MAX_PATH_BYTES + 2u];
+    int rc = 1;
+#define ADMIT_TEST(x) do { \
+    if (!(x)) { \
+        fprintf(stderr, "M5 CNet policy admission failed line %d: %s\\n", __LINE__, #x); \
+        goto done; \
+    } \
+} while (0)
+
+    client.size = sizeof(client);
+    client.server_name = "localhost";
+    client.ca_file = SDK_CA_FILE;
+    client.cert_file = SDK_SERVER_CERT_FILE;
+    client.key_file = SDK_SERVER_KEY_FILE;
+    server.size = sizeof(server);
+    server.client_auth = CNET_TLS_CLIENT_AUTH_REQUIRED;
+    server.cert_file = SDK_SERVER_CERT_FILE;
+    server.key_file = SDK_SERVER_KEY_FILE;
+    server.ca_file = SDK_CA_FILE;
+    out.struct_size = UINT32_C(0xdead0102);
+    marker = out;
+    ADMIT_TEST(cnet_crypto_owner_admit_client(
+        &client, "localhost", CRYPTO_TLS_1_2, capacity,
+        CNET_CRYPTO_OWNER_TEST_ONLY, &out) == SALTS_OK);
+    ADMIT_TEST(out.role == CRYPTO_TLS_CLIENT && out.ca_file == SDK_CA_FILE);
+    out = marker;
+    ADMIT_TEST(cnet_crypto_owner_admit_server(
+        &server, CRYPTO_TLS_1_3, capacity, CNET_CRYPTO_OWNER_TEST_ONLY,
+        &out) == SALTS_OK);
+    ADMIT_TEST(out.role == CRYPTO_TLS_SERVER && out.protocol == CRYPTO_TLS_1_3);
+
+    out = marker;
+    client.key_file = NULL;
+    ADMIT_TEST(cnet_crypto_owner_admit_client(
+        &client, "localhost", CRYPTO_TLS_1_2, capacity,
+        CNET_CRYPTO_OWNER_TEST_ONLY, &out) == SALTS_EINVAL);
+    ADMIT_TEST(memcmp(&out, &marker, sizeof(out)) == 0);
+    client.key_file = SDK_SERVER_KEY_FILE;
+    client.ca_file = NULL;
+    ADMIT_TEST(cnet_crypto_owner_admit_client(
+        &client, "localhost", CRYPTO_TLS_1_2, capacity,
+        CNET_CRYPTO_OWNER_TEST_ONLY, &out) == SALTS_ENOTSUP);
+    ADMIT_TEST(memcmp(&out, &marker, sizeof(out)) == 0);
+    client.ca_file = SDK_CA_FILE;
+    client.ca_path = "/tmp/must-not-use-trust-dir";
+    ADMIT_TEST(cnet_crypto_owner_admit_client(
+        &client, "localhost", CRYPTO_TLS_1_2, capacity,
+        CNET_CRYPTO_OWNER_TEST_ONLY, &out) == SALTS_ENOTSUP);
+    ADMIT_TEST(memcmp(&out, &marker, sizeof(out)) == 0);
+    client.ca_path = NULL;
+    client.security_profile = CNET_TLS_SECURITY_PROFILE_SHANGMI_TLS13;
+    ADMIT_TEST(cnet_crypto_owner_admit_client(
+        &client, "localhost", CRYPTO_TLS_1_3, capacity,
+        CNET_CRYPTO_OWNER_TEST_ONLY, &out) == SALTS_ENOTSUP);
+    ADMIT_TEST(memcmp(&out, &marker, sizeof(out)) == 0);
+    client.security_profile = CNET_TLS_SECURITY_PROFILE_STANDARD;
+    ADMIT_TEST(cnet_crypto_owner_admit_client(
+        &client, "localhost", CRYPTO_TLS_1_2, capacity,
+        CNET_CRYPTO_OWNER_PRODUCTION, &out) == SALTS_ENOTSUP);
+    ADMIT_TEST(memcmp(&out, &marker, sizeof(out)) == 0);
+    memset(too_long, 'X', sizeof(too_long));
+    too_long[sizeof(too_long) - 1u] = '\0';
+    client.cert_file = too_long;
+    ADMIT_TEST(cnet_crypto_owner_admit_client(
+        &client, "localhost", CRYPTO_TLS_1_2, capacity,
+        CNET_CRYPTO_OWNER_TEST_ONLY, &out) == SALTS_EINVAL);
+    ADMIT_TEST(memcmp(&out, &marker, sizeof(out)) == 0);
+
+    out = marker;
+    server.ca_file = NULL;
+    ADMIT_TEST(cnet_crypto_owner_admit_server(
+        &server, CRYPTO_TLS_1_2, capacity, CNET_CRYPTO_OWNER_TEST_ONLY,
+        &out) == SALTS_ENOTSUP);
+    ADMIT_TEST(memcmp(&out, &marker, sizeof(out)) == 0);
+    server.ca_file = SDK_CA_FILE;
+    server.ca_path = "/tmp/must-not-use-trust-dir";
+    ADMIT_TEST(cnet_crypto_owner_admit_server(
+        &server, CRYPTO_TLS_1_2, capacity, CNET_CRYPTO_OWNER_TEST_ONLY,
+        &out) == SALTS_ENOTSUP);
+    ADMIT_TEST(memcmp(&out, &marker, sizeof(out)) == 0);
+    server.ca_path = NULL;
+    server.security_profile = CNET_TLS_SECURITY_PROFILE_TLCP11;
+    ADMIT_TEST(cnet_crypto_owner_admit_server(
+        &server, CRYPTO_TLS_1_2, capacity, CNET_CRYPTO_OWNER_TEST_ONLY,
+        &out) == SALTS_ENOTSUP);
+    ADMIT_TEST(memcmp(&out, &marker, sizeof(out)) == 0);
+    server.security_profile = CNET_TLS_SECURITY_PROFILE_STANDARD;
+    ADMIT_TEST(cnet_crypto_owner_admit_server(
+        &server, CRYPTO_TLS_1_2, capacity, CNET_CRYPTO_OWNER_PRODUCTION,
+        &out) == SALTS_ENOTSUP);
+    ADMIT_TEST(memcmp(&out, &marker, sizeof(out)) == 0);
+
+    rc = 0;
+done:
+#undef ADMIT_TEST
+    return rc;
+}
 
 typedef struct m5_mtls_case {
     const char *ca, *server_cert, *server_key;
@@ -527,6 +636,7 @@ int main(int argc, char **argv)
         return run_protocol(protocol, false, &m);
     }
     if (argc != 1) return external_main(argc, argv);
+    if (check_m5_policy_admission() != 0) return 3;
     cnet_tls_client dummy = {0};
     cnet_tls_client_config default_policy = {0};
     default_policy.size = sizeof(default_policy);
