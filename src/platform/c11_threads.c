@@ -116,20 +116,16 @@ int SALTS_CORE_PLATFORM_CALL thrd_equal(thrd_t a, thrd_t b) {
 void SALTS_CORE_PLATFORM_CALL thrd_yield(void) {
     salts_platform_thread_yield();
 }
-int SALTS_CORE_PLATFORM_CALL thrd_sleep(const struct timespec *duration,
-                                         struct timespec *remaining) {
+/* Stable cross-compiler transport: duration is NOT a CRT timespec pointer. */
+int SALTS_CORE_PLATFORM_CALL salts_c11_thrd_sleep_abi(
+    uint64_t seconds, uint32_t nanos) {
     uint64_t ns;
-    if (!duration || duration->tv_sec < 0 ||
-        duration->tv_nsec < 0 || duration->tv_nsec >= 1000000000L ||
-        (uint64_t)duration->tv_sec >
-            SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS / 1000000000ull)
+    if (nanos >= 1000000000u ||
+        seconds > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS / 1000000000ull)
         return -1;
-    ns = (uint64_t)duration->tv_sec * 1000000000ull +
-         (uint64_t)duration->tv_nsec;
+    ns = seconds * 1000000000ull + (uint64_t)nanos;
     if (ns > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS) return -1;
-    if (salts_platform_thread_sleep_ns(ns) != SALTS_OK) return -1;
-    if (remaining) { remaining->tv_sec = 0; remaining->tv_nsec = 0; }
-    return 0;
+    return salts_platform_thread_sleep_ns(ns) == SALTS_OK ? 0 : -1;
 }
 void SALTS_CORE_PLATFORM_CALL thrd_exit(int result) {
     struct salts_c11_thread *thread = current_thread;
@@ -142,27 +138,31 @@ void SALTS_CORE_PLATFORM_CALL thrd_exit(int result) {
     abort();
 }
 
-static int deadline_to_relative_ns(const struct timespec *abs, uint64_t *out) {
+/* Calendar TIME_UTC conversion happens after the client has marshalled its
+ * own struct timespec layout into fixed-width sec/nsec. No native time_t
+ * or structure padding crosses a TinyCC/Clang/MSVC DLL boundary.
+ */
+static int deadline_to_relative_ns(int64_t utc_seconds, uint32_t nanos,
+                                    uint64_t *out) {
     uint64_t now_ms, now_secs, now_ns, sec, delta, extra;
-    if (!abs || !out || abs->tv_nsec < 0 || abs->tv_nsec >= 1000000000L)
-        return thrd_error;
-    if (abs->tv_sec < 0) { *out = 0; return thrd_success; }
-    sec = (uint64_t)abs->tv_sec;
+    if (!out || nanos >= 1000000000u) return thrd_error;
+    if (utc_seconds < 0) { *out = 0; return thrd_success; }
+    sec = (uint64_t)utc_seconds;
     now_ms = cmeta_realtime_ms();
     now_secs = now_ms / 1000ull;
     now_ns = (now_ms % 1000ull) * 1000000ull;
-    if (sec < now_secs ||
-        (sec == now_secs && (uint64_t)abs->tv_nsec <= now_ns)) {
+    if (sec < now_secs || (sec == now_secs && (uint64_t)nanos <= now_ns)) {
         *out = 0;
         return thrd_success;
     }
     if (sec == now_secs) {
-        *out = (uint64_t)abs->tv_nsec - now_ns;
+        *out = (uint64_t)nanos - now_ns;
         return thrd_success;
     }
     delta = sec - now_secs - 1ull;
-    extra = 1000000000ull - now_ns + (uint64_t)abs->tv_nsec;
-    if (delta > (SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS - extra) / 1000000000ull)
+    extra = 1000000000ull - now_ns + (uint64_t)nanos;
+    if (extra > SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS ||
+        delta > (SALTS_PLATFORM_MAX_RELATIVE_WAIT_NS - extra) / 1000000000ull)
         return thrd_error;
     *out = delta * 1000000000ull + extra;
     return thrd_success;
@@ -184,10 +184,12 @@ int SALTS_CORE_PLATFORM_CALL mtx_trylock(mtx_t *m) {
     if (rc == SALTS_ETIMEDOUT) return thrd_busy;
     return status_to_c11(rc);
 }
-int SALTS_CORE_PLATFORM_CALL mtx_timedlock(mtx_t *m, const struct timespec *abs) {
+int SALTS_CORE_PLATFORM_CALL salts_c11_mtx_timedlock_abi(
+    mtx_t *m, int64_t utc_seconds, uint32_t nanos) {
     uint64_t ns;
     if (!m || !m->owner || m->type != mtx_timed ||
-        deadline_to_relative_ns(abs, &ns) != thrd_success) return thrd_error;
+        deadline_to_relative_ns(utc_seconds, nanos, &ns) != thrd_success)
+        return thrd_error;
     return status_to_c11(salts_platform_mutex_timedlock_ns(m->owner, ns));
 }
 int SALTS_CORE_PLATFORM_CALL mtx_unlock(mtx_t *m) {
@@ -207,11 +209,14 @@ int SALTS_CORE_PLATFORM_CALL cnd_wait(cnd_t *c, mtx_t *m) {
     return status_to_c11(c && m && c->owner && m->owner ?
         salts_platform_condition_wait(c->owner,m->owner) : SALTS_EINVAL);
 }
-int SALTS_CORE_PLATFORM_CALL cnd_timedwait(cnd_t *c, mtx_t *m, const struct timespec *abs) {
+int SALTS_CORE_PLATFORM_CALL salts_c11_cnd_timedwait_abi(
+    cnd_t *c, mtx_t *m, int64_t utc_seconds, uint32_t nanos) {
     uint64_t ns;
     if (!c || !m || !c->owner || !m->owner ||
-        deadline_to_relative_ns(abs, &ns) != thrd_success) return thrd_error;
-    return status_to_c11(salts_platform_condition_timedwait_ns(c->owner,m->owner,ns));
+        deadline_to_relative_ns(utc_seconds, nanos, &ns) != thrd_success)
+        return thrd_error;
+    return status_to_c11(salts_platform_condition_timedwait_ns(
+                             c->owner, m->owner, ns));
 }
 int SALTS_CORE_PLATFORM_CALL cnd_signal(cnd_t *c) {
     return status_to_c11(c && c->owner ? salts_platform_condition_signal(c->owner) : SALTS_EINVAL);
