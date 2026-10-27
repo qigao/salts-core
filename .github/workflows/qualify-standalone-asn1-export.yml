@@ -41,7 +41,7 @@ jobs:
             archive=libsalts_asn1.a
           fi
           cmake -S repo/asn1 -B build-asn1 "${generator[@]}" \
-            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_BUILD_TYPE=Release
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release
           cmake --build build-asn1 --config Release --parallel 2
           ctest --test-dir build-asn1 -C Release --no-tests=error --output-on-failure
           cmake --install build-asn1 --config Release --prefix "$sdk"
@@ -112,7 +112,7 @@ jobs:
             source="$PWD/repo/crypto"
           fi
           cmake -S repo/asn1 -B build-asn1 "${generator[@]}" \
-            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_BUILD_TYPE=Release
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release
           cmake --build build-asn1 --config Release --parallel 2
           cmake --install build-asn1 --config Release --prefix "$sdk"
           cmake -S tests/asn1-crypto-format-qualification -B build-formats \
@@ -173,7 +173,8 @@ jobs:
           gmssl="$root/crypto/vcpkg_installed/${{ matrix.triplet }}"
           test -s "$gmssl/lib/$gmsslarchive"
           cmake -S repo -B build-all "${generator[@]}" \
-            -DBUILD_TESTING=ON "-DCRYPTO_GMSSL_ROOT=$gmssl"
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release \
+            "-DCRYPTO_GMSSL_ROOT=$gmssl"
           cmake --build build-all --config Release --parallel 2
           ctest --test-dir build-all -C Release \
             --no-tests=error --output-on-failure --timeout 120
@@ -181,12 +182,12 @@ jobs:
           python3 repo/crypto/tools/audit_static_crypto.py \
             --prefix "$sdk" --report "$RUNNER_TEMP/two-module-static-audit.json"
           cmake -S repo/asn1/tests/installed -B build-consumer-asn1 \
-            "${generator[@]}" "-DCMAKE_PREFIX_PATH=$sdk"
+            "${generator[@]}" -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$sdk"
           cmake --build build-consumer-asn1 --config Release --parallel 2
           ctest --test-dir build-consumer-asn1 -C Release \
             --no-tests=error --output-on-failure --timeout 120
           cmake -S repo/crypto/tests/asn1/installed -B build-consumer-crypto \
-            "${generator[@]}" "-DCMAKE_PREFIX_PATH=$sdk"
+            "${generator[@]}" -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$sdk"
           cmake --build build-consumer-crypto --config Release --parallel 2
           ctest --test-dir build-consumer-crypto -C Release \
             --no-tests=error --output-on-failure --timeout 120
