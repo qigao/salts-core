@@ -34,9 +34,9 @@ target_include_directories(saltscore_cnet_original_test_owner
     "${PROJECT_SOURCE_DIR}/native-io/include"
     "${PROJECT_SOURCE_DIR}/concurrency/include"
     "${PROJECT_SOURCE_DIR}/cnet/include"
-    "${PROJECT_SOURCE_DIR}/src/cnet"
+    "${PROJECT_SOURCE_DIR}/cnet/src"
     "${PROJECT_SOURCE_DIR}/cnet/src/wsparser"
-    "${PROJECT_SOURCE_DIR}/src/native-io"
+    "${PROJECT_SOURCE_DIR}/native-io/src"
     "${PROJECT_SOURCE_DIR}/vendor/cnet/monocypher"
     "${PROJECT_SOURCE_DIR}/vendor/cnet/reed")
 target_link_libraries(saltscore_cnet_original_test_owner
@@ -63,7 +63,7 @@ target_include_directories(saltscore_cnet_owner_original_test PRIVATE
     "${PROJECT_SOURCE_DIR}/native-io/include"
     "${PROJECT_SOURCE_DIR}/concurrency/include"
     "${PROJECT_SOURCE_DIR}/cnet/include"
-  "${PROJECT_SOURCE_DIR}/src/cnet")
+  "${PROJECT_SOURCE_DIR}/cnet/src")
 target_link_libraries(saltscore_cnet_owner_original_test PRIVATE
   saltscore_cnet_original_test_owner Salts::TinyTest)
 if(WIN32)
