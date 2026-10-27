@@ -129,12 +129,13 @@ jobs:
             -DVCPKG_MANIFEST_FEATURES=cnet \
             -DSALTSCORE_BUILD_URI=ON -DSALTSCORE_BUILD_CNET=ON \
             -DSALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST=ON \
+            -DSALTSCORE_CNET_STATIC_CRYPTO_OPENSSL_SAN_TEST=ON \
             "-DSALTSCORE_CRYPTO_TEST_FIXTURES=$RUNNER_TEMP/crypto-src/tests/fixtures" \
             "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/crypto-installed"
           cmake --build "$RUNNER_TEMP/core-static-owner-build" --parallel 2
           ctest --test-dir "$RUNNER_TEMP/core-static-owner-build" -C Release \
             --output-on-failure --no-tests=error \
-            -R '^saltscore[.]cnet_crypto_static_original_owner_tls12_tls13$' \
+            -R '^saltscore[.]cnet_crypto_static_(original_owner_tls12_tls13|openssl_san_tls12|openssl_san_tls13)$' \
             --repeat until-fail:3
           ctest --test-dir "$RUNNER_TEMP/core-static-owner-build" -C Release \
             --output-on-failure --no-tests=error \
@@ -309,13 +310,14 @@ jobs:
             '-DSALTSCORE_BUILD_URI=ON',
             '-DSALTSCORE_BUILD_CNET=ON',
             '-DSALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST=ON',
+            '-DSALTSCORE_CNET_STATIC_CRYPTO_OPENSSL_SAN_TEST=ON',
             "-DSALTSCORE_CRYPTO_TEST_FIXTURES=$env:RUNNER_TEMP/crypto-src/tests/fixtures",
             "-DCMAKE_PREFIX_PATH=$sdk")
           & cmake @params
           if ($LASTEXITCODE -ne 0) { throw 'Original Owner static CNet configure failed' }
           & cmake --build $build --config Release --parallel 2
           if ($LASTEXITCODE -ne 0) { throw 'Original Owner static CNet compile/link failed' }
-          & ctest --test-dir $build -C Release --output-on-failure --no-tests=error -R '^saltscore[.]cnet_crypto_static_original_owner_tls12_tls13$' --repeat until-fail:3
+          & ctest --test-dir $build -C Release --output-on-failure --no-tests=error -R '^saltscore[.]cnet_crypto_static_(original_owner_tls12_tls13|openssl_san_tls12|openssl_san_tls13)$' --repeat until-fail:3
           if ($LASTEXITCODE -ne 0) { throw 'M2 genuine IOCP Crypto TLS Owner failed' }
           & ctest --test-dir $build -C Release --output-on-failure --no-tests=error -R '^saltscore[.]cnet_(tcp_loopback|tls_ca_san)$'
           if ($LASTEXITCODE -ne 0) { throw 'Incumbent GmSSL regression failed' }

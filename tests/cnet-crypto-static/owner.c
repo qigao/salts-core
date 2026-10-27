@@ -353,8 +353,114 @@ done:
     return rc;
 }
 
-int main(void)
+
+/* Independent OpenSSL 3 server is launched in ANOTHER PROCESS by Python.
+ * It presents the exact trusted 'localhost' certificate irrespective of
+ * client SNI. A wrong.example failure can then only be counted when the
+ * original CNet client rejects authentication, never a GmSSL server-side
+ * SNI filter in the same local static-provider test pair.
+ */
+static void external_state(void *user, cnet_connection handle,
+                           cnet_connection_state state,
+                           const cnet_error *error)
 {
+    observed_peer *p = (observed_peer *)user;
+    (void)handle;
+    if (state == CNET_CONNECTION_CONNECTED) ++p->connected;
+    if (state == CNET_CONNECTION_FAILED) ++p->failed;
+    if (state == CNET_CONNECTION_FAILED ||
+        state == CNET_CONNECTION_CLOSED) ++p->terminal;
+    if (error != NULL) p->last_error = *error;
+}
+
+static int run_external_san(unsigned port, uint32_t protocol, bool accept_peer)
+{
+    crypto_tls_provider *provider = NULL;
+    cnet_tls_client profile = {0};
+    cnet_tls_client_config tls_policy = {0};
+    cnet_client dialer = {0};
+    cnet_connection connection = {0};
+    observed_peer observed = {0};
+    cnet_observer callbacks = {external_state, on_borrowed,
+                               &observed, on_sent};
+    const cnet_client_config options = client_config();
+    const char *hostname = accept_peer ? "localhost" : "wrong.example";
+    char uri[96];
+    uint64_t deadline = 0u;
+    int rc = 1, dialer_live = 0;
+    size_t events = 0u;
+
+    CHECK(crypto_tls_provider_create(CRYPTO_TLS_ABI_VERSION, &provider)
+          == CRYPTO_TLS_OK && provider != NULL);
+    tls_policy.size = sizeof(tls_policy);
+    tls_policy.ca_file = SDK_CA_FILE; /* correct authority in BOTH cases */
+    tls_policy.server_name = hostname;
+    CHECK(cnet_crypto_test_bind_client(
+        &profile, provider, &tls_policy, hostname, protocol,
+        CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY) == SALTS_OK);
+    CHECK(cnet_client_init(&dialer, &options) == SALTS_OK);
+    dialer_live = 1;
+    CHECK(snprintf(uri, sizeof(uri), "tls://127.0.0.1:%u", port) > 0);
+    {
+        cnet_connect_options connect = {0};
+        connect.uri = uri;
+        connect.tls_client = &profile;
+        connect.observer = callbacks;
+        CHECK(cnet_connect(&dialer, &connect, &connection) == SALTS_OK);
+    }
+    deadline = cmeta_monotonic_ms() + APP_TIMEOUT_MS;
+    for (; cmeta_monotonic_ms() < deadline; ) {
+        CHECK(cnet_client_poll(&dialer, 2u, &events) == SALTS_OK);
+        if (observed.connected || observed.failed) break;
+    }
+    if (accept_peer)
+        CHECK(observed.connected == 1u && observed.failed == 0u);
+    else
+        CHECK(observed.connected == 0u && observed.failed >= 1u);
+    rc = 0;
+done:
+    if (dialer_live) {
+        if (cnet_client_stop(&dialer, 5000u) != SALTS_OK) rc = 1;
+        if (cnet_client_destroy(&dialer) != SALTS_OK) rc = 1;
+    }
+    if (cnet_tls_client_destroy(&profile) != SALTS_OK) rc = 1;
+    if (provider && crypto_tls_provider_destroy(&provider) != CRYPTO_TLS_OK)
+        rc = 1;
+    if (rc)
+        fprintf(stderr,
+            "OpenSSL independent peer / static CNet client TLS0x%x %s"
+            " failed: connected=%zu failed=%zu terminal=%zu"
+            " status=%d stage=%s\n",
+            protocol, hostname, observed.connected, observed.failed,
+            observed.terminal, observed.last_error.status,
+            observed.last_error.stage ? observed.last_error.stage : "(none)");
+    return rc;
+}
+
+static int external_main(int argc, char **argv)
+{
+    char *end = NULL;
+    unsigned long port;
+    uint32_t protocol;
+    bool accept_peer;
+    if (argc != 5 || strcmp(argv[1], "--external-san") != 0)
+        return 2;
+    port = strtoul(argv[2], &end, 10);
+    if (argv[2][0] == '\0' || end == argv[2] || *end != '\0' ||
+        port == 0ul || port > 65535ul)
+        return 2;
+    if (strcmp(argv[3], "tls12") == 0) protocol = CRYPTO_TLS_1_2;
+    else if (strcmp(argv[3], "tls13") == 0) protocol = CRYPTO_TLS_1_3;
+    else return 2;
+    if (strcmp(argv[4], "localhost") == 0) accept_peer = true;
+    else if (strcmp(argv[4], "wrong.example") == 0) accept_peer = false;
+    else return 2;
+    return run_external_san((unsigned)port, protocol, accept_peer);
+}
+
+int main(int argc, char **argv)
+{
+    if (argc != 1) return external_main(argc, argv);
     cnet_tls_client dummy = {0};
     cnet_tls_client_config default_policy = {0};
     default_policy.size = sizeof(default_policy);
