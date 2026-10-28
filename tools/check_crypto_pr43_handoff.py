@@ -45,6 +45,19 @@ def check(root: Path, source: dict) -> list[str]:
                 or ".." in Path(relative).parts or Path(relative).is_absolute()):
             errors.append("invalid source or destination entry: " + old)
             continue
+        if old == "crypto/CMakeLists.txt":
+            # The original byte-exact donor remains a REQUIRED immutable
+            # archive; the active, module-owned CMake can now evolve without
+            # rewriting historical PR #43 evidence or waiving its hash.
+            if (relative != "crypto/provenance/pr43/CMakeLists.txt"
+                    or entry.get("source_blob_sha") !=
+                       "230dacdd80e5cb5f336a2ab0627728ba31135864"
+                    or entry.get("destination_blob_sha") !=
+                       "230dacdd80e5cb5f336a2ab0627728ba31135864"
+                    or entry.get("kind") != "byte_exact"):
+                errors.append("Historical Crypto PR43 CMake provenance cannot be rewritten")
+            if not (root / "crypto/CMakeLists.txt").is_file():
+                errors.append("Active module-owned Crypto/CMakeLists.txt missing")
         file = root / relative
         if not file.is_file():
             errors.append("Missing migrated original file: " + relative)
