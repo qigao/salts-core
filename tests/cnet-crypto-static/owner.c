@@ -271,10 +271,12 @@ typedef struct m5_mtls_case {
 /* The original CNet clients and NativeIO Owners remain unchanged.
  * Python-generated file fixtures remain alive until full owner teardown.
  */
-static int run_protocol(uint32_t protocol, bool with_alpn,
+static int run_protocol(crypto_tls_provider *borrowed_provider,
+                        uint32_t protocol, bool with_alpn,
                         const m5_mtls_case *mtls)
 {
-    crypto_tls_provider *provider = NULL;
+    crypto_tls_provider *provider = borrowed_provider;
+    const bool owns_provider = borrowed_provider == NULL;
     cnet_tls_client profile = {0};
     cnet_tls_server identity = {0};
     cnet_tls_client_config client_policy = {0};
@@ -310,8 +312,10 @@ static int run_protocol(uint32_t protocol, bool with_alpn,
     const char *const client_offers[] = {client_h2, client_http};
     const char *const server_offers[] = {server_h2};
 
-    CHECK(crypto_tls_provider_create(CRYPTO_TLS_ABI_VERSION, &provider)
-          == CRYPTO_TLS_OK);
+    if (owns_provider) {
+        CHECK(crypto_tls_provider_create(CRYPTO_TLS_ABI_VERSION, &provider)
+              == CRYPTO_TLS_OK);
+    }
     client_policy.size = sizeof(client_policy);
     client_policy.ca_file = mtls ? mtls->ca : SDK_CA_FILE;
     client_policy.server_name = "localhost";
@@ -503,7 +507,8 @@ done:
     if (cnet_tls_client_destroy(&profile) != SALTS_OK ||
         cnet_tls_server_destroy(&identity) != SALTS_OK)
         rc = 1;
-    if (provider && crypto_tls_provider_destroy(&provider) != CRYPTO_TLS_OK)
+    if (owns_provider && provider &&
+        crypto_tls_provider_destroy(&provider) != CRYPTO_TLS_OK)
         rc = 1;
     if (rc) fprintf(stderr,
         "Original CNet TLS Owner 0x%x failed client_state=%zu/%zu/%zu"
@@ -519,6 +524,33 @@ done:
 }
 
 
+#if defined(CNET_M6_BUILD_SHARED)
+/* Reuse the SAME original CNet/NativeIO TLS1.2/1.3 M5 acceptance,
+ * with an explicitly BORROWED Provider from the sole shared CNet DLL.
+ * TLS/transport states are owned and torn down by each worker thread.
+ * No TLS implementation nor trust fallback is introduced here.
+ */
+int cnet_m6_original_owner_mtls_case(
+    crypto_tls_provider *shared_provider, uint32_t protocol,
+    const char *ca, const char *server_cert, const char *server_key,
+    const char *client_cert, const char *client_key, bool expect_accept)
+{
+    m5_mtls_case fixture = {0};
+    if (shared_provider == NULL || ca == NULL || server_cert == NULL ||
+        server_key == NULL ||
+        (protocol != CRYPTO_TLS_1_2 && protocol != CRYPTO_TLS_1_3) ||
+        ((client_cert == NULL) != (client_key == NULL)))
+        return SALTS_EINVAL;
+    fixture.ca = ca;
+    fixture.server_cert = server_cert;
+    fixture.server_key = server_key;
+    fixture.client_cert = client_cert;
+    fixture.client_key = client_key;
+    fixture.expect_accept = expect_accept;
+    return run_protocol(shared_provider, protocol, false, &fixture) == 0
+        ? SALTS_OK : SALTS_EIO;
+}
+#else
 /* Independent OpenSSL 3 server is launched in ANOTHER PROCESS by Python.
  * It presents the exact trusted 'localhost' certificate irrespective of
  * client SNI. A wrong.example failure can then only be counted when the
@@ -658,7 +690,7 @@ int main(int argc, char **argv)
         m.client_key = strcmp(argv[7], "-") == 0 ? NULL : argv[7];
         m.expect_accept = strcmp(argv[8], "accept") == 0;
         if (!m.expect_accept && strcmp(argv[8], "reject") != 0) return 2;
-        return run_protocol(protocol, false, &m);
+        return run_protocol(NULL, protocol, false, &m);
     }
     if (argc != 1) return external_main(argc, argv);
     if (check_m5_policy_admission() != 0) return 3;
@@ -668,9 +700,10 @@ int main(int argc, char **argv)
     if (cnet_tls_client_init(&dummy, &default_policy) != SALTS_ENOTSUP ||
         dummy.impl != NULL)
         return 2; /* Never admit implicit root stores/default TLS range. */
-    if (run_protocol(CRYPTO_TLS_1_2, false, NULL) != 0) return 1;
-    if (run_protocol(CRYPTO_TLS_1_2, true, NULL) != 0) return 1;
-    if (run_protocol(CRYPTO_TLS_1_3, false, NULL) != 0) return 1;
-    if (run_protocol(CRYPTO_TLS_1_3, true, NULL) != 0) return 1;
+    if (run_protocol(NULL, CRYPTO_TLS_1_2, false, NULL) != 0) return 1;
+    if (run_protocol(NULL, CRYPTO_TLS_1_2, true, NULL) != 0) return 1;
+    if (run_protocol(NULL, CRYPTO_TLS_1_3, false, NULL) != 0) return 1;
+    if (run_protocol(NULL, CRYPTO_TLS_1_3, true, NULL) != 0) return 1;
     return 0;
 }
+#endif /* original CNet M5 executable / shared DLL M6 test selection */
