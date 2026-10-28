@@ -27,6 +27,31 @@ class DependencyGateTest(unittest.TestCase):
                                  ".cmake")
         self.assertEqual(len(output), 2)
 
+
+    def test_native_cpp_type_namespace_is_not_a_cmake_target(self):
+        sample = (
+            "#include <cmeta_uuid.h>\n"
+            "namespace Salts { struct UUID { unsigned char bytes[16]; }; }\n"
+            "Salts::UUID id{};\n"
+            "static_assert(sizeof(Salts::UUID) == 16, \"UUID ABI\");\n"
+        )
+        self.assertEqual(self.check_text(sample, ".cpp"), [])
+        self.assertEqual(self.check_text(sample, ".hpp"), [])
+
+    def test_same_high_level_name_is_still_denied_as_cmake_link_target(self):
+        sample = "target_link_libraries(app PRIVATE Salts::UUID)\n"
+        self.assertEqual(len(self.check_text(sample, ".cmake")), 1)
+        self.assertEqual(len(self.check_text(sample, ".cpp")), 0)
+
+    def test_cmeta_reflection_remains_denied_in_c_and_cpp(self):
+        for suffix in (".c", ".cpp", ".hpp"):
+            self.assertEqual(
+                len(self.check_text("#include <cmeta/struct.h>\n", suffix)),
+                1)
+            self.assertEqual(
+                len(self.check_text("CMETA_STRUCT(MyType, (int, x));\n", suffix)),
+                1)
+
     def test_native_salts_targets_are_allowed(self):
         content = ("add_library(Salts::Platform ALIAS saltscore_platform)\n"
                    "target_link_libraries(app PRIVATE Salts::Core Salts::NativeIO)\n")
@@ -78,6 +103,64 @@ class DependencyGateTest(unittest.TestCase):
                 guard.replace("foreach(_forbidden IN ITEMS",
                               "set(_forbidden"), encoding="utf-8")
             self.assertEqual(len(module.check_repository(root)), 2)
+
+    def test_first_party_asn1_owner_is_scope_limited(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("asn1", "crypto"):
+                d = root / name
+                d.mkdir()
+                (d / "CMakeLists.txt").write_text(
+                    "target_link_libraries(native PRIVATE Salts::ASN1)\n",
+                    encoding="utf-8")
+            self.assertEqual(module.check_repository(root), [])
+            d = root / "cnet"
+            d.mkdir()
+            (d / "CMakeLists.txt").write_text(
+                "target_link_libraries(cnet PRIVATE Salts::ASN1)\n",
+                encoding="utf-8")
+            self.assertEqual(len(module.check_repository(root)), 1)
+
+    def test_negative_split_provider_guard_does_not_mask_real_links(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            d = root / "crypto" / "tests" / "owner"
+            d.mkdir(parents=True)
+            f = d / "CMakeLists.txt"
+            guard = (
+                "foreach(_split IN ITEMS Salts::TLS Crypto::ASN1)\n"
+                '  if(TARGET "' + chr(36) + '{_split}")\n'
+                '    message(FATAL_ERROR "Split provider forbidden")\n'
+                "  endif()\n"
+                "endforeach()\n"
+            )
+            f.write_text(guard, encoding="utf-8")
+            self.assertEqual(module.check_repository(root), [])
+            f.write_text(guard +
+                "target_link_libraries(app PRIVATE Crypto::ASN1)\n",
+                encoding="utf-8")
+            self.assertEqual(len(module.check_repository(root)), 1)
+            f.write_text(guard.replace(
+                'message(FATAL_ERROR "Split provider forbidden")',
+                'message(STATUS "Provider enabled")'), encoding="utf-8")
+            # Both Salts::TLS and Crypto::ASN1 are now exposed, so both
+            # must remain independently RED. Never weaken the scanner.
+            self.assertEqual(len(module.check_repository(root)), 2)
+
+    def test_first_party_asn1_rejects_alternate_namespace(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            d = root / "crypto" / "tests" / "asn1" / "installed"
+            d.mkdir(parents=True)
+            f = d / "CMakeLists.txt"
+            f.write_text(
+                "if(TARGET SaltsCore::ASN1 OR TARGET Crypto::ASN1)\n"
+                '  message(FATAL_ERROR "No duplicate ASN1")\n'
+                "endif()\n", encoding="utf-8")
+            self.assertEqual(module.check_repository(root), [])
+            f.write_text("target_link_libraries(app PRIVATE Crypto::ASN1)\n",
+                         encoding="utf-8")
+            self.assertEqual(len(module.check_repository(root)), 1)
 
     def test_retired_asn1_target_is_forbidden(self):
         self.assertEqual(

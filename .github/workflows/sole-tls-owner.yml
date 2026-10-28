@@ -1,0 +1,32 @@
+name: Sole TLS Provider source ownership (NOT cutover acceptance)
+on:
+  pull_request:
+    paths:
+      - 'cnet/**'
+      - 'crypto/**'
+      - 'asn1/**'
+      - 'tools/audit_single_tls_owner.py'
+      - 'tests/test_single_tls_owner.py'
+      - 'docs/sole-native-tls-provider.md'
+      - '.github/workflows/sole-tls-owner.yml'
+  push:
+    paths:
+      - 'cnet/**'
+      - 'crypto/**'
+      - 'asn1/**'
+      - 'tools/audit_single_tls_owner.py'
+      - 'tests/test_single_tls_owner.py'
+      - 'docs/sole-native-tls-provider.md'
+      - '.github/workflows/sole-tls-owner.yml'
+  workflow_dispatch:
+
+jobs:
+  fail-closed-source-contract:
+    name: Source gate unit tests / cutover BLOCKED report
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require fail-closed source and link-graph regression tests
+        run: python3 -m unittest discover -s tests -p 'test_single_tls_owner.py' -v
+      - name: Report cutover blockers — NEVER a production parity pass
+        run: python3 tools/audit_single_tls_owner.py --report
