@@ -154,6 +154,38 @@ static int unsupported(crypto_tls_provider *provider,const crypto_tls_io *io)
            options.protocol_min=options.protocol_max=CRYPTO_TLS_PROFILE_TLCP11);
 #undef REJECT
 
+
+    /* The opaque profile accepts duplicate ALPN wire labels as transport
+     * policy bytes, but the one incumbent TLS engine MUST refuse such an
+     * admission without leaking a candidate TLS session or trying fallback.
+     */
+    {
+        static const uint8_t h2[]={'h','2'};
+        static const crypto_tls_alpn_label_v1_4 duplicates[]={
+            {h2,sizeof(h2)},{h2,sizeof(h2)}};
+        options=make_client();
+        options.alpn=duplicates;
+        options.alpn_count=2u;
+        CHECK(crypto_tls_profile_create_v1_4(&options,&profile)==CRYPTO_TLS_PROFILE_OK);
+        CHECK(crypto_tls_session_create_profile_v1_4(provider,profile,io,&session)
+            !=CRYPTO_TLS_OK);
+        CHECK(session==NULL);
+        CHECK(crypto_tls_profile_destroy_v1_4(&profile)==CRYPTO_TLS_PROFILE_OK);
+        CHECK(check_provider_empty(provider)==0);
+    }
+
+    /* A syntactically valid path that does not exist is a real backend
+     * failure; do not convert it to a positive session or system trust.
+     */
+    options=make_client();
+    options.ca_file="__missing_crypto_profile_ca_fixture__.pem";
+    CHECK(crypto_tls_profile_create_v1_4(&options,&profile)==CRYPTO_TLS_PROFILE_OK);
+    CHECK(crypto_tls_session_create_profile_v1_4(provider,profile,io,&session)
+        !=CRYPTO_TLS_OK);
+    CHECK(session==NULL);
+    CHECK(crypto_tls_profile_destroy_v1_4(&profile)==CRYPTO_TLS_PROFILE_OK);
+    CHECK(check_provider_empty(provider)==0);
+
     options=make_client();
     CHECK(crypto_tls_profile_create_v1_4(&options,&profile)==CRYPTO_TLS_PROFILE_OK);
     {
