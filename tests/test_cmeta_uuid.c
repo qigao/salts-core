@@ -8,8 +8,8 @@
 suite("Salts UUID") {
   group("Secure random") {
     it("validates destination buffers") {
-      check_equal(cmeta_secure_random(NULL, 0U), SALTS_OK);
-      check_equal(cmeta_secure_random(NULL, 1U), SALTS_EINVAL);
+      check_equal(cmeta_platform_secure_random(NULL, 0U), SALTS_OK);
+      check_equal(cmeta_platform_secure_random(NULL, 1U), SALTS_EINVAL);
     }
 
     it("fills independent buffers") {
@@ -18,8 +18,8 @@ suite("Salts UUID") {
 
       memset(first, 0, sizeof(first));
       memset(second, 0, sizeof(second));
-      check_equal(cmeta_secure_random(first, sizeof(first)), SALTS_OK);
-      check_equal(cmeta_secure_random(second, sizeof(second)), SALTS_OK);
+      check_equal(cmeta_platform_secure_random(first, sizeof(first)), SALTS_OK);
+      check_equal(cmeta_platform_secure_random(second, sizeof(second)), SALTS_OK);
       check_not_equal(first, second, sizeof(first));
     }
   }

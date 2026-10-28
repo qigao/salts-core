@@ -19,7 +19,7 @@ int cmeta_uuid_v4_generate(cmeta_uuid_t *out) {
 
   if (!out) return SALTS_EINVAL;
 
-  rc = cmeta_secure_random(generated.bytes, sizeof(generated.bytes));
+  rc = cmeta_platform_secure_random(generated.bytes, sizeof(generated.bytes));
   if (rc != SALTS_OK) return rc;
 
   generated.bytes[6] = (uint8_t)((generated.bytes[6] & 0x0fU) | 0x40U);
@@ -35,7 +35,7 @@ int cmeta_uuid_v7_generate(cmeta_uuid_t *out) {
 
   if (!out) return SALTS_EINVAL;
 
-  rc = cmeta_secure_random(generated.bytes, sizeof(generated.bytes));
+  rc = cmeta_platform_secure_random(generated.bytes, sizeof(generated.bytes));
   if (rc != SALTS_OK) return rc;
 
   timestamp = cmeta_realtime_ms();
