@@ -396,8 +396,17 @@ static int run_protocol(crypto_tls_provider *borrowed_provider,
         CHECK(cnet_connect(&dialer, &connect, &dialed) == SALTS_OK);
     }
 #if defined(CNET_M6_BUILD_SHARED)
-    if (borrowed_provider != NULL)
+    if (borrowed_provider != NULL) {
         CHECK(m6_parallel_native_tls_gate() == SALTS_OK);
+        /* This private gate intentionally blocks two actual cnet_connect
+         * admissions before original Owner pumping. The independent plugin
+         * loader now attempts cross-plugin release of both ACTIVE leases
+         * while their real CNet worker operations are still in flight.
+         * It does NOT claim a TLS callback has fired yet.
+         */
+        extern int cnet_m6_test_native_admission_wait(void);
+        CHECK(cnet_m6_test_native_admission_wait() == SALTS_OK);
+    }
 #endif
 
     deadline = cmeta_monotonic_ms() + APP_TIMEOUT_MS;
