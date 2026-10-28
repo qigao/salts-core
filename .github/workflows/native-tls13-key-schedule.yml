@@ -1,0 +1,37 @@
+name: Native TLS13 key schedule (candidate only, no TLS engine)
+on:
+  pull_request:
+    paths:
+      - "crypto/src/tls13_key_schedule.c"
+      - "crypto/src/tls13_key_schedule.h"
+      - "crypto/src/crypto_sha256.c"
+      - "crypto/include/crypto/sha256.h"
+      - "crypto/include/crypto/sha512.h"
+      - "crypto/tests/native-tls13/**"
+      - ".github/workflows/native-tls13-key-schedule.yml"
+  push:
+    paths:
+      - "crypto/src/tls13_key_schedule.c"
+      - "crypto/src/tls13_key_schedule.h"
+      - "crypto/src/crypto_sha256.c"
+      - "crypto/include/crypto/sha256.h"
+      - "crypto/include/crypto/sha512.h"
+      - "crypto/tests/native-tls13/**"
+      - ".github/workflows/native-tls13-key-schedule.yml"
+  workflow_dispatch:
+jobs:
+  native-c11-hkdf:
+    name: Provider-free C11 TLS13 HKDF / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2022]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure isolated source-only candidate
+        run: cmake -S crypto/tests/native-tls13 -B build-native-tls13 -DCMAKE_BUILD_TYPE=Release
+      - name: Build native SHA2/HKDF with warnings as errors
+        run: cmake --build build-native-tls13 --config Release --parallel 3
+      - name: Require C11 RFC5869/8446 and Python stdlib proofs
+        run: ctest --test-dir build-native-tls13 -C Release --output-on-failure --no-tests=error
