@@ -35,7 +35,7 @@ existing module owns its own source and header tree:
 - `platform/`, `concurrency/`, `coroutine/`, `native-io/`, `cnet/`
   and `uri/` keep their existing names and private/public layout.
   The generated URI grammar remains under `uri/parser/`, and SCTP retains
-  its independent `cnet/sctp/` subtree.
+  its independent `sctp/` subtree.
 - Already-owned `unicode/`, `idna/`, `cserde/` and `tinytest/`
   keep their own layouts. Migration does not create source-path shims,
   duplicate providers or old module aliases.

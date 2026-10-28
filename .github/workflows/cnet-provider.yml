@@ -2,6 +2,13 @@ name: SaltsCore CNet pinned-provider qualification
 on:
   pull_request:
     paths:
+      - "cnet/CMakeLists.txt"
+      - "core/CMakeLists.txt"
+      - "platform/CMakeLists.txt"
+      - "native-io/CMakeLists.txt"
+      - "concurrency/CMakeLists.txt"
+      - "uri/CMakeLists.txt"
+      - "coroutine/CMakeLists.txt"
       - "cnet/src/**"
       - "cnet/include/**"
       - "core/src/**"
@@ -16,6 +23,7 @@ on:
       - "uri/include/**"
       - "uri/parser/**"
       - "vendor/cnet/**"
+      - "vendor/CMakeLists.txt"
       - "cmake/**"
       - "CMakeLists.txt"
       - "tools/audit_runtime_owner.py"
