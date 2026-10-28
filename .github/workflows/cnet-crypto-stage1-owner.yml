@@ -1,0 +1,33 @@
+name: CNet Crypto Stage 1 admission (NO native-TLS claim)
+
+on:
+  pull_request:
+    paths:
+      - 'CMakeLists.txt'
+      - 'asn1/**'
+      - 'crypto/**'
+      - 'cnet/**'
+      - 'tools/audit_cnet_crypto_stage1.py'
+      - 'tests/test_cnet_crypto_stage1.py'
+      - '.github/workflows/cnet-crypto-stage1-owner.yml'
+  push:
+    paths:
+      - 'CMakeLists.txt'
+      - 'asn1/**'
+      - 'crypto/**'
+      - 'cnet/**'
+      - 'tools/audit_cnet_crypto_stage1.py'
+      - 'tests/test_cnet_crypto_stage1.py'
+      - '.github/workflows/cnet-crypto-stage1-owner.yml'
+  workflow_dispatch:
+
+jobs:
+  stage1-source-admission:
+    name: Stage 1 production owner SOURCE gate (strict; blocked until real cutover)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Positive and negative source contract regressions
+        run: python3 -m unittest discover -s tests -p 'test_cnet_crypto_stage1.py' -v
+      - name: Fail closed until actual production CNet uses sole Crypto
+        run: python3 tools/audit_cnet_crypto_stage1.py
