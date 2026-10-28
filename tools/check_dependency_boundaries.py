@@ -72,6 +72,14 @@ def _negative_guard_line_indices(relative: Path, lines: list[str]) -> set[int]:
                     and lines[i + 1].strip().startswith("message(FATAL_ERROR ")
                     and lines[i + 2].strip() == "endif()"):
                 ignored.add(i)
+    if relative == Path("CMakeLists.txt"):
+        for i in range(len(lines) - 2):
+            if (lines[i].strip() == "if(TARGET Salts::ASN1)"
+                    and lines[i + 1].strip() ==
+                    'message(FATAL_ERROR "Duplicate ASN1 owner: never import and build twice")'
+                    and lines[i + 2].strip() == "endif()"):
+                # This rejects a duplicate import; never suppress a real link.
+                ignored.add(i)
     return ignored
 
 

@@ -162,6 +162,21 @@ class DependencyGateTest(unittest.TestCase):
                          encoding="utf-8")
             self.assertEqual(len(module.check_repository(root)), 1)
 
+    def test_root_duplicate_asn1_guard_is_not_a_real_link(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            code = (
+                "if(TARGET Salts::ASN1)\n"
+                '  message(FATAL_ERROR "Duplicate ASN1 owner: never import and build twice")\n'
+                "endif()\n"
+            )
+            root.joinpath("CMakeLists.txt").write_text(code, encoding="utf-8")
+            self.assertEqual(module.check_repository(root), [])
+            root.joinpath("CMakeLists.txt").write_text(
+                code + "target_link_libraries(cnet PRIVATE Salts::ASN1)\n",
+                encoding="utf-8")
+            self.assertEqual(len(module.check_repository(root)), 1)
+
     def test_retired_asn1_target_is_forbidden(self):
         self.assertEqual(
             len(self.check_text("target_link_libraries(app PRIVATE Salts::ASN1)\n",

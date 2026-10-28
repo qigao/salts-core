@@ -42,6 +42,7 @@ jobs:
             prefix="$(cygpath -m "$prefix")"
           fi
           cmake -S . -B build-asn1 \
+            -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTING=OFF \
             -DSALTSCORE_BUILD_ASN1=ON \
             -DSALTSCORE_BUILD_CRYPTO=OFF \
