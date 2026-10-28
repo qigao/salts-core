@@ -154,6 +154,14 @@ add_test(NAME saltscore.cnet_policy COMMAND saltscore_cnet_policy_test)
 
 # Run real pinned-provider ABI and ShangMi KATs only when the optional
 # transport provider graph was actually configured. No fake TLS fallback.
+# The real CNet target lives in the sibling cnet/ subdirectory.
+# Imported provider targets are directory-scoped. Tests that directly link
+# the original GmSSL API explicitly discover the same pinned installed
+# dependency in their own CMake scope; no second source/backend is built.
+if(TARGET Salts::CNet)
+  find_package(GmSSL CONFIG REQUIRED)
+endif()
+
 if(TARGET Salts::CNet)
   # A separate loadable module checks process-global pool and thread identity
   # across DSO/DLL boundaries. Never resolve these through a static archive.
@@ -305,3 +313,8 @@ target_compile_features(saltscore_clock_atomic_owner_test PRIVATE c_std_11)
 target_link_libraries(saltscore_clock_atomic_owner_test PRIVATE Salts::Platform)
 add_test(NAME saltscore.clock_atomic_owner COMMAND saltscore_clock_atomic_owner_test)
 set_tests_properties(saltscore.clock_atomic_owner PROPERTIES TIMEOUT 30)
+
+# Test-only native Crypto Owner, never part of the production CNet target.
+if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
+  add_subdirectory(cnet-crypto-static)
+endif()

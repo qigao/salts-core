@@ -5,7 +5,13 @@ on:
       - "CMakeLists.txt"
       - "tests/cnet-crypto-static/**"
       - "cnet/src/cnet_tls_crypto_qualification.*"
-      - "cmake/SaltsCoreCNet*.cmake"
+      - "cnet/CMakeLists.txt"
+      - "vendor/CMakeLists.txt"
+      - "tests/CMakeLists.txt"
+      - "native-io/CMakeLists.txt"
+      - "tests/cnet-owner/**"
+      - "tools/check_dependency_boundaries.py"
+      - "tests/test_dependency_boundaries.py"
       - ".github/workflows/cnet-m5-python-mtls.yml"
   workflow_dispatch:
 permissions:

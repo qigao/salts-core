@@ -1,3 +1,18 @@
+# Original CNet transport target is owned here; SCTP is independent.
+# Provider-free C11 WebSocket frame parser. This is a private CNet build
+# component, not a public SDK target. Minimal Core never links it.
+if(SALTSCORE_BUILD_WEBSOCKET_PARSER OR SALTSCORE_BUILD_CNET)
+  add_library(saltscore_wsparser OBJECT
+    src/wsparser/websocket_frame_parser.c)
+  target_compile_features(saltscore_wsparser PUBLIC c_std_11)
+  set_target_properties(saltscore_wsparser PROPERTIES
+    C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+    POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
+  target_include_directories(saltscore_wsparser PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/wsparser")
+endif()
+
+if(SALTSCORE_BUILD_CNET)
 # Core CNet: explicit provider-backed network transport. No fallback and
 # no target/source import from the historical Salts or SaltsUtils packages.
 if(NOT TARGET Salts::URI OR NOT TARGET saltscore_wsparser)
@@ -6,7 +21,6 @@ endif()
 find_package(c-ares CONFIG REQUIRED)
 find_package(kcp CONFIG REQUIRED)
 find_package(GmSSL CONFIG REQUIRED)
-find_path(SALTSCORE_CNET_SIMDE_INCLUDE_DIR NAMES simde/x86/sse2.h REQUIRED)
 if(NOT TARGET c-ares::cares OR NOT TARGET kcp::kcp OR NOT TARGET GmSSL::GmSSL)
   message(FATAL_ERROR "CNet requires c-ares::cares, kcp::kcp and GmSSL::GmSSL")
 endif()
@@ -23,24 +37,11 @@ endforeach()
 # The stateless URI parser may remain an independent PIC archive.
 set_target_properties(saltscore_uri PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-# Single CNet-private Monocypher namespace avoids duplicate crypto_argon2 and
-# other generic symbols in programs containing more than one consumer DSO.
-add_library(saltscore_cnet_monocypher STATIC
-  vendor/cnet/monocypher/cnet_monocypher.c)
-target_compile_features(saltscore_cnet_monocypher PUBLIC c_std_11)
-target_include_directories(saltscore_cnet_monocypher
-  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/monocypher")
-set_target_properties(saltscore_cnet_monocypher PROPERTIES
-  POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
-
-add_library(saltscore_cnet_reed STATIC
-  vendor/cnet/reed/gf256.c)
-target_compile_features(saltscore_cnet_reed PUBLIC c_std_11)
-target_include_directories(saltscore_cnet_reed
-  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/reed"
-  PRIVATE "${SALTSCORE_CNET_SIMDE_INCLUDE_DIR}")
-set_target_properties(saltscore_cnet_reed PROPERTIES
-  POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
+# Both private code libraries are built exactly once in vendor/CMakeLists.txt.
+# No alternate crypto/erasure implementation or target alias is permitted.
+if(NOT TARGET saltscore_cnet_monocypher OR NOT TARGET saltscore_cnet_reed)
+  message(FATAL_ERROR "CNet requires its vendor-owned Monocypher and Reed targets")
+endif()
 
 # Salts source at refactor/cnet-ipc-name-native: native C11 FIFO, indexed peers,
 # and caller-owned IPC path. Keep the entire CNet DSO in one ownership domain.
@@ -80,7 +81,18 @@ set(_saltscore_cnet_sources
   cnet/src/cnet_handoff.c
   $<TARGET_OBJECTS:saltscore_wsparser>)
 
-add_library(saltscore_cnet SHARED ${_saltscore_cnet_sources})
+# Keep exact original Owner test inputs repo-relative; make module library
+# sources absolute so its CMakeLists owns the target from cnet/.
+set(_saltscore_cnet_sources "${_saltscore_cnet_sources}" PARENT_SCOPE)
+set(_saltscore_cnet_local_sources)
+foreach(_unit IN LISTS _saltscore_cnet_sources)
+  if(_unit MATCHES "^\\$<TARGET_OBJECTS:")
+    list(APPEND _saltscore_cnet_local_sources "${_unit}")
+  else()
+    list(APPEND _saltscore_cnet_local_sources "${PROJECT_SOURCE_DIR}/${_unit}")
+  endif()
+endforeach()
+add_library(saltscore_cnet SHARED ${_saltscore_cnet_local_sources})
 add_library(Salts::CNet ALIAS saltscore_cnet)
 target_compile_features(saltscore_cnet PUBLIC c_std_11)
 set_target_properties(saltscore_cnet PROPERTIES
@@ -93,14 +105,14 @@ if(WIN32)
 endif()
 target_include_directories(saltscore_cnet
   PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/cnet/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
   PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/cnet/src"
-    "${CMAKE_CURRENT_SOURCE_DIR}/cnet/src/wsparser"
-    "${CMAKE_CURRENT_SOURCE_DIR}/native-io/src"
-    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/monocypher"
-    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/reed")
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/wsparser"
+    "${PROJECT_SOURCE_DIR}/native-io/src"
+    "${PROJECT_SOURCE_DIR}/vendor/cnet/monocypher"
+    "${PROJECT_SOURCE_DIR}/vendor/cnet/reed")
 target_link_libraries(saltscore_cnet
   PUBLIC
     Salts::Core
@@ -127,14 +139,7 @@ install(TARGETS saltscore_cnet EXPORT SaltsCoreTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(DIRECTORY cnet/include/cnet
+install(DIRECTORY include/cnet
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.h")
-install(FILES vendor/cnet/reed/LICENSE
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/reed)
-install(FILES vendor/cnet/monocypher/UPSTREAM.md
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/monocypher)
-
-# Test-only genuine original CNet Owner and NativeIO, using the sole static
-# Crypto candidate. No production target, ABI or GmSSL link is replaced.
-include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsCoreCNetCryptoStaticOwner.cmake")
+endif()

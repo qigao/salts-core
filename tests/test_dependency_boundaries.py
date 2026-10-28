@@ -55,9 +55,9 @@ class DependencyGateTest(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            cmake = root / "cmake"
-            cmake.mkdir()
-            guard_file = cmake / "SaltsCoreCNetCryptoStaticOwner.cmake"
+            cmake = root / "tests" / "cnet-crypto-static"
+            cmake.mkdir(parents=True)
+            guard_file = cmake / "CMakeLists.txt"
             guard_file.write_text(guard, encoding="utf-8")
             self.assertEqual(module.check_repository(root), [])
 

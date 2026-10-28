@@ -9,6 +9,13 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
   if(NOT DEFINED SALTSCORE_CRYPTO_TEST_FIXTURES)
     message(FATAL_ERROR "Exact pinned static Crypto TLS fixtures required")
   endif()
+  # Imported dependencies are directory scoped; this is a sibling of cnet/.
+  find_package(c-ares CONFIG REQUIRED)
+  find_package(kcp CONFIG REQUIRED)
+  if(APPLE)
+    find_library(SALTSCORE_CNET_COREFOUNDATION CoreFoundation REQUIRED)
+    find_library(SALTSCORE_CNET_SECURITY Security REQUIRED)
+  endif()
   find_package(Crypto 0.1 CONFIG REQUIRED)
   if(NOT TARGET Salts::Crypto)
     message(FATAL_ERROR "Static candidate requires sole Salts::Crypto")
@@ -37,6 +44,17 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
     tests/cnet-crypto-static/cnet_crypto_owner_admission.c
     tests/cnet-crypto-static/public_context.c
     tests/cnet-crypto-static/owner.c)
+
+  # Source parity: original relative CNet manifest, never local test paths.
+  set(_static_owner_abs_sources)
+  foreach(_unit IN LISTS _static_owner_sources)
+    if(_unit MATCHES "^\\$<TARGET_OBJECTS:")
+      list(APPEND _static_owner_abs_sources "${_unit}")
+    else()
+      list(APPEND _static_owner_abs_sources "${PROJECT_SOURCE_DIR}/${_unit}")
+    endif()
+  endforeach()
+  set(_static_owner_sources ${_static_owner_abs_sources})
   foreach(_fixture IN ITEMS
       external-io-ca-cert.pem external-io-server-cert.pem
       external-io-server-key.pem)
@@ -52,13 +70,13 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
   set_target_properties(saltscore_cnet_crypto_static_original_owner PROPERTIES
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
   target_include_directories(saltscore_cnet_crypto_static_original_owner PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/cnet/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/cnet/src"
-    "${CMAKE_CURRENT_SOURCE_DIR}/cnet/src/wsparser"
-    "${CMAKE_CURRENT_SOURCE_DIR}/native-io/src"
-    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/monocypher"
-    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/reed"
-    "${CMAKE_CURRENT_SOURCE_DIR}/tests/cnet-crypto-static")
+    "${PROJECT_SOURCE_DIR}/cnet/include"
+    "${PROJECT_SOURCE_DIR}/cnet/src"
+    "${PROJECT_SOURCE_DIR}/cnet/src/wsparser"
+    "${PROJECT_SOURCE_DIR}/native-io/src"
+    "${PROJECT_SOURCE_DIR}/vendor/cnet/monocypher"
+    "${PROJECT_SOURCE_DIR}/vendor/cnet/reed"
+    "${PROJECT_SOURCE_DIR}/tests/cnet-crypto-static")
   target_compile_definitions(saltscore_cnet_crypto_static_original_owner PRIVATE
     "SDK_CA_FILE=\"${_owner_fixtures}/external-io-ca-cert.pem\""
     "SDK_SERVER_CERT_FILE=\"${_owner_fixtures}/external-io-server-cert.pem\""
@@ -110,7 +128,7 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME saltscore.cnet_crypto_static_original_owner_python_mtls
       COMMAND "${Python3_EXECUTABLE}"
-        "${CMAKE_CURRENT_SOURCE_DIR}/tests/cnet-crypto-static/python_original_owner_mtls.py"
+        "${PROJECT_SOURCE_DIR}/tests/cnet-crypto-static/python_original_owner_mtls.py"
         --binary "$<TARGET_FILE:saltscore_cnet_crypto_static_original_owner>"
         --crypto-python-fixtures "${SALTSCORE_CRYPTO_PYTHON_FIXTURE_SOURCE}"
         --work "${CMAKE_CURRENT_BINARY_DIR}/m5-private-python-fixtures")
@@ -127,7 +145,7 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
     foreach(_protocol IN ITEMS tls12 tls13)
       add_test(NAME saltscore.cnet_crypto_static_python_san_${_protocol}
         COMMAND "${Python3_EXECUTABLE}"
-          "${CMAKE_CURRENT_SOURCE_DIR}/tests/cnet-crypto-static/external_san_peer.py"
+          "${PROJECT_SOURCE_DIR}/tests/cnet-crypto-static/external_san_peer.py"
           --binary "$<TARGET_FILE:saltscore_cnet_crypto_static_original_owner>"
           --cert "${_owner_fixtures}/external-io-server-cert.pem"
           --key "${_owner_fixtures}/external-io-server-key.pem"
@@ -148,7 +166,7 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
     # Link the existing M5 original CNet handshake acceptance source into
     # the same shared candidate. CNET_M6_BUILD_SHARED excludes its CLI main.
     list(APPEND _m6_dso_sources
-      tests/cnet-crypto-static/m6_shared_owner.c)
+      "${PROJECT_SOURCE_DIR}/tests/cnet-crypto-static/m6_shared_owner.c")
     add_library(saltscore_cnet_crypto_m6_shared SHARED ${_m6_dso_sources})
     target_compile_features(saltscore_cnet_crypto_m6_shared PUBLIC c_std_11)
     target_compile_definitions(saltscore_cnet_crypto_m6_shared
@@ -163,14 +181,14 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
       "SDK_SERVER_KEY_FILE=\"${_owner_fixtures}/external-io-server-key.pem\"")
     target_include_directories(saltscore_cnet_crypto_m6_shared
       PUBLIC
-        "${CMAKE_CURRENT_SOURCE_DIR}/cnet/include"
+        "${PROJECT_SOURCE_DIR}/cnet/include"
       PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/cnet/src"
-        "${CMAKE_CURRENT_SOURCE_DIR}/cnet/src/wsparser"
-        "${CMAKE_CURRENT_SOURCE_DIR}/native-io/src"
-        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/monocypher"
-        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/reed"
-        "${CMAKE_CURRENT_SOURCE_DIR}/tests/cnet-crypto-static")
+        "${PROJECT_SOURCE_DIR}/cnet/src"
+        "${PROJECT_SOURCE_DIR}/cnet/src/wsparser"
+        "${PROJECT_SOURCE_DIR}/native-io/src"
+        "${PROJECT_SOURCE_DIR}/vendor/cnet/monocypher"
+        "${PROJECT_SOURCE_DIR}/vendor/cnet/reed"
+        "${PROJECT_SOURCE_DIR}/tests/cnet-crypto-static")
     target_link_libraries(saltscore_cnet_crypto_m6_shared
       PUBLIC Salts::Core Salts::NativeIO Salts::Concurrency
       PRIVATE Salts::Crypto Salts::URI Salts::Platform
@@ -199,14 +217,14 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
     # Both plugin modules link the SHARED candidate, not Salts::Crypto.
     foreach(_module IN ITEMS a b)
       add_library(saltscore_cnet_m6_plugin_${_module} MODULE
-        tests/cnet-crypto-static/m6_plugin.c)
+        "${PROJECT_SOURCE_DIR}/tests/cnet-crypto-static/m6_plugin.c")
       target_compile_features(saltscore_cnet_m6_plugin_${_module}
         PRIVATE c_std_11)
       set_target_properties(saltscore_cnet_m6_plugin_${_module} PROPERTIES
         C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
         WINDOWS_EXPORT_ALL_SYMBOLS ON)
       target_include_directories(saltscore_cnet_m6_plugin_${_module} PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/tests/cnet-crypto-static")
+        "${PROJECT_SOURCE_DIR}/tests/cnet-crypto-static")
       target_link_libraries(saltscore_cnet_m6_plugin_${_module}
         PRIVATE saltscore_cnet_crypto_m6_shared Salts::Core Salts::Platform)
       if(MSVC)
@@ -218,13 +236,13 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
     # The loader never links Salts::CNet nor Salts::Crypto, and must
     # unload plugin A while a Provider lease from A is still outstanding.
     add_executable(saltscore_cnet_m6_two_plugin_loader
-      tests/cnet-crypto-static/m6_loader.c)
+      "${PROJECT_SOURCE_DIR}/tests/cnet-crypto-static/m6_loader.c")
     target_compile_features(saltscore_cnet_m6_two_plugin_loader
       PRIVATE c_std_11)
     set_target_properties(saltscore_cnet_m6_two_plugin_loader PROPERTIES
       C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
     target_include_directories(saltscore_cnet_m6_two_plugin_loader PRIVATE
-      "${CMAKE_CURRENT_SOURCE_DIR}/tests/cnet-crypto-static")
+      "${PROJECT_SOURCE_DIR}/tests/cnet-crypto-static")
     target_link_libraries(saltscore_cnet_m6_two_plugin_loader PRIVATE
       Salts::Core Salts::Platform ${CMAKE_DL_LIBS})
     add_dependencies(saltscore_cnet_m6_two_plugin_loader
@@ -250,7 +268,7 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
       find_package(Python3 COMPONENTS Interpreter REQUIRED)
       add_test(NAME saltscore.cnet_crypto_m6_two_plugin_concurrent_mtls
         COMMAND "${Python3_EXECUTABLE}"
-          "${CMAKE_CURRENT_SOURCE_DIR}/tests/cnet-crypto-static/python_m6_two_plugin_mtls.py"
+          "${PROJECT_SOURCE_DIR}/tests/cnet-crypto-static/python_m6_two_plugin_mtls.py"
           --loader "$<TARGET_FILE:saltscore_cnet_m6_two_plugin_loader>"
           --plugin-a "$<TARGET_FILE:saltscore_cnet_m6_plugin_a>"
           --plugin-b "$<TARGET_FILE:saltscore_cnet_m6_plugin_b>"

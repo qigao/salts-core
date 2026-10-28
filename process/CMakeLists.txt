@@ -1,5 +1,4 @@
-
-add_library(saltscore_process SHARED process/src/process.c)
+add_library(saltscore_process SHARED src/process.c)
 add_library(Salts::Process ALIAS saltscore_process)
 target_compile_features(saltscore_process PUBLIC c_std_11)
 set_target_properties(saltscore_process PROPERTIES
@@ -7,7 +6,7 @@ set_target_properties(saltscore_process PROPERTIES
   C_VISIBILITY_PRESET default WINDOWS_EXPORT_ALL_SYMBOLS ON
   VERSION "${PROJECT_VERSION}" SOVERSION "${SALTSCORE_NATIVE_SOVERSION}")
 target_include_directories(saltscore_process PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/process/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_link_libraries(saltscore_process PUBLIC Salts::Platform)
 if(MSVC)
@@ -26,10 +25,10 @@ install(TARGETS saltscore_process EXPORT SaltsCoreTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES process/include/salts/process.h
+install(FILES include/salts/process.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/salts)
 if(BUILD_TESTING)
-  add_executable(saltscore_process_test tests/test_process.c)
+  add_executable(saltscore_process_test ${PROJECT_SOURCE_DIR}/tests/test_process.c)
   target_compile_features(saltscore_process_test PRIVATE c_std_11)
   set_target_properties(saltscore_process_test PROPERTIES
     C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)

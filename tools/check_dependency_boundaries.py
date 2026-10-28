@@ -24,7 +24,7 @@ PATTERNS = {
 # The test-local sole-static candidate rejects split providers at configure
 # time. Two exact guard lines are non-dependency references; no other CMake
 # lines or source paths are exempt.
-STATIC_CRYPTO_GUARD_FILE = Path("cmake/SaltsCoreCNetCryptoStaticOwner.cmake")
+STATIC_CRYPTO_GUARD_FILE = Path("tests/cnet-crypto-static/CMakeLists.txt")
 STATIC_CRYPTO_DENIED_TARGET_GUARD = (
     "foreach(_forbidden IN ITEMS",
     "Salts::TLS Salts::TLSCipherBIO Salts::CryptoProvider",

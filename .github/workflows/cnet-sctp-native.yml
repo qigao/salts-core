@@ -2,14 +2,14 @@ name: SaltsCore C11 SCTP native owner and standalone installed SDK
 on:
   pull_request:
     paths:
-      - "cnet/sctp/**"
+      - "sctp/**"
       - "CMakeLists.txt"
       - "tools/audit_cnet_sctp_source.py"
       - "tools/check_dependency_boundaries.py"
       - ".github/workflows/cnet-sctp-native.yml"
   push:
     paths:
-      - "cnet/sctp/**"
+      - "sctp/**"
       - "CMakeLists.txt"
       - "tools/audit_cnet_sctp_source.py"
       - ".github/workflows/cnet-sctp-native.yml"
@@ -70,7 +70,7 @@ jobs:
             gen=(-G Ninja)
             export LD_LIBRARY_PATH="$RUNNER_TEMP/core-sctp-sdk/lib:${LD_LIBRARY_PATH:-}"
           fi
-          cmake -S cnet/sctp/tests/installed -B build-installed "${gen[@]}" \
+          cmake -S sctp/tests/installed -B build-installed "${gen[@]}" \
             "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/core-sctp-sdk" \
             -DCMAKE_BUILD_TYPE=Release
           cmake --build build-installed --config Release --parallel 2

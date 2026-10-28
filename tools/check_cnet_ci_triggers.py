@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-CNET_CMAKE = ROOT / "cmake" / "SaltsCoreCNet.cmake"
+CNET_CMAKE = ROOT / "cnet" / "CMakeLists.txt"
 PROVIDER_WORKFLOW = ROOT / ".github" / "workflows" / "cnet-provider.yml"
 
 # New Salts:: dependencies must be explicitly reviewed and mapped here.
@@ -21,10 +21,12 @@ TARGET_MODULE = {
     "URI": "uri",
 }
 REQUIRED_BASE = frozenset({
+    "cnet/CMakeLists.txt",
     "cnet/src/**",
     "cnet/include/**",
     "uri/parser/**",  # re2c input is outside uri/src
     "vendor/cnet/**",
+    "vendor/CMakeLists.txt",
     "cmake/**",
     "CMakeLists.txt",
     "vcpkg.json",
@@ -93,7 +95,8 @@ def required_filters(cmake_text: str) -> frozenset[str]:
         for module in linked_modules(cmake_text)
         for kind in ("src", "include")
     }
-    return REQUIRED_BASE | owner_patterns
+    owner_cmake = {f"{module}/CMakeLists.txt" for module in linked_modules(cmake_text)}
+    return REQUIRED_BASE | owner_patterns | owner_cmake
 
 
 def validate(workflow_text: str, cmake_text: str) -> frozenset[str]:

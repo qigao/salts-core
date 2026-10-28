@@ -25,11 +25,11 @@ remain unqualified. No exactly-once/no-loss production claim is made.
 This directory is a self-contained C11 CMake project, not a subdirectory of the production Salts CMake graph. Its standalone package exports `CNetSctpPrototype::Wire` and the opaque `CNetSctpPrototype::Session`; neither is included in `SaltsTargets`. Association/DATA/DCEP implementation layouts, prototype targets and tests remain **private** and are not installed.
 
 ```sh
-cmake -S cnet/sctp -B build-cnet-sctp -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release
+cmake -S sctp -B build-cnet-sctp -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build-cnet-sctp --config Release
 ctest --test-dir build-cnet-sctp -C Release --output-on-failure
 cmake --install build-cnet-sctp --config Release --prefix "$PWD/sdk-cnet-sctp"
-cmake -S cnet/sctp/tests/installed -B build-cnet-sctp-consumer \
+cmake -S sctp/tests/installed -B build-cnet-sctp-consumer \
   -DCMAKE_PREFIX_PATH="$PWD/sdk-cnet-sctp"
 cmake --build build-cnet-sctp-consumer --config Release
 ctest --test-dir build-cnet-sctp-consumer -C Release --output-on-failure
@@ -39,7 +39,7 @@ ctest --test-dir build-cnet-sctp-consumer -C Release --output-on-failure
 
 The experimental `CNET_SCTP_TEST_PION_ORACLE=ON` target remains available
 for source-tree research, but CI builds a stricter **separate consumer
-at `cnet/sctp/tests/independent/pion_sdk`** that finds and links only
+at `sctp/tests/independent/pion_sdk`** that finds and links only
 the *previously installed* `CNetSctpPrototype::Session` public
 package. Its distinct Go peer pins **Pion SCTP v1.10.0** and **Pion DTLS
 v3.1.15**, including direct and transitive checksum entries in
@@ -85,7 +85,7 @@ or DSO unload, and not six-RID production SDK/release qualification.
 
 ## Real DTLS 1.2 application records — installed opaque Session (test only)
 
-The independent CMake consumer at `cnet/sctp/tests/independent/dtls`
+The independent CMake consumer at `sctp/tests/independent/dtls`
 finds **only the previously installed `CNetSctpPrototype::Session` public
 CMake package and OpenSSL 3**. No internal Association/DATA header, native
 usrsctp dependency, adapter or OpenSSL type enters the production SDK.
@@ -116,10 +116,10 @@ unload or concurrent Owner lease.
 Reproduce on a Linux host with OpenSSL 3 development files:
 
 ```sh
-cmake -S cnet/sctp -B build-c11 -DBUILD_TESTING=OFF
+cmake -S sctp -B build-c11 -DBUILD_TESTING=OFF
 cmake --build build-c11
 cmake --install build-c11 --prefix "$PWD/c11-installed"
-cmake -S cnet/sctp/tests/independent/dtls -B build-dtls-consumer \
+cmake -S sctp/tests/independent/dtls -B build-dtls-consumer \
   -DCMAKE_PREFIX_PATH="$PWD/c11-installed"
 cmake --build build-dtls-consumer
 ctest --test-dir build-dtls-consumer --output-on-failure
