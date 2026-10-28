@@ -82,6 +82,9 @@ if(WIN32)
   add_test(NAME saltscore.cnet_owner_original_numeric_host
     COMMAND saltscore_cnet_owner_original_test
       --filter "owns the resolve to TCP connect state transition")
+  # A renamed/missing TinyTest case MUST NOT turn --filter into
+  # "0 tests executed" with exit 0: demand its actual emitted case name.
   set_tests_properties(saltscore.cnet_owner_original_numeric_host
-    PROPERTIES TIMEOUT 15)
+    PROPERTIES TIMEOUT 15
+    PASS_REGULAR_EXPRESSION "owns the resolve to TCP connect state transition")
 endif()
