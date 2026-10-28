@@ -10,6 +10,7 @@
 #include <cnet/cnet.h>
 #include <salts/error_codes.h>
 #include <salts/thread.h>
+#include <salts/clock.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -28,6 +29,21 @@ static unsigned char owner_identity;
 static crypto_tls_provider *owner_provider;
 static uint32_t owner_leases;
 static uint64_t owner_epoch;
+/* The TLS acceptance function is PRIVATE to the same shared candidate.
+ * It is the original M5 two-client, real NativeIO test, but borrows this
+ * one Provider instead of constructing and destroying a second Provider.
+ */
+extern int cnet_m6_original_owner_mtls_case(
+    crypto_tls_provider *shared_provider, uint32_t protocol,
+    const char *ca, const char *server_cert, const char *server_key,
+    const char *client_cert, const char *client_key, bool expect_accept);
+
+/* Two separately loaded plugins must enter their original CNet tests at
+ * the same time. The odd/even admission gates are bounded and never retry
+ * TLS. This is test-only coordination, not a runtime policy/fallback.
+ */
+static atomic_uint m6_mtls_arrivals = 0u;
+
 
 static int lock_owner(void)
 {
@@ -199,4 +215,45 @@ done:
     if (cnet_tls_client_destroy(&tls) != SALTS_OK)
         return SALTS_EIO;
     return status;
+}
+
+CNET_M6_API int cnet_m6_shared_native_mtls(
+    cnet_m6_lease *lease, uint32_t protocol,
+    const char *ca, const char *server_cert, const char *server_key,
+    const char *client_cert, const char *client_key, int expected_accept)
+{
+    crypto_tls_provider *shared;
+    int status;
+    unsigned ticket;
+    if (!lease || !ca || !server_cert || !server_key ||
+        ((client_cert == NULL) != (client_key == NULL)) ||
+        (protocol != CRYPTO_TLS_1_2 && protocol != CRYPTO_TLS_1_3) ||
+        (expected_accept != 0 && expected_accept != 1))
+        return SALTS_EINVAL;
+    status = lock_owner();
+    if (status != SALTS_OK) return status;
+    if (lease->owner != &owner_identity ||
+        lease->epoch != owner_epoch || owner_provider == NULL ||
+        owner_leases == 0u) {
+        unlock_owner();
+        return SALTS_EINVAL;
+    }
+    /* Caller retains lease; no Provider destruction before this returns. */
+    shared = owner_provider;
+    unlock_owner();
+
+    ticket = atomic_fetch_add_explicit(
+        &m6_mtls_arrivals, 1u, memory_order_acq_rel);
+    if ((ticket & 1u) == 0u) {
+        const uint64_t deadline = cmeta_monotonic_ms() + UINT64_C(5000);
+        while (atomic_load_explicit(&m6_mtls_arrivals,
+                                    memory_order_acquire) <= ticket) {
+            if (cmeta_monotonic_ms() >= deadline)
+                return SALTS_ETIMEDOUT;
+            cmeta_thread_yield();
+        }
+    }
+    return cnet_m6_original_owner_mtls_case(
+        shared, protocol, ca, server_cert, server_key, client_cert,
+        client_key, expected_accept != 0);
 }
