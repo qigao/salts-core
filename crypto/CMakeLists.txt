@@ -102,6 +102,8 @@ add_subdirectory(vendor/libecc)
 add_library(salts_crypto STATIC
   src/crypto_tls_gmssl.c
   src/crypto_tls_cipher_bio.c
+  src/crypto_tls_profile.c
+  src/crypto_tls_profile_session.c
   src/crypto_ed448.c
   src/crypto_sha256.c
   src/crypto_random.c

@@ -1,12 +1,24 @@
 name: SaltsCore standalone SDK contract
 on:
   push:
+    branches:
+      - master
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: saltscore-fifo-workflows
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   sdk:
+    concurrency:
+      group: saltscore-fifo-runners
+      cancel-in-progress: false
+      queue: max
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -18,6 +30,8 @@ jobs:
         run: |
           python3 tools/check_ci_ctest_regex.py .github/workflows/cnet-sanitizers.yml
           python3 tools/check_ci_ctest_regex.py .github/workflows/readiness-reference-sanitizers.yml
+          python3 tools/check_ci_fifo_policy.py
+          python3 -m unittest discover -s tests -p 'test_ci_fifo_policy.py' -v
           python3 tools/check_dependency_boundaries.py
           # Run policy unit tests even when an unrelated root module-assembly
           # gate fails later; never relax or skip the module-layout check.

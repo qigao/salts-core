@@ -6,12 +6,12 @@
     "base_master": "57e03d9ebefc3b9348764edaddb834862e669a45",
     "original_file_count": 18
   },
-  "policy": "Source provenance only. Byte-exact 17/18; the original root-only module checker was deliberately adapted for salts-core. GmSSL-backed test sources are historical and are NOT third-party-free native production TLS.",
+  "policy": "Source provenance only: immutable original PR43 CMake is retained byte-exact under crypto/provenance/pr43/ while the live module CMake may evolve; all other 17 donor sources retain their exact previous ownership checks, one root checker adapted. This never certifies a native third-party-free TLS engine.",
   "files": [
     {
       "original": "crypto/CMakeLists.txt",
       "source_blob_sha": "230dacdd80e5cb5f336a2ab0627728ba31135864",
-      "destination": "crypto/CMakeLists.txt",
+      "destination": "crypto/provenance/pr43/CMakeLists.txt",
       "destination_blob_sha": "230dacdd80e5cb5f336a2ab0627728ba31135864",
       "kind": "byte_exact"
     },

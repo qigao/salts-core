@@ -22,6 +22,47 @@ class CryptoRetirementSourceTests(unittest.TestCase):
     def test_all_original_sources_present_and_unchanged(self):
         self.assertEqual(code.check(ROOT, self.source), [])
 
+    def test_frozen_pr43_cmake_is_still_exact_and_mandatory(self):
+        donor = ROOT / "crypto/provenance/pr43/CMakeLists.txt"
+        self.assertTrue(donor.is_file())
+        self.assertEqual(code.blob_sha(donor),
+                         "230dacdd80e5cb5f336a2ab0627728ba31135864")
+
+    def test_manifest_cannot_repoint_frozen_cmake_to_active_module(self):
+        data = copy.deepcopy(self.source)
+        data["files"][0]["destination"] = "crypto/CMakeLists.txt"
+        self.assertIn(
+            "Historical Crypto PR43 CMake provenance cannot be rewritten",
+            code.check(ROOT, data))
+
+    def test_donor_sha_cannot_be_rebased_silently(self):
+        data = copy.deepcopy(self.source)
+        data["files"][0]["source_blob_sha"] = "0" * 40
+        data["files"][0]["destination_blob_sha"] = "0" * 40
+        self.assertIn(
+            "Historical Crypto PR43 CMake provenance cannot be rewritten",
+            code.check(ROOT, data))
+
+    def test_frozen_cmake_archive_path_cannot_be_deleted(self):
+        data = copy.deepcopy(self.source)
+        data["files"][0]["destination"] = "crypto/provenance/pr43/missing.cmake"
+        self.assertTrue(any("Missing migrated original file" in msg
+                            for msg in code.check(ROOT, data)))
+
+    def test_active_cmake_contains_original_sources_and_new_profile(self):
+        active = (ROOT / "crypto/CMakeLists.txt").read_text(encoding="utf-8")
+        self.assertEqual(code.check_live_cmake(active), [])
+        for name in code.STAGE1_LIVE_CMAKE_REQUIRED:
+            self.assertTrue(code.check_live_cmake(active.replace(name, "", 1)),
+                            "must reject removed production owner: " + name)
+
+    def test_second_engine_is_never_hidden_by_historical_donor(self):
+        active = (ROOT / "crypto/CMakeLists.txt").read_text(encoding="utf-8")
+        self.assertTrue(code.check_live_cmake(
+            active + "\\ntarget_sources(salts_crypto PRIVATE src/crypto_tls_native.c)\\n"))
+        self.assertTrue(code.check_live_cmake(
+            active + "\\nadd_library(salts_crypto STATIC src/crypto_tls_native.c)\\n"))
+
     def test_missing_donor_asset_is_rejected(self):
         data = copy.deepcopy(self.source)
         data["files"].pop()
