@@ -88,6 +88,8 @@ native invalid-range contract rather than reintroducing old silent truncation.
 
 | `utils/include/cmeta_uuid.h`, `utils/src/cmeta_uuid.c` | `core/include/cmeta_uuid.h`, `core/src/cmeta_uuid.c` | Original RFC v4/v7 UUID using canonical Platform clock/CSPRNG; C11/C++17 tests, CI pending |
 
+| `utils/include/cmeta_bytes.h`, `utils/src/cmeta_bytes.c` | `core/include/cmeta_bytes.h`, `core/src/cmeta_bytes.c` | Original hard-bounded owning byte accumulator, nine functions, original eight-case TinyTest and installed C11/C++17 tests, CI pending |
+
 ## Still missing: full original utils functionality
 
 **Not fully accepted, do not mark migration complete or release:**

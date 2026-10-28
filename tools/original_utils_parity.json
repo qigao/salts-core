@@ -310,6 +310,23 @@
         "cmeta_uuid_format",
         "cmeta_uuid_equal"
       ]
+    },
+    {
+      "module": "bytes_accumulator",
+      "owner": "core",
+      "header": "core/include/cmeta_bytes.h",
+      "source": "core/src/cmeta_bytes.c",
+      "functions": [
+        "cmeta_bytes_init",
+        "cmeta_bytes_destroy",
+        "cmeta_bytes_append",
+        "cmeta_bytes_view",
+        "cmeta_bytes_consume",
+        "cmeta_bytes_reset",
+        "cmeta_bytes_size",
+        "cmeta_bytes_available",
+        "cmeta_bytes_capacity"
+      ]
     }
   ],
   "stage_a_support_files": [
@@ -338,7 +355,8 @@
     "tests/test_tlog_vstr_abi.c",
     "tests/test_tlog_header_collision.c",
     "tests/test_cmeta_uuid.c",
-    "tests/test_cmeta_uuid_cpp.cpp"
+    "tests/test_cmeta_uuid_cpp.cpp",
+    "tests/test_cmeta_bytes.c"
   ],
   "pending_groups": {
     "logging_formatter": [],
@@ -358,7 +376,6 @@
       "cmeta_error"
     ],
     "pending_differential": [
-      "cmeta_bytes",
       "cmeta_fs",
       "cmeta_process",
       "cmeta_thread",

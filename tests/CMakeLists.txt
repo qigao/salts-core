@@ -476,3 +476,18 @@ if(TARGET Salts::TinyTest)
   target_link_libraries(saltscore_original_uuid_cpp_test PRIVATE Salts::Core Salts::TinyTest)
   add_test(NAME saltscore.original_uuid_cpp17 COMMAND saltscore_original_uuid_cpp_test)
 endif()
+
+# Restore the original single-owner, hard-capped byte accumulator. This is not
+# the borrowed-only salts_core_bytes_view/slice contract.
+add_executable(saltscore_cmeta_bytes_smoke test_cmeta_bytes_smoke.c)
+target_compile_features(saltscore_cmeta_bytes_smoke PRIVATE c_std_11)
+target_link_libraries(saltscore_cmeta_bytes_smoke PRIVATE Salts::Core)
+add_test(NAME saltscore.original_bytes_accumulator_smoke COMMAND saltscore_cmeta_bytes_smoke)
+if(TARGET Salts::TinyTest)
+  add_executable(saltscore_original_bytes_accumulator test_cmeta_bytes.c)
+  target_compile_features(saltscore_original_bytes_accumulator PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_bytes_accumulator PRIVATE
+    Salts::Core Salts::TinyTest)
+  add_test(NAME saltscore.original_bytes_accumulator_contract
+    COMMAND saltscore_original_bytes_accumulator)
+endif()
