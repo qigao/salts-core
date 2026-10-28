@@ -81,7 +81,7 @@ def source_errors(root: Path) -> list[str]:
         failures.append("CRYPTO_NOT_EXACTLY_ONE_TLS_ENGINE")
     # Treat any extra compiled crypto_tls_* implementation as unaudited:
     # merely giving a second engine another filename must not bypass the gate.
-    tls_units = set(re.findall(r"\\bsrc/crypto_tls_([a-z0-9_]+)\\.c\\b", crypto))
+    tls_units = set(re.findall(r"\bsrc/crypto_tls_([a-z0-9_]+)\.c\b", crypto))
     if tls_units - {"gmssl", "native", "cipher_bio"}:
         failures.append("CRYPTO_UNAUDITED_TLS_ENGINE_SOURCE")
 
