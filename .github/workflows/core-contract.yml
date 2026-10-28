@@ -21,6 +21,7 @@ jobs:
           python3 tools/check_dependency_boundaries.py
           python3 tools/check_module_layout.py
           python3 tools/check_original_module_paths.py
+          python3 tools/audit_original_utils_parity.py
           python3 -m unittest discover -s tests -p 'test_original_module_paths.py' -v
           python3 tools/check_cnet_ci_triggers.py
           python3 -m unittest tests.test_cnet_ci_triggers
