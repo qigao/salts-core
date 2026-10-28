@@ -39,3 +39,10 @@ target_compile_features(crypto_owner_native_sha256 PRIVATE c_std_11)
 target_link_libraries(crypto_owner_native_sha256 PRIVATE Salts::Crypto)
 add_test(NAME crypto.static.installed_native_sha256_fips
          COMMAND crypto_owner_native_sha256)
+
+# Installed C11 consumer with exactly the canonical Salts::Crypto STATIC.
+add_executable(crypto_owner_native_sha224 ../algorithms/sha224_native_vectors.c)
+target_compile_features(crypto_owner_native_sha224 PRIVATE c_std_11)
+target_link_libraries(crypto_owner_native_sha224 PRIVATE Salts::Crypto)
+add_test(NAME crypto.static.installed_native_sha224_fips
+         COMMAND crypto_owner_native_sha224)
