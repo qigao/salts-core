@@ -54,6 +54,16 @@ for rel in OWNER_FILES:
 
 source = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
 
+# ASN1 and Crypto are separately packaged qigao/crypto source modules.
+# They retain module-local CMakeLists.txt and exact first-party target
+# ownership, but must NOT be rebuilt in SaltsCore's root along with a
+# separately imported static Crypto owner: that duplicates TLS state.
+# CNet will import Salts::Crypto only after full provider parity; no fallback.
+EXTERNAL_SOURCE_MODULES = {
+    "asn1": ("Salts::ASN1", "salts_asn1"),
+    "crypto": ("Salts::Crypto", "salts_crypto"),
+}
+
 # Discover every *current or future* root-level source module. An explicit
 # MODULES tuple alone is insufficient: it would silently miss a new vendor/,
 # usb/, capture/ etc. A source-owning directory must have its own CMake
@@ -73,8 +83,20 @@ if missing_sources:
     raise SystemExit("missing required root source module(s): "
                      + ", ".join(sorted(missing_sources)))
 for module in sorted(root_code_modules):
-    if not (ROOT / module / "CMakeLists.txt").is_file():
+    owner_cmake = ROOT / module / "CMakeLists.txt"
+    if not owner_cmake.is_file():
         raise SystemExit(f"missing root source module CMakeLists.txt: {module}")
+    if module in EXTERNAL_SOURCE_MODULES:
+        alias, native_target = EXTERNAL_SOURCE_MODULES[module]
+        code = owner_cmake.read_text(encoding="utf-8")
+        if f"add_library({alias} ALIAS {native_target})" not in code:
+            raise SystemExit(f"missing independent first-party module target: {module}/{alias}")
+        # These files originate from qigao/crypto and have their own package
+        # exports. Building the source copy as well as importing the archive
+        # would violate the single *physical* TLS owner invariant.
+        if f"add_subdirectory({module})" in source:
+            raise SystemExit(f"duplicate external Crypto/ASN1 source owner: {module}")
+        continue
     if f"add_subdirectory({module})" not in source:
         raise SystemExit(f"root does not assemble source module: {module}")
 
@@ -139,4 +161,7 @@ for workflow in WORKFLOWS.glob("*.yml"):
                 f"{workflow.relative_to(ROOT)}:{line_number}: {line.strip()}"
             )
 
-print(f"PASS: {len(root_code_modules)} root source modules each have CMakeLists.txt and root assembly; SCTP root; no legacy root include/src")
+print(f"PASS: {len(root_code_modules)} root source modules have module-local CMake; "
+      f"{len(root_code_modules & set(EXTERNAL_SOURCE_MODULES))} qigao/crypto source modules "
+      "remain external package owners; every other source module assembled by root; "
+      "SCTP root; no legacy root include/src")
