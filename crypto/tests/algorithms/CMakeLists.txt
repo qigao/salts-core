@@ -22,3 +22,11 @@ add_test(NAME crypto.algorithms.native_sha256_fips
          COMMAND salts_crypto_native_sha256_kat)
 set_tests_properties(crypto.algorithms.native_sha256_fips
   PROPERTIES TIMEOUT 120)
+
+# SHA224 uses the ONE canonical native SHA256 compression compiled within
+# Salts::Crypto; reject absence of FIPS boundary vectors.
+add_executable(salts_crypto_native_sha224_kat sha224_native_vectors.c)
+target_compile_features(salts_crypto_native_sha224_kat PRIVATE c_std_11)
+target_link_libraries(salts_crypto_native_sha224_kat PRIVATE Salts::Crypto)
+add_test(NAME crypto.algorithms.native_sha224_fips COMMAND salts_crypto_native_sha224_kat)
+set_tests_properties(crypto.algorithms.native_sha224_fips PROPERTIES TIMEOUT 120)
