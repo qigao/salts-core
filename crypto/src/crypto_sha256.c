@@ -6,6 +6,7 @@
  * context ABI; all intermediate state belongs to the caller-owned context.
  */
 #include <crypto/sha256.h>
+#include <crypto/sha224.h>
 #include "crypto_internal.h"
 
 #include <stdint.h>
@@ -202,4 +203,40 @@ int salts_crypto_sha256(const void *data, size_t data_size,
     if (status != SALTS_CRYPTO_OK)
         salts_crypto_secure_zero(digest, SALTS_CRYPTO_SHA256_DIGEST_SIZE);
     return status;
+}
+
+/* SHA-224 is the same FIPS 180-4 32-bit compression as SHA-256, but
+ * with its own eight initial values and 28-byte truncated final digest.
+ * The canonical SHA256 update/final already enforce bit-length bounds,
+ * clean intermediate state, and use alias-safe typed local state.
+ */
+int salts_crypto_sha224(const void *data, size_t data_size,
+                        uint8_t digest[SALTS_CRYPTO_SHA224_DIGEST_SIZE]) {
+    static const uint32_t iv[8] = {
+        UINT32_C(0xc1059ed8),UINT32_C(0x367cd507),
+        UINT32_C(0x3070dd17),UINT32_C(0xf70e5939),
+        UINT32_C(0xffc00b31),UINT32_C(0x68581511),
+        UINT32_C(0x64f98fa7),UINT32_C(0xbefa4fa4)
+    };
+    salts_crypto_sha256_ctx_t context;
+    salts_crypto_sha256_impl local = {0};
+    uint8_t full[SALTS_CRYPTO_SHA256_DIGEST_SIZE] = {0};
+    int result;
+    if (digest == NULL || (data == NULL && data_size != 0u))
+        return SALTS_CRYPTO_EINVAL;
+    memset(&context, 0, sizeof(context));
+    memcpy(local.state, iv, sizeof(iv));
+    local.magic = SALTS_SHA256_MAGIC;
+    sha_save(&context, &local);
+    salts_crypto_secure_zero(&local, sizeof(local));
+    result = salts_crypto_sha256_update(&context, data, data_size);
+    if (result == SALTS_CRYPTO_OK)
+        result = salts_crypto_sha256_final(&context, full);
+    if (result == SALTS_CRYPTO_OK)
+        memcpy(digest, full, SALTS_CRYPTO_SHA224_DIGEST_SIZE);
+    else
+        salts_crypto_secure_zero(digest, SALTS_CRYPTO_SHA224_DIGEST_SIZE);
+    salts_crypto_secure_zero(full, sizeof(full));
+    salts_crypto_secure_zero(&context, sizeof(context));
+    return result;
 }
