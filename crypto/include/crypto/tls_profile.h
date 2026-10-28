@@ -143,6 +143,31 @@ CRYPTO_TLS_API crypto_tls_profile_result crypto_tls_profile_copy_name_v1_4(
 CRYPTO_TLS_API crypto_tls_profile_result crypto_tls_profile_destroy_v1_4(
     crypto_tls_profile **profile);
 
+/*
+ * Stage-1 additive REAL session creation using the EXISTING sole
+ * Salts::Crypto/GmSSL-backed TLS implementation. Explicitly return
+ * UNSUPPORTED for profiles it cannot honestly implement; NEVER switch
+ * engines, change protocol/version, weaken trust or silently omit ALPN.
+ *
+ * Currently admitted subset: STANDARD exact TLS1.2 or TLS1.3 only, DNS
+ * identity (not IP SAN) with equal/default SNI, explicit CA FILE only,
+ * RSA original suite, optional client identity / REQUIRED server mTLS,
+ * and <=8 printable-ASCII ALPN labels <=127 bytes / 128 wire bytes.
+ * System trust, CA path, independent SNI, version range, binary ALPN,
+ * TLCP/ShangMi and other unqualified suites are UNSUPPORTED, not emulated.
+ *
+ * out_session must point to NULL; remains NULL on every error. The opaque
+ * Crypto Session owns its backend association, never the profile or IO
+ * callback user. Profile may be retired after this create returns because
+ * the backend constructor consumes the copied policy synchronously.
+ * This is NOT production CNet full-profile admission.
+ */
+#define CRYPTO_TLS_PROFILE_UNSUPPORTED ((crypto_tls_result)-10)
+CRYPTO_TLS_API crypto_tls_result crypto_tls_session_create_profile_v1_4(
+    crypto_tls_provider *provider, const crypto_tls_profile *profile,
+    const crypto_tls_io *io, crypto_tls_session **out_session);
+
+
 #ifdef __cplusplus
 }
 #endif
