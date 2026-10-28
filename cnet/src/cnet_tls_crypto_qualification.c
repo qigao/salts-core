@@ -14,6 +14,7 @@
 #include <crypto/tls_auth.h>
 #include <crypto/tls_peer.h>
 #include <crypto/x509_der.h>
+#include <crypto/x509_binding.h>
 #include <salts/error_codes.h>
 
 #include <stdatomic.h>
@@ -863,25 +864,52 @@ int cnet_tls_server_end_point_binding_from_certificate(
     const uint8_t *certificate, size_t certificate_size,
     uint8_t *output, size_t capacity, size_t *out_size)
 {
+    crypto_x509_binding_status result;
+    size_t required = 0u;
     if (output == NULL || out_size == NULL || !capacity ||
         certificate == NULL || !certificate_size)
         return SALTS_EINVAL;
     memset(output, 0, capacity < CNET_TLS_SERVER_END_POINT_MAX_BYTES ?
            capacity : CNET_TLS_SERVER_END_POINT_MAX_BYTES);
     *out_size = 0u;
-    return SALTS_ENOTSUP;
+    result = crypto_x509_der_server_end_point_binding(
+        certificate, certificate_size, output, capacity, &required);
+    switch (result) {
+    case CRYPTO_X509_BINDING_OK:
+        *out_size = required;
+        return SALTS_OK;
+    case CRYPTO_X509_BINDING_BUFFER_TOO_SMALL:
+        *out_size = required;
+        return SALTS_EMSGSIZE;
+    case CRYPTO_X509_BINDING_INVALID_ARGUMENT: return SALTS_EINVAL;
+    case CRYPTO_X509_BINDING_INVALID_DER: return SALTS_EPROTO;
+    case CRYPTO_X509_BINDING_UNSUPPORTED_ALGORITHM: return SALTS_ENOTSUP;
+    default: return SALTS_EIO;
+    }
 }
 
 int cnet_tls_state_server_end_point_binding(const cnet_tls_state *state,
                                             uint8_t *output, size_t capacity,
                                             size_t *out_size)
 {
+    cnet_tls_peer_certificate_chain chain = {0};
+    int status;
     if (output == NULL || out_size == NULL || !capacity)
         return SALTS_EINVAL;
     memset(output, 0, capacity < CNET_TLS_SERVER_END_POINT_MAX_BYTES ?
            capacity : CNET_TLS_SERVER_END_POINT_MAX_BYTES);
     *out_size = 0u;
-    return get_engine(state) == NULL ? SALTS_ENOTCONN : SALTS_ENOTSUP;
+    if (get_engine(state) == NULL || !state->handshake_complete)
+        return SALTS_ENOTCONN;
+    /* The chain was authenticated by the single Crypto TLS session and
+     * copied to bounded CNet session-owned storage; no private TLS pointer
+     * escapes into this public channel binding. */
+    status = cnet_tls_state_peer_certificate_chain(state, &chain);
+    if (status != SALTS_OK) return status;
+    if (chain.count == 0u) return SALTS_ENOENT;
+    return cnet_tls_server_end_point_binding_from_certificate(
+        chain.certificates[0].data, chain.certificates[0].size,
+        output, capacity, out_size);
 }
 
 /* Structural DER inspection is NOT trust verification; TLS authentication
