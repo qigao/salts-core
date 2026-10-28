@@ -30,3 +30,12 @@ add_executable(crypto_owner_cpp17 consumer.cpp)
 target_compile_features(crypto_owner_cpp17 PRIVATE cxx_std_17)
 target_link_libraries(crypto_owner_cpp17 PRIVATE Salts::Crypto)
 add_test(NAME crypto.static.installed_cpp17_sm3_tls COMMAND crypto_owner_cpp17)
+
+# The installed package must link and execute the same first-party SHA256
+# algorithm; no source-target aliases or additional Crypto static library.
+add_executable(crypto_owner_native_sha256
+  ../algorithms/sha256_native_vectors.c)
+target_compile_features(crypto_owner_native_sha256 PRIVATE c_std_11)
+target_link_libraries(crypto_owner_native_sha256 PRIVATE Salts::Crypto)
+add_test(NAME crypto.static.installed_native_sha256_fips
+         COMMAND crypto_owner_native_sha256)

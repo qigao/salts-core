@@ -13,6 +13,8 @@
 #include <crypto/tls_ext.h>
 #include <crypto/tls_auth.h>
 #include <crypto/tls_peer.h>
+#include <crypto/x509_der.h>
+#include <crypto/x509_binding.h>
 #include <salts/error_codes.h>
 
 #include <stdatomic.h>
@@ -46,6 +48,10 @@ typedef struct cnet_crypto_state {
     crypto_tls_cipher_bio *bio;
     crypto_tls_io io;
     unsigned char *plaintext; /* never aliases NativeIO's receive lease */
+    /* Authenticated DER chain is copied to this bounded, state-owned memory.
+     * Borrowed CNet certificate views remain valid until state_destroy,
+     * never pointing into the Crypto provider's private TLS state. */
+    uint8_t peer_chain_storage[CNET_TLS_PEER_CHAIN_MAX_BYTES];
     size_t plaintext_capacity;
     size_t plaintext_offset, plaintext_size;
     const unsigned char *write_source;
@@ -858,42 +864,112 @@ int cnet_tls_server_end_point_binding_from_certificate(
     const uint8_t *certificate, size_t certificate_size,
     uint8_t *output, size_t capacity, size_t *out_size)
 {
+    crypto_x509_binding_status result;
+    size_t required = 0u;
     if (output == NULL || out_size == NULL || !capacity ||
         certificate == NULL || !certificate_size)
         return SALTS_EINVAL;
     memset(output, 0, capacity < CNET_TLS_SERVER_END_POINT_MAX_BYTES ?
            capacity : CNET_TLS_SERVER_END_POINT_MAX_BYTES);
     *out_size = 0u;
-    return SALTS_ENOTSUP;
+    result = crypto_x509_der_server_end_point_binding(
+        certificate, certificate_size, output, capacity, &required);
+    switch (result) {
+    case CRYPTO_X509_BINDING_OK:
+        *out_size = required;
+        return SALTS_OK;
+    case CRYPTO_X509_BINDING_BUFFER_TOO_SMALL:
+        *out_size = required;
+        return SALTS_EMSGSIZE;
+    case CRYPTO_X509_BINDING_INVALID_ARGUMENT: return SALTS_EINVAL;
+    case CRYPTO_X509_BINDING_INVALID_DER: return SALTS_EPROTO;
+    case CRYPTO_X509_BINDING_UNSUPPORTED_ALGORITHM: return SALTS_ENOTSUP;
+    default: return SALTS_EIO;
+    }
 }
 
 int cnet_tls_state_server_end_point_binding(const cnet_tls_state *state,
                                             uint8_t *output, size_t capacity,
                                             size_t *out_size)
 {
+    cnet_tls_peer_certificate_chain chain = {0};
+    int status;
     if (output == NULL || out_size == NULL || !capacity)
         return SALTS_EINVAL;
     memset(output, 0, capacity < CNET_TLS_SERVER_END_POINT_MAX_BYTES ?
            capacity : CNET_TLS_SERVER_END_POINT_MAX_BYTES);
     *out_size = 0u;
-    return get_engine(state) == NULL ? SALTS_ENOTCONN : SALTS_ENOTSUP;
+    if (get_engine(state) == NULL || !state->handshake_complete)
+        return SALTS_ENOTCONN;
+    /* The chain was authenticated by the single Crypto TLS session and
+     * copied to bounded CNet session-owned storage; no private TLS pointer
+     * escapes into this public channel binding. */
+    status = cnet_tls_state_peer_certificate_chain(state, &chain);
+    if (status != SALTS_OK) return status;
+    if (chain.count == 0u) return SALTS_ENOENT;
+    return cnet_tls_server_end_point_binding_from_certificate(
+        chain.certificates[0].data, chain.certificates[0].size,
+        output, capacity, out_size);
 }
 
+/* Structural DER inspection is NOT trust verification; TLS authentication
+ * remains exclusively the responsibility of the opaque Salts::Crypto session.
+ * Never publish a partial borrowed chain on failure.
+ */
 int cnet_tls_peer_certificate_chain_parse(
     const uint8_t *data, size_t size, cnet_tls_peer_certificate_chain *out)
 {
+    cnet_tls_peer_certificate_chain candidate = {0};
+    size_t offset = 0u;
+    crypto_x509_der_view view = {0};
+    salts_asn1_status result;
     if (out == NULL) return SALTS_EINVAL;
     memset(out, 0, sizeof(*out));
-    if (data == NULL || !size) return SALTS_ENOENT;
-    return SALTS_ENOTSUP;
+    if (data == NULL || size == 0u) return SALTS_ENOENT;
+    if (size > CNET_TLS_PEER_CHAIN_MAX_BYTES) return SALTS_ERANGE;
+    for (;;) {
+        result = crypto_x509_der_chain_next(data, size, &offset, &view);
+        if (result == SALTS_ASN1_DONE) break;
+        /* Size overrun was checked before entering the decoder. Every
+         * in-range DER parser failure (including a malformed high tag or
+         * nesting limit) is a structural certificate error, not a chain
+         * buffer-size error. Preserve original CNet EPROTO semantics. */
+        if (result != SALTS_ASN1_OK) return SALTS_EPROTO;
+        if (candidate.count >= CNET_TLS_PEER_CHAIN_MAX_CERTIFICATES)
+            return SALTS_ERANGE;
+        if (view.certificate_der == NULL ||
+            view.certificate_size == 0u || offset > size)
+            return SALTS_EPROTO;
+        candidate.certificates[candidate.count].data = view.certificate_der;
+        candidate.certificates[candidate.count].size = view.certificate_size;
+        ++candidate.count;
+    }
+    if (candidate.count == 0u || offset != size) return SALTS_EPROTO;
+    candidate.total_bytes = offset;
+    *out = candidate;
+    return SALTS_OK;
 }
 
 int cnet_tls_state_peer_certificate_chain(const cnet_tls_state *state,
                                           cnet_tls_peer_certificate_chain *out)
 {
+    cnet_crypto_state *engine = get_engine(state);
+    size_t bytes = 0u;
+    crypto_tls_result result;
     if (out == NULL) return SALTS_EINVAL;
     memset(out, 0, sizeof(*out));
-    return get_engine(state) == NULL ? SALTS_ENOTCONN : SALTS_ENOTSUP;
+    if (engine == NULL) return SALTS_EINVAL;
+    if (!state->handshake_complete) return SALTS_ENOTCONN;
+    if (crypto_tls_peer_abi_version() != CRYPTO_TLS_PEER_ABI_VERSION)
+        return SALTS_ENOTSUP;
+    result = crypto_tls_session_copy_peer_chain_v1_2(
+        engine->session, engine->peer_chain_storage,
+        sizeof(engine->peer_chain_storage), &bytes);
+    if (result == CRYPTO_TLS_PEER_CERT_ABSENT) return SALTS_ENOENT;
+    if (result == CRYPTO_TLS_PEER_BUFFER_TOO_SMALL) return SALTS_ERANGE;
+    if (result != CRYPTO_TLS_OK) return crypto_error(result);
+    return cnet_tls_peer_certificate_chain_parse(
+        engine->peer_chain_storage, bytes, out);
 }
 
 int cnet_tls_state_export_channel_binding(

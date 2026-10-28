@@ -3,6 +3,9 @@
  * authentication, chain building, signature and hostname validation.
  */
 #include <crypto/x509_der.h>
+#include <crypto/x509_binding.h>
+#include <crypto/sha256.h>
+#include <gmssl/digest.h>
 
 #include <string.h>
 
@@ -459,4 +462,145 @@ salts_asn1_status crypto_x509_der_common_name(
     *out_data = found;
     *out_size = found_size;
     return SALTS_ASN1_OK;
+}
+
+
+/* RFC 5929 digest policy stays inside the one existing Crypto X.509 module.
+ * Keep the byte-identical PR43 Crypto/CMakeLists.txt source owner intact.
+ * SHA256 now uses the first-party FIPS C11 SHA256 from this SAME archive.
+ * SHA224/384/512 and SM3 still use private algorithm APIs; the TLS engine
+ * remains GmSSL-backed pending full native TLS/TLCP admission.
+ */
+static int oid_matches(const crypto_x509_der_view *cert,
+                       const uint8_t *oid, size_t length)
+{
+    return cert->signature_algorithm_oid_size == length &&
+        memcmp(cert->signature_algorithm_oid, oid, length) == 0;
+}
+
+typedef enum binding_digest_choice {
+    BINDING_UNSUPPORTED = 0,
+    BINDING_NATIVE_SHA256,
+    BINDING_GMSSL_SHA224,
+    BINDING_GMSSL_SHA384,
+    BINDING_GMSSL_SHA512,
+    BINDING_GMSSL_SM3
+} binding_digest_choice;
+
+static binding_digest_choice binding_digest(const crypto_x509_der_view *cert)
+{
+    static const uint8_t rsa_prefix[] = {
+        0x2au, 0x86u, 0x48u, 0x86u, 0xf7u, 0x0du, 0x01u, 0x01u
+    };
+    static const uint8_t ec_sha1[] = {
+        0x2au, 0x86u, 0x48u, 0xceu, 0x3du, 0x04u, 0x01u
+    };
+    static const uint8_t ec_sha2_prefix[] = {
+        0x2au, 0x86u, 0x48u, 0xceu, 0x3du, 0x04u, 0x03u
+    };
+    static const uint8_t sm2_sign_sm3[] = {
+        0x2au, 0x81u, 0x1cu, 0xcfu, 0x55u, 0x01u, 0x83u, 0x75u
+    };
+    static const uint8_t rsa_sign_sm3[] = {
+        0x2au, 0x81u, 0x1cu, 0xcfu, 0x55u, 0x01u, 0x83u, 0x78u
+    };
+    const uint8_t *oid = cert->signature_algorithm_oid;
+    const size_t length = cert->signature_algorithm_oid_size;
+    if (length == sizeof(rsa_prefix) + 1u &&
+        memcmp(oid, rsa_prefix, sizeof(rsa_prefix)) == 0) {
+        switch (oid[sizeof(rsa_prefix)]) {
+        case 4u: /* md5WithRSAEncryption: RFC 5929 substitutes SHA256. */
+        case 5u: /* sha1WithRSAEncryption: RFC 5929 substitutes SHA256. */
+        case 11u: return BINDING_NATIVE_SHA256;
+        case 14u: return BINDING_GMSSL_SHA224;
+        case 12u: return BINDING_GMSSL_SHA384;
+        case 13u: return BINDING_GMSSL_SHA512;
+        default: return BINDING_UNSUPPORTED;
+        }
+    }
+    if (oid_matches(cert, ec_sha1, sizeof(ec_sha1)))
+        return BINDING_NATIVE_SHA256;
+    if (length == sizeof(ec_sha2_prefix) + 1u &&
+        memcmp(oid, ec_sha2_prefix, sizeof(ec_sha2_prefix)) == 0) {
+        switch (oid[sizeof(ec_sha2_prefix)]) {
+        case 1u: return BINDING_GMSSL_SHA224;
+        case 2u: return BINDING_NATIVE_SHA256;
+        case 3u: return BINDING_GMSSL_SHA384;
+        case 4u: return BINDING_GMSSL_SHA512;
+        default: return BINDING_UNSUPPORTED;
+        }
+    }
+    if (oid_matches(cert, sm2_sign_sm3, sizeof(sm2_sign_sm3)) ||
+        oid_matches(cert, rsa_sign_sm3, sizeof(rsa_sign_sm3)))
+        return BINDING_GMSSL_SM3;
+    return BINDING_UNSUPPORTED;
+}
+
+static const DIGEST *binding_private_gmssl_digest(binding_digest_choice kind)
+{
+    switch (kind) {
+    case BINDING_GMSSL_SHA224: return DIGEST_sha224();
+    case BINDING_GMSSL_SHA384: return DIGEST_sha384();
+    case BINDING_GMSSL_SHA512: return DIGEST_sha512();
+    case BINDING_GMSSL_SM3: return DIGEST_sm3();
+    default: return NULL;
+    }
+}
+
+crypto_x509_binding_status crypto_x509_der_server_end_point_binding(
+    const uint8_t *certificate, size_t certificate_size,
+    uint8_t *output, size_t capacity, size_t *out_size)
+{
+    crypto_x509_der_view view = {0};
+    binding_digest_choice chosen;
+    const DIGEST *selected = NULL;
+    uint8_t calculated[DIGEST_MAX_SIZE] = {0};
+    size_t bytes = 0u;
+    size_t required;
+
+    if (!certificate || !certificate_size || !output || !capacity || !out_size)
+        return CRYPTO_X509_BINDING_INVALID_ARGUMENT;
+    if (crypto_x509_der_inspect(certificate, certificate_size, &view)
+        != SALTS_ASN1_OK)
+        return CRYPTO_X509_BINDING_INVALID_DER;
+    chosen = binding_digest(&view);
+    if (chosen == BINDING_UNSUPPORTED)
+        return CRYPTO_X509_BINDING_UNSUPPORTED_ALGORITHM;
+    /* SHA256 (including MD5/SHA1 RFC5929 substitution) is the native
+     * first-party C11 algorithm in Salts::Crypto. Never select a GmSSL
+     * SHA256 implementation or silently fall back on native failure. */
+    if (chosen == BINDING_NATIVE_SHA256) {
+        required = SALTS_CRYPTO_SHA256_DIGEST_SIZE;
+    } else {
+        selected = binding_private_gmssl_digest(chosen);
+        if (!selected) return CRYPTO_X509_BINDING_DIGEST_FAILURE;
+        required = selected->digest_size;
+    }
+    if (required == 0u || required > CRYPTO_X509_BINDING_MAX_BYTES ||
+        required > sizeof(calculated))
+        return CRYPTO_X509_BINDING_DIGEST_FAILURE;
+    if (capacity < required) {
+        *out_size = required;
+        return CRYPTO_X509_BINDING_BUFFER_TOO_SMALL;
+    }
+    if (chosen == BINDING_NATIVE_SHA256) {
+        if (salts_crypto_sha256(certificate, certificate_size, calculated)
+            != SALTS_CRYPTO_OK) {
+            memset(calculated, 0, sizeof(calculated));
+            return CRYPTO_X509_BINDING_DIGEST_FAILURE;
+        }
+        bytes = SALTS_CRYPTO_SHA256_DIGEST_SIZE;
+    } else if (digest(selected, certificate, certificate_size,
+                      calculated, &bytes) != 1) {
+        memset(calculated, 0, sizeof(calculated));
+        return CRYPTO_X509_BINDING_DIGEST_FAILURE;
+    }
+    if (bytes != required) {
+        memset(calculated, 0, sizeof(calculated));
+        return CRYPTO_X509_BINDING_DIGEST_FAILURE;
+    }
+    memcpy(output, calculated, required);
+    *out_size = required;
+    memset(calculated, 0, sizeof(calculated));
+    return CRYPTO_X509_BINDING_OK;
 }

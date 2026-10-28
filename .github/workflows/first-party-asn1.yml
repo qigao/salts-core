@@ -70,6 +70,15 @@ jobs:
           cmake --build build-asn1-consumer --config Release --parallel 3
           ctest --test-dir build-asn1-consumer -C Release \
             --output-on-failure --no-tests=error
+      - name: Qualify native C11 SHA256 without any third-party provider
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S crypto/tests/native-sha256 -B build-native-sha256 \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build build-native-sha256 --config Release --parallel 3
+          ctest --test-dir build-native-sha256 -C Release \
+            --output-on-failure --no-tests=error
       - name: Run standalone ASN1 C11 and C++17 module tests
         shell: bash
         run: |
