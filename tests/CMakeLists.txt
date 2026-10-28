@@ -339,3 +339,20 @@ if(TARGET Salts::TinyTest)
   add_test(NAME saltscore.original_tstr_v2_contract
     COMMAND saltscore_original_tstr_v2_contract)
 endif()
+
+# Original object_pool source and TinyTest contract, not a new allocator
+# provider. The C11 smoke test also runs when TinyTest is disabled.
+add_executable(saltscore_original_object_pool_smoke test_original_object_pool_smoke.c)
+target_compile_features(saltscore_original_object_pool_smoke PRIVATE c_std_11)
+target_link_libraries(saltscore_original_object_pool_smoke PRIVATE Salts::Core)
+add_test(NAME saltscore.original_object_pool_smoke
+  COMMAND saltscore_original_object_pool_smoke)
+if(TARGET Salts::TinyTest)
+  add_executable(saltscore_original_object_pool_contract test_object_pool.c)
+  target_compile_features(saltscore_original_object_pool_contract PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_object_pool_contract PRIVATE
+    Salts::Core Salts::TinyTest)
+  add_test(NAME saltscore.original_object_pool_contract
+    COMMAND saltscore_original_object_pool_contract)
+  set_tests_properties(saltscore.original_object_pool_contract PROPERTIES TIMEOUT 45)
+endif()

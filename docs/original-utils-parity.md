@@ -28,6 +28,8 @@ performance parity is **not yet claimed**. New real C11 and installed C11/C++17
 consumers are required. `vstr_from_buf(NULL, n)` preserves the current strict
 native invalid-range contract rather than reintroducing old silent truncation.
 
+| `utils/include/object_pool.h`, `utils/src/object_pool.c` | `core/include/object_pool.h`, `core/src/object_pool.c` | Original object pool source and tests, CI pending |
+
 ## Still missing: full original utils functionality
 
 **Not restored, do not mark migration complete or release:**
@@ -37,7 +39,7 @@ native invalid-range contract rather than reintroducing old silent truncation.
   parity, fatal logging, bounded queue and source capture all remain pending.
 - Containers and algorithms: `ac_automaton`, `levenshtein_automaton`,
   `bucket_priority_queue`, `bucket_priority_queue_mpmc`,
-  `bucket_priority_queue_spsc`, `ring_buffer_spsc`, `object_pool`,
+  `bucket_priority_queue_spsc`, `ring_buffer_spsc`,
   `re`, `enum_utils`.
 - mmap/UUID/zstd/SIMD/error: original `cmeta_mmap`, `cmeta_uuid`,
   `cmeta_zstd`, `cmeta_simd_scan`, `cmeta_error`.

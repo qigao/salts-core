@@ -147,6 +147,27 @@
         "pool_rewind",
         "pool_destroy"
       ]
+    },
+    {
+      "module": "object_pool",
+      "header": "core/include/object_pool.h",
+      "source": "core/src/object_pool.c",
+      "prefix": "object_pool_",
+      "functions": [
+        "object_pool_create",
+        "object_pool_create_aligned",
+        "object_pool_max_alignment",
+        "object_pool_is_allocated",
+        "object_pool_contains",
+        "object_pool_destroy",
+        "object_pool_alloc",
+        "object_pool_free",
+        "object_pool_allocated_count",
+        "object_pool_free_count",
+        "object_pool_capacity",
+        "object_pool_peak_usage",
+        "object_pool_reset_stats"
+      ]
     }
   ],
   "stage_a_support_files": [
@@ -155,7 +176,8 @@
     "core/src/sds/sds.h",
     "core/src/sds/sdsalloc.h",
     "core/src/sds/LICENSE",
-    "tests/test_tstr_v2_contract.c"
+    "tests/test_tstr_v2_contract.c",
+    "tests/test_object_pool.c"
   ],
   "pending_groups": {
     "logging_formatter": [
@@ -177,8 +199,7 @@
       "bucket_priority_queue",
       "bucket_priority_queue_mpmc",
       "bucket_priority_queue_spsc",
-      "ring_buffer_spsc",
-      "object_pool"
+      "ring_buffer_spsc"
     ],
     "data_io": [
       "cmeta_mmap",
