@@ -126,7 +126,7 @@ jobs:
           ctest --test-dir "$RUNNER_TEMP/core-static-owner-build" -C Release \
             --output-on-failure --no-tests=error \
             -R '^saltscore[.]cnet_(tcp_loopback|tls_ca_san)$'
-          candidate="$RUNNER_TEMP/core-static-owner-build/saltscore_cnet_crypto_static_original_owner"
+          candidate="$RUNNER_TEMP/core-static-owner-build/tests/cnet-crypto-static/saltscore_cnet_crypto_static_original_owner"
           test -x "$candidate"
           if [ "${{ runner.os }}" = "Linux" ]; then
             readelf -d "$candidate" > "$RUNNER_TEMP/cnet-static-owner-imports.txt"
@@ -383,9 +383,9 @@ jobs:
             $deps | Set-Content -Path $report -Encoding utf8
           }
           foreach ($module in @('a','b')) {
-            # MSVC MODULE targets go to <build>/Release, while the
+            # MSVC MODULE targets go to the module-owned build subdirectory, while the
             # executable and SHARED candidate are in <build>/bin/Release.
-            $plugin = Join-Path $env:RUNNER_TEMP "core-static-owner-build/Release/saltscore_cnet_m6_plugin_$module.dll"
+            $plugin = Join-Path $env:RUNNER_TEMP "core-static-owner-build/tests/cnet-crypto-static/Release/saltscore_cnet_m6_plugin_$module.dll"
             if (-not (Test-Path $plugin)) { throw "M6 plugin $module missing" }
             $report = Join-Path $env:RUNNER_TEMP "cnet-m6-plugin-$module-imports.txt"
             Save-M6PeImports $plugin $report
