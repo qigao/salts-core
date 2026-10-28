@@ -364,12 +364,21 @@ jobs:
           $dumpbin = Get-ChildItem -Path (Join-Path $vsroot 'VC/Tools/MSVC') -Filter dumpbin.exe -Recurse |
             Where-Object { $_.FullName -match 'Hostx64\\x64' } | Select-Object -First 1
           if (-not $dumpbin) { throw 'M6 dumpbin unavailable' }
+          function Save-M6PeImports([string]$image, [string]$report) {
+            $output = & $dumpbin.FullName /DEPENDENTS $image
+            if ($LASTEXITCODE -ne 0) { throw "M6 PE import audit failed for $image" }
+            # Restrict to the DLL dependency-name lines. The dumpbin
+            # "Dump of file $image" header is NOT a linked dependency.
+            $deps = @($output | Where-Object { $_ -match '^\s+[^\s:]+[.]dll\s*$' } |
+                        ForEach-Object { $_.Trim() })
+            if ($deps.Count -eq 0) { throw "M6 PE import list unexpectedly empty: $image" }
+            $deps | Set-Content -Path $report -Encoding utf8
+          }
           foreach ($module in @('a','b')) {
             $plugin = Join-Path $bin "saltscore_cnet_m6_plugin_$module.dll"
             if (-not (Test-Path $plugin)) { throw "M6 plugin $module missing" }
             $report = Join-Path $env:RUNNER_TEMP "cnet-m6-plugin-$module-imports.txt"
-            & $dumpbin.FullName /DEPENDENTS $plugin | Out-File -FilePath $report -Encoding utf8
-            if ($LASTEXITCODE -ne 0) { throw "M6 PE plugin $module imports failed" }
+            Save-M6PeImports $plugin $report
             if (-not (Select-String -Path $report -Pattern 'saltscore_cnet_m6_static_crypto' -Quiet)) {
               throw "M6 plugin $module does not resolve sole shared Crypto Owner"
             }
@@ -380,8 +389,7 @@ jobs:
           foreach ($entry in @(@('cnet-m6-owner-imports.txt', $owner),
                                @('cnet-m6-host-imports.txt', $host))) {
             $report = Join-Path $env:RUNNER_TEMP $entry[0]
-            & $dumpbin.FullName /DEPENDENTS $entry[1] | Out-File -FilePath $report -Encoding utf8
-            if ($LASTEXITCODE -ne 0) { throw 'M6 Owner/host PE import audit failed' }
+            Save-M6PeImports $entry[1] $report
           }
           if (Select-String -Path (Join-Path $env:RUNNER_TEMP 'cnet-m6-owner-imports.txt') -Pattern 'gmssl.*dll|salts_crypto.*dll|saltscore_cnet-[0-9]|crypto_provider.*dll|crypto_tls.*dll') {
             throw 'M6 shared CNet candidate imported a second TLS provider'
