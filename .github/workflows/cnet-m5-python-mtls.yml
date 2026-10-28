@@ -377,7 +377,9 @@ jobs:
             $deps | Set-Content -Path $report -Encoding utf8
           }
           foreach ($module in @('a','b')) {
-            $plugin = Join-Path $bin "saltscore_cnet_m6_plugin_$module.dll"
+            # MSVC MODULE targets go to <build>/Release, while the
+            # executable and SHARED candidate are in <build>/bin/Release.
+            $plugin = Join-Path $env:RUNNER_TEMP "core-static-owner-build/Release/saltscore_cnet_m6_plugin_$module.dll"
             if (-not (Test-Path $plugin)) { throw "M6 plugin $module missing" }
             $report = Join-Path $env:RUNNER_TEMP "cnet-m6-plugin-$module-imports.txt"
             Save-M6PeImports $plugin $report
