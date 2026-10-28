@@ -30,6 +30,8 @@ native invalid-range contract rather than reintroducing old silent truncation.
 
 | `utils/include/object_pool.h`, `utils/src/object_pool.c` | `core/include/object_pool.h`, `core/src/object_pool.c` | Original object pool source and tests, CI pending |
 
+| `utils/include/bucket_priority_queue.h`, `utils/src/bucket_priority_queue.c` | `core/include/bucket_priority_queue.h`, `core/src/bucket_priority_queue.c` | Original FIFO/priority queue source and tests, CI pending |
+
 ## Still missing: full original utils functionality
 
 **Not restored, do not mark migration complete or release:**
@@ -38,7 +40,7 @@ native invalid-range contract rather than reintroducing old silent truncation.
   `fmt.c`, log-pattern and formatting lexers; sync/async sinks and flush
   parity, fatal logging, bounded queue and source capture all remain pending.
 - Containers and algorithms: `ac_automaton`, `levenshtein_automaton`,
-  `bucket_priority_queue`, `bucket_priority_queue_mpmc`,
+  `bucket_priority_queue_mpmc`,
   `bucket_priority_queue_spsc`, `ring_buffer_spsc`,
   `re`, `enum_utils`.
 - mmap/UUID/zstd/SIMD/error: original `cmeta_mmap`, `cmeta_uuid`,

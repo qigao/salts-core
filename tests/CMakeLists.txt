@@ -356,3 +356,18 @@ if(TARGET Salts::TinyTest)
     COMMAND saltscore_original_object_pool_contract)
   set_tests_properties(saltscore.original_object_pool_contract PROPERTIES TIMEOUT 45)
 endif()
+
+# The original single-owner priority queue: FIFO within a priority and
+# critical/high/normal/low ordering, with strict bounded storage.
+add_executable(saltscore_original_priority_queue_smoke test_original_priority_queue_smoke.c)
+target_compile_features(saltscore_original_priority_queue_smoke PRIVATE c_std_11)
+target_link_libraries(saltscore_original_priority_queue_smoke PRIVATE Salts::Core)
+add_test(NAME saltscore.original_priority_queue_smoke COMMAND saltscore_original_priority_queue_smoke)
+if(TARGET Salts::TinyTest)
+  add_executable(saltscore_original_priority_queue_contract test_bucket_priority_queue.c)
+  target_compile_features(saltscore_original_priority_queue_contract PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_priority_queue_contract PRIVATE
+    Salts::Core Salts::TinyTest)
+  add_test(NAME saltscore.original_priority_queue_contract
+    COMMAND saltscore_original_priority_queue_contract)
+endif()
