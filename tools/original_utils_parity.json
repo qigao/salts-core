@@ -188,6 +188,41 @@
         "bucket_priority_queue_size_at",
         "bucket_priority_queue_capacity_at"
       ]
+    },
+    {
+      "module": "ring_spsc",
+      "owner": "concurrency",
+      "header": "concurrency/include/ring_buffer_spsc.h",
+      "source": "concurrency/src/ring_buffer_spsc.c",
+      "functions": [
+        "ring_spsc_init",
+        "ring_spsc_write_acquire",
+        "ring_spsc_write_release",
+        "ring_spsc_read_acquire",
+        "ring_spsc_read_release",
+        "ring_spsc_write_available",
+        "ring_spsc_read_available"
+      ]
+    },
+    {
+      "module": "bucket_priority_queue_spsc",
+      "owner": "concurrency",
+      "header": "concurrency/include/bucket_priority_queue_spsc.h",
+      "source": "concurrency/src/bucket_priority_queue_spsc.c",
+      "functions": [
+        "bucket_priority_queue_spsc_init",
+        "bucket_priority_queue_spsc_destroy",
+        "bucket_priority_queue_spsc_clear",
+        "bucket_priority_queue_spsc_reserve",
+        "bucket_priority_queue_spsc_push",
+        "bucket_priority_queue_spsc_pop",
+        "bucket_priority_queue_spsc_peek",
+        "bucket_priority_queue_spsc_pop_batch",
+        "bucket_priority_queue_spsc_empty",
+        "bucket_priority_queue_spsc_size",
+        "bucket_priority_queue_spsc_size_at",
+        "bucket_priority_queue_spsc_capacity_at"
+      ]
     }
   ],
   "stage_a_support_files": [
@@ -198,7 +233,9 @@
     "core/src/sds/LICENSE",
     "tests/test_tstr_v2_contract.c",
     "tests/test_object_pool.c",
-    "tests/test_bucket_priority_queue.c"
+    "tests/test_bucket_priority_queue.c",
+    "tests/test_ring_buffer_spsc.c",
+    "tests/test_bucket_priority_queue_spsc.c"
   ],
   "pending_groups": {
     "logging_formatter": [
@@ -217,9 +254,7 @@
       "enum_utils"
     ],
     "queues": [
-      "bucket_priority_queue_mpmc",
-      "bucket_priority_queue_spsc",
-      "ring_buffer_spsc"
+      "bucket_priority_queue_mpmc"
     ],
     "data_io": [
       "cmeta_mmap",

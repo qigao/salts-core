@@ -371,3 +371,25 @@ if(TARGET Salts::TinyTest)
   add_test(NAME saltscore.original_priority_queue_contract
     COMMAND saltscore_original_priority_queue_contract)
 endif()
+
+# Original native SPSC ring and bounded multi-priority SPSC queue. Their
+# behavior is exercised by the original TinyTest suites, not a mock backend.
+if(TARGET Salts::TinyTest)
+  add_executable(saltscore_original_ring_spsc_test test_ring_buffer_spsc.c)
+  target_compile_features(saltscore_original_ring_spsc_test PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_ring_spsc_test PRIVATE Salts::Concurrency Salts::TinyTest)
+  add_test(NAME saltscore.original_ring_spsc COMMAND saltscore_original_ring_spsc_test)
+
+  add_executable(saltscore_original_bucket_spsc_test test_bucket_priority_queue_spsc.c)
+  target_compile_features(saltscore_original_bucket_spsc_test PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_bucket_spsc_test PRIVATE
+    Salts::Concurrency Salts::TinyTest)
+  add_test(NAME saltscore.original_bucket_priority_spsc
+    COMMAND saltscore_original_bucket_spsc_test)
+  set_tests_properties(saltscore.original_bucket_priority_spsc PROPERTIES TIMEOUT 50)
+endif()
+
+add_executable(saltscore_original_spsc_smoke test_original_spsc_smoke.c)
+target_compile_features(saltscore_original_spsc_smoke PRIVATE c_std_11)
+target_link_libraries(saltscore_original_spsc_smoke PRIVATE Salts::Concurrency)
+add_test(NAME saltscore.original_spsc_smoke COMMAND saltscore_original_spsc_smoke)

@@ -172,3 +172,13 @@ add_executable(original_utils_string_consumer_cpp original_utils_string_consumer
 target_compile_features(original_utils_string_consumer_cpp PRIVATE cxx_std_17)
 target_link_libraries(original_utils_string_consumer_cpp PRIVATE Salts::Core)
 add_test(NAME sdk.original_utils_string_cpp17 COMMAND original_utils_string_consumer_cpp)
+
+# Installed-only SPSC consumers must link to one canonical Concurrency owner.
+add_executable(spsc_consumer_c spsc_consumer.c)
+target_compile_features(spsc_consumer_c PRIVATE c_std_11)
+target_link_libraries(spsc_consumer_c PRIVATE Salts::Concurrency)
+add_test(NAME sdk.spsc_c11 COMMAND spsc_consumer_c)
+add_executable(spsc_consumer_cpp spsc_consumer.cpp)
+target_compile_features(spsc_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(spsc_consumer_cpp PRIVATE Salts::Concurrency)
+add_test(NAME sdk.spsc_cpp17 COMMAND spsc_consumer_cpp)

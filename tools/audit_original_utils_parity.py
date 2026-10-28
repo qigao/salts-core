@@ -19,12 +19,15 @@ MANIFEST = ROOT / "tools/original_utils_parity.json"
 def check_stage_a(root: Path, manifest: dict) -> list[str]:
     errors = []
     core = (root / "core/CMakeLists.txt")
-    cmake = core.read_text(encoding="utf-8") if core.is_file() else ""
+    core_cmake = core.read_text(encoding="utf-8") if core.is_file() else ""
     for entry in manifest["stage_a"]:
+        owner = entry.get("owner", "core")
+        owner_path = root / owner / "CMakeLists.txt"
+        cmake = owner_path.read_text(encoding="utf-8") if owner_path.is_file() else ""
         header = root / entry["header"]
         source = root / entry["source"]
         if not header.is_file() or not source.is_file():
-            errors.append(f"Missing Core source/header owner for {entry['module']}")
+            errors.append(f"Missing {owner} source/header owner for {entry['module']}")
             continue
         h = header.read_text(encoding="utf-8")
         s = source.read_text(encoding="utf-8")
@@ -37,13 +40,13 @@ def check_stage_a(root: Path, manifest: dict) -> list[str]:
             if not declared or not implemented:
                 errors.append(f"{entry['module']}: missing public/source function {fn}")
         if entry["source"].split("/")[-1] not in cmake:
-            errors.append(f"{entry['module']}: source not part of sole Salts::Core CMake target")
+            errors.append(f"{entry['module']}: source not compiled by its sole {owner} module target")
         if "<cmeta/" in h or "CMETA_STRUCT(" in h:
             errors.append(f"{entry['module']}: forbidden CMeta reflection in public header")
     for file in manifest["stage_a_support_files"]:
         if not (root / file).is_file():
             errors.append(f"Missing original string/allocator support file: {file}")
-    if "src/sds/sds.c" not in cmake or "include/tstr.h" not in cmake:
+    if "src/sds/sds.c" not in core_cmake or "include/tstr.h" not in core_cmake:
         errors.append("SDS or tstr not owned/installed by the canonical Core target")
     return errors
 
@@ -63,7 +66,7 @@ def main() -> int:
             print("FAIL:", error)
         return 1
     count = sum(len(m["functions"]) for m in manifest["stage_a"])
-    print(f"PASS: stage A preserves {count} original public functions in one Salts::Core owner")
+    print(f"PASS: restored {count} original public functions in canonical module owners")
     print(f"INCOMPLETE: {pending} remaining restoration/semantic-parity investigations (Issue #71)")
     return 0
 
