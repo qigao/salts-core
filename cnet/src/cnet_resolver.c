@@ -216,7 +216,7 @@ static void cnet_resolver_callback(void *argument, int status, int timeouts,
     slot->result.timeouts = timeouts;
     slot->result.status = slot->expired ? SALTS_EAI_AGAIN : slot->cancelled ? SALTS_EAI_CANCELED : cnet_resolver_map_status(status);
     if (slot->result.status == SALTS_OK && node != NULL) {
-      const int port_status;
+      int port_status;
       slot->result.address_length = (size_t)node->ai_addrlen;
       memcpy(slot->result.address, node->ai_addr, slot->result.address_length);
       /* The query's original port is authoritative, irrespective of the
