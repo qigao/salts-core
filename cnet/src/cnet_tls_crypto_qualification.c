@@ -902,7 +902,10 @@ int cnet_tls_peer_certificate_chain_parse(
     for (;;) {
         result = crypto_x509_der_chain_next(data, size, &offset, &view);
         if (result == SALTS_ASN1_DONE) break;
-        if (result == SALTS_ASN1_LIMIT_EXCEEDED) return SALTS_ERANGE;
+        /* Size overrun was checked before entering the decoder. Every
+         * in-range DER parser failure (including a malformed high tag or
+         * nesting limit) is a structural certificate error, not a chain
+         * buffer-size error. Preserve original CNet EPROTO semantics. */
         if (result != SALTS_ASN1_OK) return SALTS_EPROTO;
         if (candidate.count >= CNET_TLS_PEER_CHAIN_MAX_CERTIFICATES)
             return SALTS_ERANGE;
