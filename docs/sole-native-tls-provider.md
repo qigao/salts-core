@@ -1,7 +1,8 @@
 # Sole native TLS Provider cutover — blocked until feature parity
 
-**Authoritative source:** [qigao/crypto](https://github.com/qigao/crypto)
-(master 57e03d9ebefc3b9348764edaddb834862e669a45).
+**Authoritative source:** [qigao/salts-core](https://github.com/qigao/salts-core)
+under native module-local `asn1/` and `crypto/` (retirement epic #76).
+The old qigao/crypto master `57e03d9e` is historical source provenance only.
 **CNet baseline:** salts-core/master 012fa1a5effc956ba764509034b3c265d9b9aa79.
 **Upstream blocking issue:** [Crypto #44](https://github.com/qigao/crypto/issues/44)
 (no third-party TLS engine at all); [Crypto #18](https://github.com/qigao/crypto/issues/18)
@@ -11,8 +12,8 @@
 ## Two different, both mandatory boundaries
 
 1. **Public/physical owner:** exactly one STATIC Salts::Crypto, with
-   independent first-party Salts::ASN1 for ASN.1 BER/DER. CNet imports
-   *that one target* and must not compile gmssl headers, link
+   independent first-party Salts::ASN1 for ASN.1 BER/DER. CNet links
+   *that one local target* and must not compile gmssl headers, link
    GmSSL::GmSSL directly, load an alternate provider, or duplicate a static
    Crypto inside multiple plugin/consumer DSOs. Salts::CNet is a single
    shared owner that embeds the one Crypto archive.
@@ -65,7 +66,7 @@ The REPORT is intentionally **NOT a cutover PASS**. The release gate is:
 
     python3 tools/audit_single_tls_owner.py
 
-and MUST return nonzero today. It demands one Salts::Crypto link in CNet,
+and MUST return nonzero today. It demands one local Salts::Crypto link in CNet,
 no GmSSL/other TLS backend in production source or CMake, a native static
 Crypto source owner and versioned session/auth/peer/BIO interfaces.
 

@@ -17,8 +17,12 @@ def write(root: Path, path: str, text: str) -> None:
     p.write_text(text,encoding="utf-8")
 
 def valid_fixture(root: Path):
+    write(root,"CMakeLists.txt",
+        "add_subdirectory(asn1)\nadd_subdirectory(crypto)\n")
+    write(root,"asn1/CMakeLists.txt",
+        "add_library(salts_asn1 STATIC src/reader.c)\n"
+        "add_library(Salts::ASN1 ALIAS salts_asn1)\n")
     write(root,"cnet/CMakeLists.txt",
-        "find_package(Crypto 0.1 CONFIG REQUIRED)\n"
         "add_library(saltscore_cnet SHARED cnet/src/cnet_tls.c)\n"
         "target_link_libraries(saltscore_cnet PRIVATE Salts::Crypto)\n")
     write(root,"cnet/src/cnet_tls.c",
@@ -38,6 +42,25 @@ class SoleTLSOwnerGateTests(unittest.TestCase):
             root=Path(path)
             valid_fixture(root)
             self.assertEqual(module.source_errors(root),[])
+
+    def test_external_crypto_package_is_not_a_source_owner(self):
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            valid_fixture(root)
+            f = root / "cnet/CMakeLists.txt"
+            f.write_text(f.read_text() +
+                "find_package(Crypto 0.1 CONFIG REQUIRED)\n")
+            self.assertIn("CNET_USES_EXTERNAL_CRYPTO_PACKAGE",
+                          module.source_errors(root))
+
+    def test_missing_local_crypto_module_is_blocked(self):
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            valid_fixture(root)
+            (root / "CMakeLists.txt").write_text(
+                "add_subdirectory(asn1)\n")
+            self.assertIn("ROOT_NOT_BUILDING_NATIVE_CRYPTO",
+                          module.source_errors(root))
 
     def test_cnet_direct_gmssl_cannot_be_hidden_under_crypto_alias(self):
         with tempfile.TemporaryDirectory() as path:

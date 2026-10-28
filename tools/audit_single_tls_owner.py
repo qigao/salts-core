@@ -31,21 +31,31 @@ DYNAMIC_PROVIDER = re.compile(
 def source_errors(root: Path) -> list[str]:
     failures: list[str] = []
     paths = (
-        "cnet/CMakeLists.txt", "cnet/src/cnet_tls.c",
-        "crypto/CMakeLists.txt",
+        "CMakeLists.txt", "cnet/CMakeLists.txt", "cnet/src/cnet_tls.c",
+        "asn1/CMakeLists.txt", "crypto/CMakeLists.txt",
     )
     for p in paths:
         if not (root / p).is_file():
             failures.append("MISSING_SOURCE " + p)
     if failures:
         return failures
-    cmake = (root / paths[0]).read_text(encoding="utf-8")
-    tls = (root / paths[1]).read_text(encoding="utf-8")
-    crypto = (root / paths[2]).read_text(encoding="utf-8")
+    assembly = (root / "CMakeLists.txt").read_text(encoding="utf-8")
+    cmake = (root / "cnet/CMakeLists.txt").read_text(encoding="utf-8")
+    tls = (root / "cnet/src/cnet_tls.c").read_text(encoding="utf-8")
+    asn1 = (root / "asn1/CMakeLists.txt").read_text(encoding="utf-8")
+    crypto = (root / "crypto/CMakeLists.txt").read_text(encoding="utf-8")
+    if "add_subdirectory(asn1)" not in assembly:
+        failures.append("ROOT_NOT_BUILDING_NATIVE_ASN1")
+    if "add_subdirectory(crypto)" not in assembly:
+        failures.append("ROOT_NOT_BUILDING_NATIVE_CRYPTO")
+    if "SALTSCORE_BUILD_CNET AND SALTSCORE_BUILD_CRYPTO" in assembly:
+        failures.append("ROOT_LEGACY_DUAL_TLS_BLOCKER_STILL_PRESENT")
+    if not re.search(r"add_library\(\s*Salts::ASN1\s+ALIAS\s+salts_asn1\)", asn1):
+        failures.append("ASN1_NOT_CANONICAL_FIRST_PARTY_OWNER")
 
     # A sole Crypto target is the ONLY allowed CNet TLS API and link.
-    if not re.search(r"find_package\(\s*Crypto\b", cmake):
-        failures.append("CNET_NOT_IMPORTING_CRYPTO")
+    if re.search(r"find_package\(\s*Crypto\b", cmake):
+        failures.append("CNET_USES_EXTERNAL_CRYPTO_PACKAGE")
     if "Salts::Crypto" not in cmake:
         failures.append("CNET_NOT_LINKING_SALTS_CRYPTO")
     if re.search(r"find_package\(\s*" + THIRD_PARTY_TLS + r"\b", cmake,
