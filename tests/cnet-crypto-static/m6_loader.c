@@ -38,6 +38,9 @@ typedef int (*acquire_fn)(cnet_m6_lease **, const void **, uint64_t *);
 typedef int (*release_fn)(cnet_m6_lease **);
 typedef int (*snapshot_fn)(const void **, uint32_t *, uint32_t *, uint64_t *);
 typedef int (*smoke_fn)(cnet_m6_lease *);
+typedef int (*mtls_fn)(cnet_m6_lease *, uint32_t, const char *,
+                       const char *, const char *, const char *,
+                       const char *, int);
 typedef mem_pool_t *(*pool_fn)(void);
 typedef const void *(*thread_fn)(void);
 typedef struct m6_plugin {
@@ -46,6 +49,7 @@ typedef struct m6_plugin {
     release_fn release;
     snapshot_fn snapshot;
     smoke_fn smoke;
+    mtls_fn mtls;
     pool_fn pool;
     thread_fn thread;
 } m6_plugin;
@@ -60,10 +64,11 @@ static int open_plugin(m6_plugin *p, const char *path)
     p->release = (release_fn)load_symbol(p->module, "m6_plugin_release");
     p->snapshot = (snapshot_fn)load_symbol(p->module, "m6_plugin_snapshot");
     p->smoke = (smoke_fn)load_symbol(p->module, "m6_plugin_native_smoke");
+    p->mtls = (mtls_fn)load_symbol(p->module, "m6_plugin_real_mtls");
     p->pool = (pool_fn)load_symbol(p->module, "m6_plugin_core_pool");
     p->thread = (thread_fn)load_symbol(p->module, "m6_plugin_thread_identity");
     if (!p->acquire || !p->release || !p->snapshot || !p->smoke ||
-        !p->pool || !p->thread) {
+        !p->mtls || !p->pool || !p->thread) {
         close_library(p->module);
         memset(p, 0, sizeof(*p));
         return -3;
@@ -106,11 +111,122 @@ done:
     if (lease) (void)w->release(&lease);
 }
 
+/* Python passes genuine temporary CA/server/client identities. The host
+ * does not link Crypto, and each independent plugin runs its original CNet
+ * TLS 1.2 or TLS 1.3 over its OWN epoll/kqueue/IOCP NativeIO clients.
+ * They borrow exactly one Provider through the shared CNet candidate.
+ */
+typedef struct m6_mtls_worker {
+    mtls_fn call;
+    cnet_m6_lease *lease;
+    const char *ca;
+    const char *server_cert;
+    const char *server_key;
+    const char *client_cert;
+    const char *client_key;
+    uint32_t protocol;
+    int expect_accept;
+    int status;
+} m6_mtls_worker;
+
+static void m6_mtls_worker_entry(void *context)
+{
+    m6_mtls_worker *w = (m6_mtls_worker *)context;
+    w->status = w->call(w->lease, w->protocol, w->ca,
+                        w->server_cert, w->server_key,
+                        w->client_cert, w->client_key, w->expect_accept);
+}
+
+static int run_mtls_concurrent(int argc, char **argv)
+{
+    m6_plugin a = {0}, b = {0};
+    cnet_m6_lease *left = NULL, *right = NULL;
+    const void *owner_a = NULL, *owner_b = NULL, *owner_snap = NULL;
+    uint64_t epoch_a = 0u, epoch_b = 0u, epoch_snap = 0u;
+    uint32_t claims = UINT32_MAX, sessions = UINT32_MAX;
+    cmeta_thread_t threads[2] = {0};
+    m6_mtls_worker workers[2] = {{0}};
+    size_t started = 0u, i;
+    int result = 0, join_failure = 0, accepted;
+
+    if (argc != 10 || strcmp(argv[1], "--mtls") != 0) return 2;
+    if (strcmp(argv[9], "accept") == 0) accepted = 1;
+    else if (strcmp(argv[9], "reject") == 0) accepted = 0;
+    else return 2;
+
+    ASSERT(open_plugin(&a, argv[2]) == 0);
+    ASSERT(open_plugin(&b, argv[3]) == 0);
+    ASSERT(a.pool() == mem_global() && b.pool() == mem_global());
+    ASSERT(a.thread() == cmeta_thread_current_token() &&
+           b.thread() == cmeta_thread_current_token());
+    ASSERT(a.acquire(&left, &owner_a, &epoch_a) == SALTS_OK);
+    ASSERT(b.acquire(&right, &owner_b, &epoch_b) == SALTS_OK);
+    ASSERT(left && right && owner_a == owner_b && epoch_a == epoch_b);
+    ASSERT(a.snapshot(&owner_snap, &claims, &sessions, &epoch_snap) == SALTS_OK);
+    ASSERT(owner_snap == owner_a && claims == 2u && sessions == 0u &&
+           epoch_snap == epoch_a);
+
+    for (i = 0u; i != 2u; ++i) {
+        workers[i].call = i == 0u ? a.mtls : b.mtls;
+        workers[i].lease = i == 0u ? left : right;
+        workers[i].ca = argv[4];
+        workers[i].server_cert = argv[5];
+        workers[i].server_key = argv[6];
+        workers[i].client_cert = strcmp(argv[7], "-") == 0 ? NULL : argv[7];
+        workers[i].client_key = strcmp(argv[8], "-") == 0 ? NULL : argv[8];
+        workers[i].protocol = i == 0u ? 12u : 13u;
+        workers[i].expect_accept = accepted;
+        workers[i].status = SALTS_EBUSY;
+        ASSERT(cmeta_thread_create(&threads[i], m6_mtls_worker_entry,
+                                   &workers[i]) == 0);
+        ++started;
+    }
+
+    /* Join before releasing Provider leases or unloading either module.
+     * Both CNet workers must have completed genuine TLS terminal delivery.
+     */
+    for (i = 0u; i < started; ++i)
+        if (cmeta_thread_join(&threads[i]) != 0) join_failure = 1;
+    started = 0u;
+    ASSERT(join_failure == 0);
+    ASSERT(workers[0].status == SALTS_OK &&
+           workers[1].status == SALTS_OK);
+
+    ASSERT(b.snapshot(&owner_snap, &claims, &sessions, &epoch_snap) == SALTS_OK);
+    ASSERT(owner_snap == owner_a && claims == 2u && sessions == 0u);
+    /* Cross-plugin retirement: release plugin A's lease from plugin B. */
+    ASSERT(b.release(&left) == SALTS_OK && left == NULL);
+    ASSERT(a.release(&right) == SALTS_OK && right == NULL);
+    ASSERT(a.snapshot(&owner_snap, &claims, &sessions, &epoch_snap) == SALTS_OK);
+    ASSERT(claims == 0u && sessions == 0u);
+    close_plugin(&a);
+    close_plugin(&b);
+    printf("M6 original CNet TLS12/TLS13 concurrent mTLS %s across two "
+           "independent plugins PASS\\n", accepted ? "accepted" : "rejected");
+    return 0;
+cleanup:
+    /* No unload or last Provider destroy while NativeIO has entrants. */
+    for (i = 0u; i < started; ++i) (void)cmeta_thread_join(&threads[i]);
+    if (left) {
+        if (b.module && b.release) (void)b.release(&left);
+        else if (a.module && a.release) (void)a.release(&left);
+    }
+    if (right) {
+        if (a.module && a.release) (void)a.release(&right);
+        else if (b.module && b.release) (void)b.release(&right);
+    }
+    close_plugin(&a);
+    close_plugin(&b);
+    return result;
+}
+
 int main(int argc, char **argv)
 {
     const mem_pool_t *const core_pool = mem_global();
     const void *const core_thread = cmeta_thread_current_token();
     unsigned round;
+    if (argc == 10 && strcmp(argv[1], "--mtls") == 0)
+        return run_mtls_concurrent(argc, argv);
     if (argc != 3 || !core_pool || !core_thread) return 2;
     for (round = 0u; round != ROUNDS; ++round) {
         m6_plugin a = {0}, b = {0};
