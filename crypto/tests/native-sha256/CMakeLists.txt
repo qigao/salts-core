@@ -49,3 +49,29 @@ else()
 endif()
 add_test(NAME crypto.native.sha224.no_gmssl COMMAND salts_native_sha224_independent)
 set_tests_properties(crypto.native.sha224.no_gmssl PROPERTIES TIMEOUT 120)
+
+# SHA384/512 share the same first-party SHA2 source object, but use FIPS 64-bit
+# compression. The independent project has ZERO TLS or other provider imports.
+add_executable(salts_native_sha384_512_independent
+  ../algorithms/sha384_512_native_vectors.c
+  $<TARGET_OBJECTS:salts_native_sha256>)
+target_compile_features(salts_native_sha384_512_independent PRIVATE c_std_11)
+set_target_properties(salts_native_sha384_512_independent PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+target_include_directories(salts_native_sha384_512_independent PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../include")
+if(MSVC)
+  target_compile_options(salts_native_sha384_512_independent PRIVATE /W4 /WX)
+else()
+  target_compile_options(salts_native_sha384_512_independent PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME crypto.native.sha384_512.no_gmssl
+  COMMAND salts_native_sha384_512_independent)
+set_tests_properties(crypto.native.sha384_512.no_gmssl PROPERTIES TIMEOUT 120)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME crypto.native.sha384_512.hashlib
+  COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../algorithms/sha384_512_hashlib_oracle.py"
+    "$<TARGET_FILE:salts_native_sha384_512_independent>")
+set_tests_properties(crypto.native.sha384_512.hashlib PROPERTIES TIMEOUT 120)
