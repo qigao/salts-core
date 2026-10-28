@@ -44,6 +44,8 @@ native invalid-range contract rather than reintroducing old silent truncation.
 | `utils/include/tlog.h`, `utils/src/tlog.c` | `core/include/tlog.h`, `core/src/tlog.c` | Original async Disruptor logger, FS file sinks, native level/entry metadata and original tests, CI pending |
 | `utils/include/tlog_helper.h` | `core/include/tlog_helper.h` | Same original C++17 container formatter helpers, CI pending |
 
+| `utils/include/cmeta_uuid.h`, `utils/src/cmeta_uuid.c` | `core/include/cmeta_uuid.h`, `core/src/cmeta_uuid.c` | Original RFC v4/v7 UUID using canonical Platform clock/CSPRNG; C11/C++17 tests, CI pending |
+
 ## Still missing: full original utils functionality
 
 **Not fully accepted, do not mark migration complete or release:**
@@ -53,7 +55,7 @@ native invalid-range contract rather than reintroducing old silent truncation.
 - Containers and algorithms: `ac_automaton`, `levenshtein_automaton`,
   `bucket_priority_queue_mpmc`,
   `re`, `enum_utils`.
-- mmap/UUID/zstd/SIMD/error: original `cmeta_mmap`, `cmeta_uuid`,
+- mmap/UUID/zstd/SIMD/error: original `cmeta_mmap`,
   `cmeta_zstd`, `cmeta_simd_scan`, `cmeta_error`.
 - Requires a per-symbol difference audit, **not name matching**:
   `base64_utils`, `cmeta_buffer`, `cmeta_bytes`, `cmeta_fs*`,

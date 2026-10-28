@@ -297,6 +297,19 @@
         "cmeta_log_level_name",
         "cmeta_log_level_from_name"
       ]
+    },
+    {
+      "module": "uuid",
+      "owner": "core",
+      "header": "core/include/cmeta_uuid.h",
+      "source": "core/src/cmeta_uuid.c",
+      "functions": [
+        "cmeta_uuid_v4_generate",
+        "cmeta_uuid_v7_generate",
+        "cmeta_uuid_parse",
+        "cmeta_uuid_format",
+        "cmeta_uuid_equal"
+      ]
     }
   ],
   "stage_a_support_files": [
@@ -323,7 +336,9 @@
     "tests/test_tlog.c",
     "tests/test_tlog_cpp.cpp",
     "tests/test_tlog_vstr_abi.c",
-    "tests/test_tlog_header_collision.c"
+    "tests/test_tlog_header_collision.c",
+    "tests/test_cmeta_uuid.c",
+    "tests/test_cmeta_uuid_cpp.cpp"
   ],
   "pending_groups": {
     "logging_formatter": [],
@@ -338,7 +353,6 @@
     ],
     "data_io": [
       "cmeta_mmap",
-      "cmeta_uuid",
       "cmeta_zstd",
       "cmeta_simd_scan",
       "cmeta_error"
