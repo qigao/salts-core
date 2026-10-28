@@ -23,12 +23,20 @@
 struct cnet_m6_lease {
     uint64_t epoch;
     const void *owner;
+    /* A module cannot release this lease while one of its CNet Owner
+     * operations is active; this counter is protected by owner_lock. */
+    uint32_t active_calls;
 };
 static atomic_flag owner_lock = ATOMIC_FLAG_INIT;
 static unsigned char owner_identity;
 static crypto_tls_provider *owner_provider;
 static uint32_t owner_leases;
+static uint32_t owner_active_calls;
 static uint64_t owner_epoch;
+/* Test-only native admission barrier, never used by production CNet. */
+static atomic_uint m6_gate_armed = ATOMIC_VAR_INIT(0u);
+static atomic_uint m6_gate_open = ATOMIC_VAR_INIT(0u);
+static atomic_uint m6_gate_admitted = ATOMIC_VAR_INIT(0u);
 /* The TLS acceptance function is PRIVATE to the same shared candidate.
  * It is the original M5 two-client, real NativeIO test, but borrows this
  * one Provider instead of constructing and destroying a second Provider.
@@ -126,6 +134,50 @@ CNET_M6_API int cnet_m6_shared_snapshot(const void **out_owner,
     return SALTS_OK;
 }
 
+/* CNet original M5 Worker calls this only in the private M6 shared
+ * candidate, AFTER its own cnet_connect has admitted a real native TLS
+ * command and BEFORE its first Owner drive/pump.
+ */
+int cnet_m6_test_native_admission_wait(void)
+{
+    const uint64_t deadline = cmeta_monotonic_ms() + UINT64_C(5000);
+    if (!atomic_load_explicit(&m6_gate_armed, memory_order_acquire))
+        return SALTS_OK;
+    atomic_fetch_add_explicit(&m6_gate_admitted, 1u, memory_order_acq_rel);
+    while (!atomic_load_explicit(&m6_gate_open, memory_order_acquire)) {
+        if (cmeta_monotonic_ms() >= deadline)
+            return SALTS_ETIMEDOUT;
+        cmeta_thread_yield();
+    }
+    return SALTS_OK;
+}
+
+CNET_M6_API int cnet_m6_test_native_admission_gate(
+    uint32_t command, uint32_t *out_admitted)
+{
+    int status;
+    if (!out_admitted || command > 2u) return SALTS_EINVAL;
+    status = lock_owner();
+    if (status != SALTS_OK) return status;
+    if (command == 1u) {
+        if (owner_leases != 2u || owner_active_calls != 0u ||
+            atomic_load_explicit(&m6_gate_armed, memory_order_relaxed)) {
+            unlock_owner();
+            return SALTS_EBUSY;
+        }
+        atomic_store_explicit(&m6_gate_admitted, 0u, memory_order_relaxed);
+        atomic_store_explicit(&m6_gate_open, 0u, memory_order_relaxed);
+        atomic_store_explicit(&m6_gate_armed, 1u, memory_order_release);
+    } else if (command == 2u) {
+        /* On errors the host calls OPEN before joining active workers. */
+        atomic_store_explicit(&m6_gate_open, 1u, memory_order_release);
+    }
+    *out_admitted = atomic_load_explicit(&m6_gate_admitted,
+                                         memory_order_acquire);
+    unlock_owner();
+    return SALTS_OK;
+}
+
 CNET_M6_API int cnet_m6_shared_release(cnet_m6_lease **in_out)
 {
     int status;
@@ -138,6 +190,13 @@ CNET_M6_API int cnet_m6_shared_release(cnet_m6_lease **in_out)
         !owner_provider || !owner_leases) {
         unlock_owner();
         return SALTS_EINVAL;
+    }
+    if (lease->active_calls != 0u) {
+        /* Another plugin is trying to retire the exact lease currently
+         * driving a real CNet NativeIO/TLS operation. Never free it.
+         * This is a bounded lifetime ownership contract, not a retry. */
+        unlock_owner();
+        return SALTS_EBUSY;
     }
     if (owner_leases == 1u &&
         crypto_tls_provider_destroy(&owner_provider) != CRYPTO_TLS_OK) {
@@ -169,7 +228,13 @@ CNET_M6_API int cnet_m6_shared_native_smoke(cnet_m6_lease *lease)
         unlock_owner();
         return SALTS_EINVAL;
     }
-    provider = owner_provider;  /* lease retained until smoke returns */
+    if (lease->active_calls != 0u) {
+        unlock_owner();
+        return SALTS_EBUSY;
+    }
+    ++lease->active_calls;
+    ++owner_active_calls;
+    provider = owner_provider;
     unlock_owner();
 
     policy.size = sizeof(policy);
@@ -179,7 +244,7 @@ CNET_M6_API int cnet_m6_shared_native_smoke(cnet_m6_lease *lease)
     status = cnet_crypto_test_bind_client(
         &tls, provider, &policy, "localhost", CRYPTO_TLS_1_2,
         CRYPTO_TLS_CIPHER_BIO_MIN_CAPACITY);
-    if (status != SALTS_OK) return status;
+    if (status != SALTS_OK) goto complete;
 #if defined(_WIN32)
     cfg.backend = NATIVE_IO_BACKEND_IOCP;
 #elif defined(__APPLE__)
@@ -213,7 +278,19 @@ done:
         (void)cnet_client_destroy(&client);
     }
     if (cnet_tls_client_destroy(&tls) != SALTS_OK)
-        return SALTS_EIO;
+        status = SALTS_EIO;
+complete:
+    {
+        const int lock_status = lock_owner();
+        if (lock_status != SALTS_OK) return lock_status;
+        if (!lease->active_calls || !owner_active_calls) {
+            unlock_owner();
+            return SALTS_EIO;
+        }
+        --lease->active_calls;
+        --owner_active_calls;
+        unlock_owner();
+    }
     return status;
 }
 
@@ -245,7 +322,15 @@ CNET_M6_API int cnet_m6_shared_native_mtls(
         unlock_owner();
         return SALTS_EINVAL;
     }
-    /* Caller retains lease; no Provider destruction before this returns. */
+    /* A release from another plugin must return BUSY throughout the
+     * original CNet Owner call, even if OTHER provider leases remain.
+     * Never free this lease while its callback/NativeIO path uses it. */
+    if (lease->active_calls != 0u) {
+        unlock_owner();
+        return SALTS_EBUSY;
+    }
+    ++lease->active_calls;
+    ++owner_active_calls;
     shared = owner_provider;
     unlock_owner();
 
@@ -255,12 +340,27 @@ CNET_M6_API int cnet_m6_shared_native_mtls(
         const uint64_t deadline = cmeta_monotonic_ms() + UINT64_C(5000);
         while (atomic_load_explicit(&m6_mtls_arrivals,
                                     memory_order_acquire) <= ticket) {
-            if (cmeta_monotonic_ms() >= deadline)
-                return SALTS_ETIMEDOUT;
+            if (cmeta_monotonic_ms() >= deadline) {
+                status = SALTS_ETIMEDOUT;
+                goto complete_mtls;
+            }
             cmeta_thread_yield();
         }
     }
-    return cnet_m6_original_owner_mtls_case(
+    status = cnet_m6_original_owner_mtls_case(
         shared, crypto_protocol, ca, server_cert, server_key, client_cert,
         client_key, expected_accept != 0);
+complete_mtls:
+    {
+        const int lock_status = lock_owner();
+        if (lock_status != SALTS_OK) return lock_status;
+        if (!lease->active_calls || !owner_active_calls) {
+            unlock_owner();
+            return SALTS_EIO;
+        }
+        --lease->active_calls;
+        --owner_active_calls;
+        unlock_owner();
+    }
+    return status;
 }
