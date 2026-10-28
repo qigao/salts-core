@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 HEADERS = ("tls.h", "tls_ext.h", "tls_peer.h", "tls_auth.h", "cipher_bio.h")
 BACKENDS = ("src/crypto_tls_gmssl.c", "src/crypto_tls_native.c")
 THIRD_PARTY = r"(?:gmssl|openssl|boringssl|mbedtls|wolfssl)"
-INCLUDE = re.compile(r"#\s*include\s*[<\\"]\s*" + THIRD_PARTY + r"/", re.I)
+INCLUDE = re.compile(r'#\s*include\s*[<"]\s*' + THIRD_PARTY + r'/', re.I)
 ALTERNATE = re.compile(r"\b(?:Salts::TLS(?:Host|CipherBIO)?|Salts::CryptoProvider|Crypto::(?:TLS|TLSHost|TLSCipherBIO|Provider))\b")
 OTHER_ENGINE = re.compile(r"\b(?:openssl|boringssl|mbedtls|wolfssl)(?:::|/)", re.I)
 
