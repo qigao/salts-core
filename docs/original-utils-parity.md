@@ -1,5 +1,47 @@
 # Original Salts utils/Core migration parity — work in progress
 
+## Full original utils tree (not just include/src/tests)
+
+The original `qigao/salts@codex/finish-1181-session/utils/` Git tree
+`9c5b53d7194d142a89be576c3314ee4bfd569a37` contains **175 blob files**
+in exactly eight first-level directories, plus two root files. The earlier
+claim of 35 headers, 31 implementation files and 69 test tree entries
+counted only three subdirectories; it was not a complete migration inventory.
+
+| Original utils directory | Blob files | No same-basename file in this PR HEAD* |
+| --- | ---: | ---: |
+| `include/` | 35 | 18 |
+| `src/` | 31 | 18 |
+| `tests/` | 68 | 47 |
+| `parser/` | 5 | 0 |
+| `benchmarks/` | 11 | 10 |
+| `examples/` | 5 | 4 |
+| `fuzz/` | 7 | 5 |
+| `verification/` | 11 | 10 |
+| Root `CMakeLists.txt`, `CRYPTO.md` | 2 | 1 |
+| **Total** | **175** | **113** |
+
+*This is an automated **filename-only** preliminary screen against
+`salts-core` commit `102fe337`. It is not an audit of completed features:
+renamed files can implement the same operations, while identical filenames
+can contain missing APIs. The immutable per-file original path, Git SHA,
+owner proposal, source-independent destination candidates and unresolved
+state are all in `tools/original_utils_full_inventory.json`.
+
+Full acceptance additionally requires exact original-function parity,
+behavior, source provenance, module owner, original positive/negative tests,
+C11/C++17 consumer, sanitizer and platform evidence. The
+`audit_original_utils_tree.py --full` gate **must stay red** until all 175
+entries have evidence; a green snapshot inventory check only proves nobody
+silently discarded the baseline.
+
+The `benchmarks/`, `fuzz/`, `examples/` and `verification/` material
+must also be preserved and migrated to the proper existing source owner
+(`qigao/crypto` for Crypto functions, `Salts::FS` for FS,
+`Salts::Concurrency` for queue/Disruptor and `Salts::Core` for Core).
+Do not duplicate providers, resurrect CMeta dependencies or dismiss
+non-production verification assets as expendable.
+
 **Blocking issue:** [#71](https://github.com/qigao/salts-core/issues/71).
 **Historical baseline:** `qigao/salts@codex/finish-1181-session`, `utils/` Git tree
 `9c5b53d7194d142a89be576c3314ee4bfd569a37`.
