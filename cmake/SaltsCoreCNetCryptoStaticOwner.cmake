@@ -239,6 +239,26 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
         "$<TARGET_FILE:saltscore_cnet_m6_plugin_b>")
     set_tests_properties(saltscore.cnet_crypto_m6_two_plugin_shared_owner
       PROPERTIES TIMEOUT 120 RESOURCE_LOCK cnet_m6_shared_owner)
+
+    option(SALTSCORE_CNET_M6_CONCURRENT_MTLS_TEST
+      "Run real parallel CNet TLS1.2/1.3 from two plugins and ONE Crypto DSO" OFF)
+    if(SALTSCORE_CNET_M6_CONCURRENT_MTLS_TEST)
+      if(NOT SALTSCORE_CRYPTO_PYTHON_FIXTURE_SOURCE OR
+          NOT EXISTS "${SALTSCORE_CRYPTO_PYTHON_FIXTURE_SOURCE}")
+        message(FATAL_ERROR "M6 needs exact-head Crypto Python certificate fixture source")
+      endif()
+      find_package(Python3 COMPONENTS Interpreter REQUIRED)
+      add_test(NAME saltscore.cnet_crypto_m6_two_plugin_concurrent_mtls
+        COMMAND "${Python3_EXECUTABLE}"
+          "${CMAKE_CURRENT_SOURCE_DIR}/tests/cnet-crypto-static/python_m6_two_plugin_mtls.py"
+          --loader "$<TARGET_FILE:saltscore_cnet_m6_two_plugin_loader>"
+          --plugin-a "$<TARGET_FILE:saltscore_cnet_m6_plugin_a>"
+          --plugin-b "$<TARGET_FILE:saltscore_cnet_m6_plugin_b>"
+          --crypto-python-fixtures "${SALTSCORE_CRYPTO_PYTHON_FIXTURE_SOURCE}"
+          --work "${CMAKE_CURRENT_BINARY_DIR}/m6-private-concurrent-fixtures")
+      set_tests_properties(saltscore.cnet_crypto_m6_two_plugin_concurrent_mtls
+        PROPERTIES TIMEOUT 480 RESOURCE_LOCK cnet_m6_shared_owner)
+    endif()
   endif()
 
 endif()
