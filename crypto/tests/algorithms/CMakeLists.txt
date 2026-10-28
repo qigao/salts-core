@@ -40,3 +40,30 @@ add_test(NAME crypto.algorithms.native_sha384_512_fips
          COMMAND salts_crypto_native_sha384_512_kat)
 set_tests_properties(crypto.algorithms.native_sha384_512_fips
   PROPERTIES TIMEOUT 120)
+
+# New versioned full CNet policy owner is compiled into the SINGLE actual
+# Salts::Crypto archive (not a test-only proxy or alternate TLS Provider).
+add_executable(salts_crypto_tls_profile_v14 tls_profile_v14_vectors.c)
+target_compile_features(salts_crypto_tls_profile_v14 PRIVATE c_std_11)
+set_target_properties(salts_crypto_tls_profile_v14 PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+target_link_libraries(salts_crypto_tls_profile_v14 PRIVATE Salts::Crypto)
+if(MSVC)
+  target_compile_options(salts_crypto_tls_profile_v14 PRIVATE /W4 /WX)
+else()
+  target_compile_options(salts_crypto_tls_profile_v14 PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME crypto.algorithms.native_tls_profile_v14
+  COMMAND salts_crypto_tls_profile_v14)
+set_tests_properties(crypto.algorithms.native_tls_profile_v14
+  PROPERTIES TIMEOUT 120)
+
+add_executable(salts_crypto_tls_profile_v14_cpp tls_profile_v14_cpp.cpp)
+set_target_properties(salts_crypto_tls_profile_v14_cpp PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+target_link_libraries(salts_crypto_tls_profile_v14_cpp PRIVATE Salts::Crypto)
+add_test(NAME crypto.algorithms.native_tls_profile_v14_cpp17
+  COMMAND salts_crypto_tls_profile_v14_cpp)
+set_tests_properties(crypto.algorithms.native_tls_profile_v14_cpp17
+  PROPERTIES TIMEOUT 120)
