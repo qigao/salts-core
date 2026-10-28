@@ -41,6 +41,36 @@ static int tls13_recv_handshake_message(TLS_CONNECT *conn, int from_server)
 		if (conn->handshake_fragment_offset == conn->handshake_fragment_len) {
 			int ret = tls_recv_record(conn);
 			if (ret != 1) return ret;
+			/* RFC 8446 section 5.1 / appendix D.4: Python ssl may send
+			 * exactly one unencrypted dummy CCS before its first encrypted
+			 * client Certificate in a normal TLS1.3 mTLS handshake.
+			 * This is NEVER part of the authenticated handshake transcript,
+			 * and MUST NOT advance the AEAD record sequence.
+			 *
+			 * Reuse the single existing private session counter also used
+			 * for CCS after HRR. A malformed/duplicate CCS, an unexpected
+			 * direction or a partial buffered handshake fails closed.
+			 */
+			if (tls_record_type(conn->record) == TLS_record_change_cipher_spec) {
+				if (from_server || conn->is_client
+					|| !conn->ctx->accept_change_cipher_spec
+					|| conn->crypto_hrr_ccs_seen != 0u
+					|| conn->handshake_state != TLS_state_client_certificate
+					|| conn->handshake_message_len != 0u
+					|| conn->handshake_fragment_offset != conn->handshake_fragment_len) {
+					tls13_send_alert(conn, TLS_alert_unexpected_message);
+					return -1;
+				}
+				if (conn->recordlen != TLS_RECORD_HEADER_SIZE + 1u
+					|| tls_record_protocol(conn->record) != TLS_protocol_tls12
+					|| tls_record_get_change_cipher_spec(conn->record) != 1) {
+					tls13_send_alert(conn, TLS_alert_decode_error);
+					return -1;
+				}
+				conn->crypto_hrr_ccs_seen = 1u;
+				tls_clean_record(conn);
+				return TLS_ERROR_RECV_AGAIN;
+			}
 			if (tls_record_type(conn->record) != TLS_record_application_data
 				|| tls_record_protocol(conn->record) != TLS_protocol_tls12) {
 				tls13_send_alert(conn, TLS_alert_unexpected_message);

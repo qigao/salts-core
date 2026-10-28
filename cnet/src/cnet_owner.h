@@ -264,6 +264,14 @@ typedef struct cnet_owner_test_request_snapshot {
 bool cnet_owner_test_backend_stats(const cnet_owner *owner,
                                    native_io_backend_stats *out_native,
                                    native_io_coroutine_stats *out_coroutine);
+/** Test-only copy of the exact selected sockaddr retained by the Owner.
+ * Valid while the original session generation remains occupied, including
+ * after a failed terminal and before final retirement. Never an SDK API. */
+int cnet_owner_test_copy_peer_sockaddr(const cnet_owner *owner,
+                                       cnet_session_handle session,
+                                       void *out_address, size_t address_capacity,
+                                       size_t *out_address_length);
+
 /** Captures the CNet routing token plus authoritative NativeIO identity for one request record. */
 bool cnet_owner_test_get_request_snapshot(const cnet_owner *owner, size_t request_index,
                                           cnet_owner_test_request_snapshot *out_snapshot);

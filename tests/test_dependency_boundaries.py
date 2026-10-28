@@ -51,6 +51,9 @@ class DependencyGateTest(unittest.TestCase):
             "foreach(_forbidden IN ITEMS\n"
             "  Salts::TLS Salts::TLSCipherBIO Salts::CryptoProvider\n"
             "  Crypto::TLS Crypto::TLSCipherBIO Crypto::Provider)\n"
+            '  if(TARGET "${_forbidden}")\n'
+            '    message(FATAL_ERROR "Second static Crypto owner is forbidden")\n'
+            "  endif()\n"
             "endforeach()\n"
         )
         with tempfile.TemporaryDirectory() as directory:
@@ -72,17 +75,93 @@ class DependencyGateTest(unittest.TestCase):
             (root / "extra.cmake").write_text(guard, encoding="utf-8")
             self.assertEqual(len(module.check_repository(root)), 2)
 
-            # A renamed guard cannot hide dependencies.
+            # A renamed or non-fatal guard cannot hide dependencies.
             (root / "extra.cmake").unlink()
             guard_file.write_text(
                 guard.replace("foreach(_forbidden IN ITEMS",
                               "set(_forbidden"), encoding="utf-8")
             self.assertEqual(len(module.check_repository(root)), 2)
+            guard_file.write_text(
+                guard.replace("message(FATAL_ERROR", "message(STATUS"),
+                encoding="utf-8")
+            self.assertEqual(len(module.check_repository(root)), 2)
 
-    def test_retired_asn1_target_is_forbidden(self):
+    def test_canonical_asn1_allowed_but_legacy_targets_rejected(self):
         self.assertEqual(
-            len(self.check_text("target_link_libraries(app PRIVATE Salts::ASN1)\n",
-                                ".cmake")), 1)
+            self.check_text("target_link_libraries(app PRIVATE Salts::ASN1)\n",
+                            ".cmake"), [])
+        for obsolete in ("Salts::CryptoASN1", "Salts::ASN1Legacy",
+                         "SaltsCore::ASN1", "Crypto::ASN1"):
+            with self.subTest(obsolete=obsolete):
+                self.assertEqual(len(self.check_text(
+                    f"target_link_libraries(app PRIVATE {obsolete})\n",
+                    ".cmake")), 1)
+
+    def test_literal_negative_guards_in_installed_consumers_are_not_links(self):
+        guards = {
+            "asn1/tests/installed/CMakeLists.txt": (
+                'foreach(_forbidden IN ITEMS Salts::Crypto Salts::CMeta Salts::Core\n'
+                '  GmSSL::GmSSL Crypto::ASN1 SaltsNet::Asn1Parser)\n'
+                '  if(TARGET "${_forbidden}")\n'
+                '    message(FATAL_ERROR "Unexpected imported target")\n'
+                '  endif()\n'
+                'endforeach()\n'
+            ),
+            "crypto/tests/asn1/installed/CMakeLists.txt": (
+                'if(TARGET SaltsCore::ASN1 OR TARGET Crypto::ASN1)\n'
+                '  message(FATAL_ERROR "Duplicate ASN1 owner")\n'
+                'endif()\n'
+            ),
+            "crypto/tests/owner/CMakeLists.txt": (
+                'foreach(_split IN ITEMS Salts::TLS Salts::TLSHost Salts::TLSCipherBIO '
+                'Salts::CryptoProvider Crypto::ASN1)\n'
+                '  if(TARGET "${_split}")\n'
+                '    message(FATAL_ERROR "Split TLS forbidden")\n'
+                '  endif()\n'
+                'endforeach()\n'
+            ),
+            "crypto/tests/mobile/CMakeLists.txt": (
+                'foreach(_split IN ITEMS Salts::TLS Salts::CryptoProvider Crypto::Crypto)\n'
+                '  if(TARGET ${_split})\n'
+                '    message(FATAL_ERROR "Split provider forbidden")\n'
+                '  endif()\n'
+                'endforeach()\n'
+            ),
+        }
+        for rel, guard in guards.items():
+            with self.subTest(path=rel), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                p = root / rel
+                p.parent.mkdir(parents=True)
+                p.write_text(guard, encoding="utf-8")
+                self.assertEqual(module.check_repository(root), [])
+                # Genuine links adjacent to the valid guard must still fail.
+                p.write_text(guard + "target_link_libraries(app PRIVATE Crypto::ASN1)\n",
+                             encoding="utf-8")
+                self.assertEqual(len(module.check_repository(root)), 1)
+                # A guard that does not actually terminate cannot exempt a target.
+                p.write_text(guard.replace("message(FATAL_ERROR",
+                                           "message(STATUS"), encoding="utf-8")
+                self.assertTrue(module.check_repository(root))
+
+    def test_negative_guards_in_unapproved_paths_still_fail(self):
+        guard = ('foreach(_split IN ITEMS Salts::TLS Crypto::ASN1)\n'
+                 '  if(TARGET ${_split})\n'
+                 '    message(FATAL_ERROR "split owner")\n'
+                 '  endif()\n'
+                 'endforeach()\n')
+        # Both Salts::TLS and Crypto::ASN1 are forbidden outside an approved guard.
+        self.assertEqual(len(self.check_text(guard, ".cmake")), 2)
+
+    def test_comments_are_not_links_but_compiled_dependencies_are(self):
+        self.assertEqual(self.check_text(
+            '/* Description:\n * Never link Crypto::TLS or private code\n */\n'), [])
+        self.assertEqual(self.check_text(
+            '# This check forbids Crypto::TLS\n', ".cmake"), [])
+        self.assertEqual(len(self.check_text(
+            '/* unrelated comment */\n#include <cflow/executor.h>\n')), 1)
+        self.assertEqual(len(self.check_text(
+            '#if 0\n#include <cmeta/struct.h>\n#endif\n')), 1)
 
     def test_alternate_namespaces_rejected(self):
         content = ("target_link_libraries(a PRIVATE SaltsCore::Platform)\n"

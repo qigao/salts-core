@@ -8,6 +8,9 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(_WIN32) && defined(CNET_INTERNAL_TESTING)
+  #include <stdio.h>
+#endif
 
 #if defined(_WIN32)
   #include <winsock2.h>
@@ -137,6 +140,53 @@ struct cnet_owner_impl {
   bool closed;
   bool resolver_closed;
 };
+
+#if defined(_WIN32) && defined(CNET_INTERNAL_TESTING)
+/*
+ * Issue #64: test-only first-failure trace. This source is independently
+ * compiled into the original test owner with CNET_INTERNAL_TESTING.
+ * The real Salts::CNet DLL neither compiles nor exports this diagnostic.
+ * No retry, socket mutation, provider selection or ABI change.
+ */
+static void cnet_owner_issue64_trace_connect(
+    const char *phase, const cnet_owner_session *session,
+    const void *address, size_t address_length,
+    int status, int native_status, native_io_request request,
+    native_io_endpoint endpoint) {
+  struct sockaddr_in ipv4 = {0};
+  unsigned family = 0u;
+  unsigned port = 0u;
+  unsigned long ip = 0ul;
+  if (session == NULL || session->peer.scheme != CNET_URI_TCP ||
+      strcmp(session->peer.host, "127.0.0.1") != 0)
+    return;
+  if (address != NULL && address_length >= sizeof(ipv4)) {
+    memcpy(&ipv4, address, sizeof(ipv4));
+    family = (unsigned)ipv4.sin_family;
+    if (ipv4.sin_family == AF_INET) {
+      port = (unsigned)ntohs(ipv4.sin_port);
+      ip = (unsigned long)ntohl(ipv4.sin_addr.s_addr);
+    }
+  } else if (address != NULL && address_length >= sizeof(ADDRESS_FAMILY)) {
+    ADDRESS_FAMILY raw_family = 0;
+    memcpy(&raw_family, address, sizeof(raw_family));
+    family = (unsigned)raw_family;
+  }
+  fprintf(stderr,
+          "CNET_ISSUE64 phase=%s session=%u:%u query=%u:%u"
+          " request=%u:%u endpoint=%u:%u"
+          " family=%u addr_v4=%08lx port=%u wanted_port=%u"
+          " address_length=%zu status=%d native_status=%d\n",
+          phase, (unsigned)session->handle.slot,
+          (unsigned)session->handle.generation,
+          (unsigned)session->resolve_query.slot,
+          (unsigned)session->resolve_query.generation,
+          (unsigned)request.slot, (unsigned)request.generation,
+          (unsigned)endpoint.slot, (unsigned)endpoint.generation,
+          family, ip, port, (unsigned)session->peer.port,
+          address_length, status, native_status);
+}
+#endif
 
 static uint64_t cnet_owner_system_now(void *context) {
   (void)context;
@@ -1074,6 +1124,14 @@ static int cnet_owner_start_request(cnet_owner_impl *impl, cnet_owner_session *s
     session->write_active = true;
   index = (size_t)(request - impl->request_records);
   status = cnet_owner_submit_request(impl, request, true);
+#if defined(_WIN32) && defined(CNET_INTERNAL_TESTING)
+  if (role == CNET_OWNER_REQUEST_CONNECT)
+    cnet_owner_issue64_trace_connect(
+        "connect_submit", session, request->operation.address,
+        request->operation.address_length, status,
+        status < SALTS_OK ? -status : 0, request->native_request,
+        request->operation.endpoint);
+#endif
   if (status != SALTS_OK) {
     result = cnet_owner_fail_started_request(request, status);
     goto finish;
@@ -1495,6 +1553,12 @@ static int cnet_owner_start_transport(cnet_owner_impl *impl, cnet_owner_session 
   bool connected_immediately = false;
   int status;
 
+#if defined(_WIN32) && defined(CNET_INTERNAL_TESTING)
+  cnet_owner_issue64_trace_connect(
+      "transport_prepare", session, session->peer.address,
+      session->peer.address_length, SALTS_OK, 0,
+      (native_io_request){0}, (native_io_endpoint){0});
+#endif
   switch (session->peer.scheme) {
   case CNET_URI_IPC:
     status = cnet_transport_ipc_prepare_connect(
@@ -1785,6 +1849,12 @@ static int cnet_owner_process_resolver(cnet_owner_impl *impl, size_t *out_proces
         session->resolve_query.slot != result.query.slot ||
         session->resolve_query.generation != result.query.generation)
       return SALTS_EPROTO;
+#if defined(_WIN32) && defined(CNET_INTERNAL_TESTING)
+    cnet_owner_issue64_trace_connect(
+        "resolver_result", session, result.address,
+        result.address_length, result.status, result.native_status,
+        (native_io_request){0}, (native_io_endpoint){0});
+#endif
     session->resolve_active = false;
     memset(&session->resolve_query, 0, sizeof(session->resolve_query));
     if (session->close_requested) {
@@ -1980,6 +2050,14 @@ static int cnet_owner_complete(cnet_owner_impl *impl, cnet_owner_request *reques
   request_stage = request->stage;
   requested_size = request->requested_size;
   close_after_send = request->close_after_send;
+#if defined(_WIN32) && defined(CNET_INTERNAL_TESTING)
+  if (role == CNET_OWNER_REQUEST_CONNECT)
+    cnet_owner_issue64_trace_connect(
+        "connect_complete", session, request->operation.address,
+        request->operation.address_length, completion->status,
+        (int)completion->native_status, request->native_request,
+        request->operation.endpoint);
+#endif
   status = cnet_owner_release_request(request);
   if (status != SALTS_OK) return status;
   if (session->pending_status != SALTS_OK) {
@@ -3112,6 +3190,28 @@ bool cnet_owner_test_backend_stats(const cnet_owner *owner,
   if (impl == NULL || out_native == NULL || out_coroutine == NULL) return false;
   return native_io_backend_get_stats(&impl->backend, out_native) &&
          native_io_backend_get_coroutine_stats(&impl->backend, out_coroutine);
+}
+
+int cnet_owner_test_copy_peer_sockaddr(const cnet_owner *owner,
+                                       cnet_session_handle session_handle,
+                                       void *out_address, size_t address_capacity,
+                                       size_t *out_address_length) {
+  cnet_owner_impl *impl =
+      owner != NULL ? (cnet_owner_impl *)owner->impl : NULL;
+  cnet_owner_session *session;
+  size_t length;
+  if (out_address_length == NULL) return SALTS_EINVAL;
+  *out_address_length = 0u;
+  if (impl == NULL) return SALTS_EINVAL;
+  session = cnet_owner_find_session(impl, session_handle);
+  if (session == NULL) return SALTS_ENOENT;
+  length = session->peer.address_length;
+  if (length == 0u || length > sizeof(session->peer.address))
+    return SALTS_EBUSY;
+  *out_address_length = length;
+  if (out_address == NULL || address_capacity < length) return SALTS_ENOBUFS;
+  memcpy(out_address, session->peer.address, length);
+  return SALTS_OK;
 }
 
 bool cnet_owner_test_get_request_snapshot(const cnet_owner *owner, size_t request_index,

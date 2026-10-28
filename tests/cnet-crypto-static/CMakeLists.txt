@@ -9,21 +9,31 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
   if(NOT DEFINED SALTSCORE_CRYPTO_TEST_FIXTURES)
     message(FATAL_ERROR "Exact pinned static Crypto TLS fixtures required")
   endif()
-  # Imported dependencies are directory scoped; this is a sibling of cnet/.
+  # M5 must use this exact source tree, not find_package(Crypto) or
+  # imported qigao/crypto ASN1. Salts::CNet is built separately for parity,
+  # but the candidate image links only this local static Crypto owner.
   find_package(c-ares CONFIG REQUIRED)
   find_package(kcp CONFIG REQUIRED)
   if(APPLE)
     find_library(SALTSCORE_CNET_COREFOUNDATION CoreFoundation REQUIRED)
     find_library(SALTSCORE_CNET_SECURITY Security REQUIRED)
   endif()
-  find_package(Crypto 0.1 CONFIG REQUIRED)
-  if(NOT TARGET Salts::Crypto)
-    message(FATAL_ERROR "Static candidate requires sole Salts::Crypto")
+  if(NOT TARGET salts_asn1 OR NOT TARGET Salts::ASN1 OR
+     NOT TARGET salts_crypto OR NOT TARGET Salts::Crypto)
+    message(FATAL_ERROR "M5 requires one local Salts::ASN1 and Salts::Crypto target")
   endif()
-  get_target_property(_static_kind Salts::Crypto TYPE)
-  get_target_property(_static_imported Salts::Crypto IMPORTED)
-  if(NOT _static_imported OR NOT _static_kind STREQUAL "STATIC_LIBRARY")
-    message(FATAL_ERROR "Candidate needs one imported STATIC Salts::Crypto")
+  get_target_property(_asn1_alias Salts::ASN1 ALIASED_TARGET)
+  get_target_property(_crypto_alias Salts::Crypto ALIASED_TARGET)
+  get_target_property(_asn1_type salts_asn1 TYPE)
+  get_target_property(_static_kind salts_crypto TYPE)
+  get_target_property(_asn1_imported salts_asn1 IMPORTED)
+  get_target_property(_static_imported salts_crypto IMPORTED)
+  if(NOT _asn1_alias STREQUAL "salts_asn1" OR
+     NOT _crypto_alias STREQUAL "salts_crypto" OR
+     NOT _asn1_type STREQUAL "STATIC_LIBRARY" OR
+     NOT _static_kind STREQUAL "STATIC_LIBRARY" OR
+     _asn1_imported OR _static_imported)
+    message(FATAL_ERROR "M5 requires precisely one local, non-imported STATIC ASN1/Crypto graph")
   endif()
   foreach(_forbidden IN ITEMS
       Salts::TLS Salts::TLSCipherBIO Salts::CryptoProvider

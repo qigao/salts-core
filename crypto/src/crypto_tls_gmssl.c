@@ -4,7 +4,9 @@
 #include <crypto/tls.h>
 #include <crypto/tls_ext.h>
 #include <crypto/tls_peer.h>
+#include <crypto/tls_auth.h>
 #include <gmssl/tls.h>
+#include <gmssl/x509_cer.h>
 
 #include <limits.h>
 #include <stdatomic.h>
@@ -27,6 +29,11 @@ struct crypto_tls_session {
     int context_initialized;
     int connection_initialized;
     int handshake_started;
+    int auth_required;
+    int auth_configured;
+    int auth_verified;
+    uint32_t auth_protocol;
+    crypto_tls_result terminal_handshake_error;
     int alpn_configured;
     size_t alpn_count;
     char alpn_storage[CRYPTO_TLS_ALPN_MAX_PROTOCOLS][
@@ -124,12 +131,38 @@ static void trace_server_handshake_failure(const TLS_CONNECT *c, int ret)
 }
 #endif
 
-static crypto_tls_result completed_handshake(TLS_CONNECT *connection)
+/* TLS1.2 server keeps the client's validated chain in client_certs, while
+ * TLS1.3 uses peer_cert_chain. GmSSL has already verified trust, clientAuth
+ * EKU and CertificateVerify before reporting handshake completion.
+ */
+static crypto_tls_result completed_handshake(crypto_tls_session *s)
 {
-    int complete = 0;
-    if (tls_get_handshake_complete(connection, &complete) != 1)
+    int complete = 0, verify = -1, ret;
+    const uint8_t *chain = NULL;
+    size_t chain_len = 0u;
+    if (s->terminal_handshake_error != CRYPTO_TLS_OK)
+        return s->terminal_handshake_error;
+    if (tls_get_handshake_complete(&s->connection, &complete) != 1)
         return CRYPTO_TLS_BACKEND_ERROR;
-    return complete ? CRYPTO_TLS_OK : CRYPTO_TLS_AGAIN;
+    if (!complete) return CRYPTO_TLS_AGAIN;
+    if (!s->auth_required || s->auth_verified) return CRYPTO_TLS_OK;
+    if (s->auth_protocol == CRYPTO_TLS_1_2) {
+        chain = s->connection.client_certs;
+        chain_len = s->connection.client_certs_len;
+        ret = chain_len ? 1 : 0;
+    } else {
+        ret = tls_get_peer_certificate_chain(
+            &s->connection, &chain, &chain_len);
+    }
+    if (ret != 1 || !chain || !chain_len
+        || chain_len > CRYPTO_TLS_PEER_CHAIN_MAX_BYTES
+        || tls_get_verify_result(&s->connection, &verify) != 1
+        || verify != X509_verify_ok) {
+        s->terminal_handshake_error = CRYPTO_TLS_AUTH_REJECTED;
+        return CRYPTO_TLS_AUTH_REJECTED;
+    }
+    s->auth_verified = 1;
+    return CRYPTO_TLS_OK;
 }
 
 uint32_t crypto_tls_abi_version(void)
@@ -191,8 +224,83 @@ static int valid_options(const crypto_tls_session_options *o)
     return 1;
 }
 
-crypto_tls_result crypto_tls_session_create(
+/* Strict additive authentication configuration. The legacy struct stays
+ * layout-identical; strings are borrowed only until create returns.
+ */
+static int bounded_text(const char *text, size_t maximum, int allow_empty)
+{
+    size_t i;
+    if (!text) return 0;
+    for (i = 0u; i <= maximum; ++i) {
+        if (text[i] == '\0') return allow_empty || i != 0u;
+    }
+    return 0;
+}
+
+static int valid_auth_options(
+    const crypto_tls_session_options *o,
+    const crypto_tls_auth_options_v1_3 *a)
+{
+    /* The legacy v1.0 validator uses strlen(hostname). The additive
+     * bounded v1.3 entry MUST check the client hostname before entering
+     * that validator; otherwise a nonterminated hostname could trigger an
+     * unbounded scan, contradicting the new API's 255-byte admission.
+     */
+    if (!o || o->struct_size != sizeof(*o)
+        || (o->role == CRYPTO_TLS_CLIENT &&
+            !bounded_text(o->hostname, 255u, 0)))
+        return 0;
+    if (!valid_options(o) || !a || a->struct_size != sizeof(*a)
+        || a->reserved_flags || a->reserved
+        || (a->client_auth != CRYPTO_TLS_CLIENT_AUTH_NONE
+            && a->client_auth != CRYPTO_TLS_CLIENT_AUTH_REQUIRED))
+        return 0;
+    if (o->role == CRYPTO_TLS_CLIENT) {
+        if (a->client_auth != CRYPTO_TLS_CLIENT_AUTH_NONE
+            || a->client_ca_file || o->certificate_file
+            || o->private_key_file || o->private_key_password
+            || (!!a->client_certificate_file != !!a->client_private_key_file)
+            || (a->client_private_key_password && !a->client_private_key_file)
+            || !bounded_text(o->hostname, 255u, 0)
+            || !bounded_text(o->ca_file, CRYPTO_TLS_AUTH_MAX_PATH_BYTES, 0))
+            return 0;
+        if (a->client_certificate_file
+            && (!bounded_text(a->client_certificate_file,
+                    CRYPTO_TLS_AUTH_MAX_PATH_BYTES, 0)
+                || !bounded_text(a->client_private_key_file,
+                    CRYPTO_TLS_AUTH_MAX_PATH_BYTES, 0)))
+            return 0;
+    } else {
+        if (o->ca_file || a->client_certificate_file
+            || a->client_private_key_file || a->client_private_key_password
+            || !bounded_text(o->certificate_file,
+                CRYPTO_TLS_AUTH_MAX_PATH_BYTES, 0)
+            || !bounded_text(o->private_key_file,
+                CRYPTO_TLS_AUTH_MAX_PATH_BYTES, 0))
+            return 0;
+        if (a->client_auth == CRYPTO_TLS_CLIENT_AUTH_REQUIRED) {
+            if (!bounded_text(a->client_ca_file,
+                    CRYPTO_TLS_AUTH_MAX_PATH_BYTES, 0))
+                return 0;
+        } else if (a->client_ca_file) return 0;
+        if (o->private_key_password && !bounded_text(
+                o->private_key_password, CRYPTO_TLS_AUTH_MAX_PASSWORD_BYTES, 1))
+            return 0;
+    }
+    if (a->client_private_key_password && !bounded_text(
+            a->client_private_key_password, CRYPTO_TLS_AUTH_MAX_PASSWORD_BYTES, 1))
+        return 0;
+    return 1;
+}
+
+uint32_t crypto_tls_auth_abi_version(void)
+{
+    return CRYPTO_TLS_AUTH_ABI_VERSION;
+}
+
+static crypto_tls_result create_session_impl(
     crypto_tls_provider *provider, const crypto_tls_session_options *options,
+    const crypto_tls_auth_options_v1_3 *auth,
     const crypto_tls_io *io, crypto_tls_session **out_session)
 {
     crypto_tls_session *s;
@@ -202,8 +310,11 @@ crypto_tls_result crypto_tls_session_create(
     int signatures[2];
     size_t sig_count;
     int depth;
+    const char *identity_cert;
+    const char *identity_key;
+    const char *identity_password;
+    const char *verification_ca;
     if (!out_session) return CRYPTO_TLS_INVALID_ARGUMENT;
-    *out_session = NULL;
     if (!provider || !valid_options(options)
         || !io || io->struct_size != sizeof(*io) || io->reserved != 0
         || !io->read || !io->write)
@@ -215,6 +326,24 @@ crypto_tls_result crypto_tls_session_create(
     atomic_init(&s->cancelled, 0);
     s->owner = provider;
     s->transport = *io;
+    s->auth_required = auth && options->role == CRYPTO_TLS_SERVER
+        && auth->client_auth == CRYPTO_TLS_CLIENT_AUTH_REQUIRED;
+    /* Also seal client-identity sessions on fatal handshake failure.
+     * A rejected client certificate or verified server trust failure must
+     * never be retried on the same native TLS association.
+     */
+    s->auth_configured = s->auth_required ||
+        (auth && options->role == CRYPTO_TLS_CLIENT
+         && auth->client_certificate_file != NULL);
+    s->auth_protocol = options->protocol;
+    identity_cert = auth && options->role == CRYPTO_TLS_CLIENT
+        ? auth->client_certificate_file : options->certificate_file;
+    identity_key = auth && options->role == CRYPTO_TLS_CLIENT
+        ? auth->client_private_key_file : options->private_key_file;
+    identity_password = auth && options->role == CRYPTO_TLS_CLIENT
+        ? auth->client_private_key_password : options->private_key_password;
+    verification_ca = s->auth_required
+        ? auth->client_ca_file : options->ca_file;
     depth = options->verify_depth ? (int)options->verify_depth : TLS_DEFAULT_VERIFY_DEPTH;
     cipher = options->protocol == CRYPTO_TLS_1_3
         ? TLS_cipher_aes_128_gcm_sha256
@@ -257,13 +386,18 @@ crypto_tls_result crypto_tls_session_create(
         && options->protocol == CRYPTO_TLS_1_3
         && tls13_ctx_set_accept_change_cipher_spec(&s->context, 1) != 1)
         goto fail;
-    if (options->ca_file && options->ca_file[0]
-        && tls_ctx_set_ca_certificates(&s->context, options->ca_file, depth) != 1)
+    /* Both trust and certificate-request policy precede tls_init(). */
+    if (verification_ca && verification_ca[0]
+        && tls_ctx_set_ca_certificates(&s->context, verification_ca, depth) != 1)
         goto fail;
-    if (options->certificate_file && options->private_key_file
+    if (s->auth_required
+        && (tls_ctx_enable_certificate_request(&s->context, 1) != 1
+            || tls_ctx_enable_client_certificate_optional(&s->context, 0) != 1))
+        goto fail;
+    if (identity_cert && identity_key
         && tls_ctx_set_certificate_and_key(&s->context,
-            options->certificate_file, options->private_key_file,
-            options->private_key_password ? options->private_key_password : "") != 1)
+            identity_cert, identity_key,
+            identity_password ? identity_password : "") != 1)
         goto fail;
 
     if (tls_init(&s->connection, &s->context) != 1) goto fail;
@@ -293,6 +427,26 @@ fail:
     return CRYPTO_TLS_BACKEND_ERROR;
 }
 
+/* v1.0 output remains NULL on failure; v1.3 leaves it unchanged. */
+crypto_tls_result crypto_tls_session_create(
+    crypto_tls_provider *provider, const crypto_tls_session_options *options,
+    const crypto_tls_io *io, crypto_tls_session **out_session)
+{
+    if (!out_session) return CRYPTO_TLS_INVALID_ARGUMENT;
+    *out_session = NULL;
+    return create_session_impl(provider, options, NULL, io, out_session);
+}
+
+crypto_tls_result crypto_tls_session_create_auth_v1_3(
+    crypto_tls_provider *provider, const crypto_tls_session_options *options,
+    const crypto_tls_auth_options_v1_3 *auth,
+    const crypto_tls_io *io, crypto_tls_session **out_session)
+{
+    if (!out_session || !valid_auth_options(options, auth))
+        return CRYPTO_TLS_INVALID_ARGUMENT;
+    return create_session_impl(provider, options, auth, io, out_session);
+}
+
 crypto_tls_result crypto_tls_session_handshake(crypto_tls_session *s)
 {
     crypto_tls_result status = lock_session(s);
@@ -301,7 +455,7 @@ crypto_tls_result crypto_tls_session_handshake(crypto_tls_session *s)
     if (atomic_load_explicit(&s->cancelled, memory_order_acquire)) {
         status = CRYPTO_TLS_CANCELLED;
     } else {
-        status = completed_handshake(&s->connection);
+        status = completed_handshake(s);
         if (status == CRYPTO_TLS_AGAIN) {
             /* Admission is serialized by in_use; reject ALPN mutation after
              * any TLS handshake I/O has started, even if it later fails.
@@ -329,10 +483,35 @@ crypto_tls_result crypto_tls_session_handshake(crypto_tls_session *s)
 #endif
             status = map_backend_result(result);
             if (status == CRYPTO_TLS_OK)
-                status = completed_handshake(&s->connection);
+                status = completed_handshake(s);
+            if (s->auth_configured &&
+                (status == CRYPTO_TLS_BACKEND_ERROR
+                    || status == CRYPTO_TLS_CLOSED))
+                s->terminal_handshake_error = status;
         }
         if (atomic_load_explicit(&s->cancelled, memory_order_acquire))
             status = CRYPTO_TLS_CANCELLED;
+    }
+    unlock_session(s);
+    return status;
+}
+
+crypto_tls_result crypto_tls_session_client_authenticated_v1_3(
+    crypto_tls_session *s, uint32_t *out_authenticated)
+{
+    crypto_tls_result status;
+    if (!out_authenticated) return CRYPTO_TLS_INVALID_ARGUMENT;
+    status = lock_session(s);
+    if (status != CRYPTO_TLS_OK) return status;
+    if (!s->auth_required) {
+        status = CRYPTO_TLS_INVALID_ARGUMENT;
+    } else if (atomic_load_explicit(&s->cancelled, memory_order_acquire)) {
+        status = CRYPTO_TLS_CANCELLED;
+    } else {
+        status = completed_handshake(s);
+        if (status == CRYPTO_TLS_OK && !s->auth_verified)
+            status = CRYPTO_TLS_AUTH_REJECTED;
+        if (status == CRYPTO_TLS_OK) *out_authenticated = 1u;
     }
     unlock_session(s);
     return status;
@@ -350,7 +529,7 @@ crypto_tls_result crypto_tls_session_send(
     if (status != CRYPTO_TLS_OK) return status;
     if (atomic_load_explicit(&s->cancelled, memory_order_acquire))
         status = CRYPTO_TLS_CANCELLED;
-    else if ((status = completed_handshake(&s->connection)) == CRYPTO_TLS_OK) {
+    else if ((status = completed_handshake(s)) == CRYPTO_TLS_OK) {
         status = map_backend_result(tls_send(&s->connection, data, len, &n));
         if (status == CRYPTO_TLS_OK) {
             if (!n || n > len) status = CRYPTO_TLS_BACKEND_ERROR;
@@ -376,7 +555,7 @@ crypto_tls_result crypto_tls_session_receive(
     if (status != CRYPTO_TLS_OK) return status;
     if (atomic_load_explicit(&s->cancelled, memory_order_acquire))
         status = CRYPTO_TLS_CANCELLED;
-    else if ((status = completed_handshake(&s->connection)) == CRYPTO_TLS_OK) {
+    else if ((status = completed_handshake(s)) == CRYPTO_TLS_OK) {
         status = map_backend_result(tls_recv(&s->connection, data, capacity, &n));
         if (status == CRYPTO_TLS_OK) {
             if (!n || n > capacity) status = CRYPTO_TLS_BACKEND_ERROR;
@@ -395,6 +574,9 @@ crypto_tls_result crypto_tls_session_shutdown(crypto_tls_session *s)
     if (status != CRYPTO_TLS_OK) return status;
     if (atomic_load_explicit(&s->cancelled, memory_order_acquire))
         status = CRYPTO_TLS_CANCELLED;
+    else if (s->auth_configured &&
+        s->terminal_handshake_error != CRYPTO_TLS_OK)
+        status = s->terminal_handshake_error;
     else {
         status = map_backend_result(tls_shutdown(&s->connection));
         if (atomic_load_explicit(&s->cancelled, memory_order_acquire))
@@ -517,7 +699,7 @@ crypto_tls_result crypto_tls_session_get_info_v1_1(
         status = CRYPTO_TLS_CANCELLED;
         goto finished;
     }
-    status = completed_handshake(&s->connection);
+    status = completed_handshake(s);
     if (status != CRYPTO_TLS_OK) goto finished;
 
     if (tls_get_negotiated_protocol(&s->connection, &protocol) != 1
@@ -611,7 +793,7 @@ crypto_tls_result crypto_tls_session_copy_peer_chain_v1_2(
         status = CRYPTO_TLS_CANCELLED;
         goto finished;
     }
-    status = completed_handshake(&s->connection);
+    status = completed_handshake(s);
     if (status != CRYPTO_TLS_OK) goto finished;
     ret = tls_get_peer_certificate_chain(&s->connection, &chain, &length);
     if (ret == 0) {
@@ -656,7 +838,7 @@ crypto_tls_result crypto_tls_session_peer_sha256_v1_2(
         status = CRYPTO_TLS_CANCELLED;
         goto finished;
     }
-    status = completed_handshake(&s->connection);
+    status = completed_handshake(s);
     if (status != CRYPTO_TLS_OK) goto finished;
     ret = tls_get_peer_certificate_sha256(&s->connection, digest);
     if (ret == 0) {
@@ -709,7 +891,7 @@ crypto_tls_result crypto_tls_session_export_v1_2(
         status = CRYPTO_TLS_CANCELLED;
         goto finished;
     }
-    status = completed_handshake(&s->connection);
+    status = completed_handshake(s);
     if (status != CRYPTO_TLS_OK) goto finished;
 
     if (tls_export_keying_material(

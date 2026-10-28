@@ -4,13 +4,18 @@
 #include <crypto/tls.h>
 #include <crypto/tls_ext.h>
 #include <crypto/tls_peer.h>
+#include <crypto/tls_auth.h>
 #include <array>
 #include <cstdint>
 #include <cstring>
 #include <cstdio>
 #include <type_traits>
 
+static_assert(std::is_standard_layout_v<crypto_tls_auth_options_v1_3>,
+              "C11/C++17 additive TLS auth descriptor must remain standard layout");
 int main() {
+  if (crypto_tls_auth_abi_version() != CRYPTO_TLS_AUTH_ABI_VERSION)
+    return 9;
   if (crypto_tls_extension_abi_version() != CRYPTO_TLS_EXTENSION_ABI_VERSION)
     return 7;
   if (crypto_tls_peer_abi_version() != CRYPTO_TLS_PEER_ABI_VERSION)
