@@ -31,7 +31,10 @@ class CNetTriggerTests(unittest.TestCase):
                         gate.validate(edited, self.cmake)
 
     def test_parser_and_cmake_dependency_change_are_required(self) -> None:
-        for pattern in ("uri/parser/**", "cmake/**"):
+        for pattern in ("uri/parser/**", "cmake/**", "cnet/CMakeLists.txt",
+                        "core/CMakeLists.txt", "platform/CMakeLists.txt",
+                        "native-io/CMakeLists.txt", "concurrency/CMakeLists.txt",
+                        "uri/CMakeLists.txt"):
             with self.subTest(pattern=pattern):
                 edited = self.workflow.replace(f'      - "{pattern}"\n', "", 1)
                 with self.assertRaisesRegex(ValueError, "triggers missing"):

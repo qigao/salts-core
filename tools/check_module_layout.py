@@ -11,7 +11,7 @@ import re
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = (
     "core", "platform", "concurrency", "coroutine", "native-io",
-    "cnet", "uri", "fs", "process",
+    "cnet", "uri", "fs", "process", "sctp",
 )
 OWNER_FILES = (
     "core/include/base64_utils.h",
@@ -41,6 +41,8 @@ for old in ("include", "src", "utils", "cflow-fs", "cflow-process"):
         raise SystemExit(f"legacy root module directory still present: {old}")
 
 for module in MODULES:
+    if not (ROOT / module / "CMakeLists.txt").is_file():
+        raise SystemExit(f"missing module-local CMake owner: {module}/CMakeLists.txt")
     if not (ROOT / module / "src").is_dir():
         raise SystemExit(f"missing module-local implementation: {module}/src")
     if not (ROOT / module / "include").is_dir():
@@ -51,6 +53,17 @@ for rel in OWNER_FILES:
         raise SystemExit(f"missing original module-owned file: {rel}")
 
 source = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+for module in MODULES:
+    # Only package assembly belongs to the root; no module binary is made
+    # from source files in the package-wide build description.
+    if f"add_subdirectory({module})" not in source:
+        raise SystemExit(f"root does not assemble {module}/CMakeLists.txt")
+if (ROOT / "cnet" / "sctp").exists():
+    raise SystemExit("nested cnet/sctp source owner must not exist")
+for retired in ("SaltsCoreCNet.cmake", "SaltsCoreExtraModules.cmake",
+                "SaltsCoreFS.cmake", "SaltsCoreProcess.cmake"):
+    if (ROOT / "cmake" / retired).exists():
+        raise SystemExit(f"obsolete central CMake module owner: {retired}")
 extra = {
     "core/src/base64_utils.c": "Salts::Core",
     "fs/src/fs.c": "Salts::FS",
@@ -60,13 +73,13 @@ extra = {
     "coroutine/src/coro.c": "Salts::Coroutine",
     "native-io/src/native_io.c": "Salts::NativeIO",
     "uri/parser/uri_lexer.re": "Salts::URI",
+    "sctp/src/sctp_wire.c": "Salts::SCTPWire",
 }
-for rel in extra:
-    target = source if rel not in ("fs/src/fs.c", "process/src/process.c") else (
-        ROOT / "cmake" / ("SaltsCoreFS.cmake" if rel.startswith("fs/") else "SaltsCoreProcess.cmake")
-    ).read_text(encoding="utf-8")
-    if rel not in target:
-        raise SystemExit(f"missing real {extra[rel]} source input {rel}")
+for rel, alias in extra.items():
+    module, local = rel.split("/", 1)
+    module_cmake = (ROOT / module / "CMakeLists.txt").read_text(encoding="utf-8")
+    if local not in module_cmake or alias not in module_cmake:
+        raise SystemExit(f"missing real module-owned {alias} build input {rel}")
 
 for file in (ROOT / "tests").rglob("*"):
     if file.suffix not in (".c", ".h", ".cpp", ".cmake") and file.name != "CMakeLists.txt":
@@ -100,4 +113,4 @@ for workflow in WORKFLOWS.glob("*.yml"):
                 f"{workflow.relative_to(ROOT)}:{line_number}: {line.strip()}"
             )
 
-print("PASS: one source/header owner per existing SaltsCore module; no root include/src")
+print("PASS: all SaltsCore modules own their CMake source/ABI graph; SCTP root; no legacy root include/src")

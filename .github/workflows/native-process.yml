@@ -4,8 +4,8 @@ on:
     paths:
       - "process/src/**"
       - "process/include/salts/process.h"
-      - "cmake/SaltsCoreProcess.cmake"
-      - "cmake/SaltsCoreExtraModules.cmake"
+      - "process/CMakeLists.txt"
+      - "CMakeLists.txt"
       - "tests/test_process.c"
       - "tests/process-installed/**"
       - ".github/workflows/native-process.yml"
