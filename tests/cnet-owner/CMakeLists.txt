@@ -80,18 +80,22 @@ add_test(NAME saltscore.cnet_owner_original
   COMMAND saltscore_cnet_owner_original_test)
 set_tests_properties(saltscore.cnet_owner_original PROPERTIES TIMEOUT 180)
 
-# Issue #64 (Windows IOCP only): exactly the original named numeric
-# 127.0.0.1 DNS/RESOLVE -> NativeIO TCP connect -> OPEN case. TinyTest
-# --filter is an actual case selector, not a replacement/mocked resolver.
-# The Windows CI runs this independently 32 times and stops at FIRST RED.
-# Never retry a failing network connection inside CNet itself.
+# Issue #64: test exactly one original numeric-host resolve -> IOCP OPEN case.
+# The CMake script enforces BOTH process exit status and TinyTest case counts.
+# PASS_REGULAR_EXPRESSION is forbidden: it masks a nonzero process exit.
 if(WIN32)
   add_test(NAME saltscore.cnet_owner_original_numeric_host
-    COMMAND saltscore_cnet_owner_original_test
-      --filter "owns the resolve to TCP connect state transition")
-  # A renamed/missing TinyTest case MUST NOT turn --filter into
-  # "0 tests executed" with exit 0: demand its actual emitted case name.
+    COMMAND "${CMAKE_COMMAND}"
+      "-DCNET_NUMERIC_HOST_COMMAND=$<TARGET_FILE:saltscore_cnet_owner_original_test>"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_numeric_host_case.cmake")
   set_tests_properties(saltscore.cnet_owner_original_numeric_host
-    PROPERTIES TIMEOUT 15
-    PASS_REGULAR_EXPRESSION "owns the resolve to TCP connect state transition")
+    PROPERTIES TIMEOUT 15)
+
+  # The negative contract catches the historical false-green case: a test
+  # prints the matching case name and success-looking summary but exits 1.
+  add_test(NAME saltscore.cnet_owner_numeric_host_gate_contract
+    COMMAND "${CMAKE_COMMAND}"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/numeric_host_gate_contract.cmake")
+  set_tests_properties(saltscore.cnet_owner_numeric_host_gate_contract
+    PROPERTIES TIMEOUT 15)
 endif()
