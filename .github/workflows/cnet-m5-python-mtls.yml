@@ -16,9 +16,19 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: saltscore-fifo-workflows
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   posix-static-admission:
+    concurrency:
+      group: saltscore-fifo-runners
+      cancel-in-progress: false
+      queue: max
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         include:
@@ -207,6 +217,10 @@ jobs:
           if-no-files-found: warn
 
   windows-static-admission:
+    concurrency:
+      group: saltscore-fifo-runners
+      cancel-in-progress: false
+      queue: max
     runs-on: windows-2025
     timeout-minutes: 80
     env:

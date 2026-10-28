@@ -13,11 +13,21 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: saltscore-fifo-workflows
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   source-parity:
+    concurrency:
+      group: saltscore-fifo-runners
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         include:

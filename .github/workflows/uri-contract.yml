@@ -2,6 +2,8 @@ name: SaltsCore URI parser qualification
 
 on:
   push:
+    branches:
+      - master
     paths:
       - "uri/src/**"
       - "uri/parser/**"
@@ -27,8 +29,17 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: saltscore-fifo-workflows
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   uri:
+    concurrency:
+      group: saltscore-fifo-runners
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

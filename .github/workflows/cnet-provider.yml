@@ -47,8 +47,17 @@ on:
 permissions:
   contents: read
   packages: read
+concurrency:
+  group: saltscore-fifo-workflows
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   linux-cnet:
+    concurrency:
+      group: saltscore-fifo-runners
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     env:
@@ -164,6 +173,10 @@ jobs:
           if-no-files-found: ignore
 
   macos-cnet:
+    concurrency:
+      group: saltscore-fifo-runners
+      cancel-in-progress: false
+      queue: max
     name: macOS pinned CNet provider + live TLS
     runs-on: macos-15
     timeout-minutes: 60
@@ -278,6 +291,10 @@ jobs:
           if-no-files-found: ignore
 
   windows-cnet:
+    concurrency:
+      group: saltscore-fifo-runners
+      cancel-in-progress: false
+      queue: max
     name: Windows MSVC pinned CNet provider + IOCP TLS
     runs-on: windows-2025
     timeout-minutes: 65

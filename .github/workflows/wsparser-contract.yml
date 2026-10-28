@@ -1,6 +1,8 @@
 name: SaltsCore WebSocket frame parser contract
 on:
   push:
+    branches:
+      - master
     paths:
       - "cnet/src/wsparser/**"
       - "cnet/CMakeLists.txt"
@@ -18,9 +20,19 @@ on:
       - ".github/workflows/wsparser-contract.yml"
 permissions:
   contents: read
+concurrency:
+  group: saltscore-fifo-workflows
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   frame-contract:
+    concurrency:
+      group: saltscore-fifo-runners
+      cancel-in-progress: false
+      queue: max
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
