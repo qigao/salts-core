@@ -32,6 +32,49 @@ STATIC_CRYPTO_DENIED_TARGET_GUARD = (
 )
 
 
+# ASN1 and Crypto copied from qigao/crypto are first-party source modules.
+# Salts::ASN1 is allowed only within those two module subtrees.
+ASN1_OWNERS = {"asn1", "crypto"}
+NATIVE_ASN1_TARGET = re.compile(r"\bSalts::ASN1\b")
+
+# These exact checks DENY split providers, rather than linking to them.
+NEGATIVE_LIST_PATHS = {
+    Path("asn1/tests/installed/CMakeLists.txt"): "_forbidden",
+    Path("crypto/tests/mobile/CMakeLists.txt"): "_split",
+    Path("crypto/tests/owner/CMakeLists.txt"): "_split",
+    Path("crypto/tests/sdk/CMakeLists.txt"): "_split",
+}
+
+def _negative_guard_line_indices(relative: Path, lines: list[str]) -> set[int]:
+    ignored: set[int] = set()
+    variable = NEGATIVE_LIST_PATHS.get(relative)
+    if variable:
+        for begin, line in enumerate(lines):
+            if not line.strip().startswith(f"foreach({variable} IN ITEMS "):
+                continue
+            end = begin
+            while end < len(lines) and ")" not in lines[end]:
+                end += 1
+            if end + 4 >= len(lines):
+                continue
+            # chr(36) produces the CMake dollar sign; this is an EXACT guard.
+            exact = 'if(TARGET "' + chr(36) + '{' + variable + '}")'
+            alternative = 'if(TARGET ' + chr(36) + '{' + variable + '})'
+            guard = [lines[k].strip() for k in range(end + 1, end + 5)]
+            if (guard[0] in (exact, alternative)
+                    and guard[1].startswith("message(FATAL_ERROR ")
+                    and guard[2:] == ["endif()", "endforeach()"]):
+                ignored.update(range(begin, end + 1))
+    if relative == Path("crypto/tests/asn1/installed/CMakeLists.txt"):
+        for i in range(len(lines) - 2):
+            if (lines[i].strip() ==
+                    "if(TARGET SaltsCore::ASN1 OR TARGET Crypto::ASN1)"
+                    and lines[i + 1].strip().startswith("message(FATAL_ERROR ")
+                    and lines[i + 2].strip() == "endif()"):
+                ignored.add(i)
+    return ignored
+
+
 def check_repository(root: Path) -> list[str]:
     violations: list[str] = []
     for path in sorted(root.rglob("*")):
@@ -52,6 +95,7 @@ def check_repository(root: Path) -> list[str]:
                 if tuple(line.strip() for line in lines[offset:offset + 3]) == (
                         STATIC_CRYPTO_DENIED_TARGET_GUARD):
                     denied_guard_indices.update((offset + 1, offset + 2))
+        denied_guard_indices.update(_negative_guard_line_indices(relative, lines))
         for index, line in enumerate(lines):
             if index in denied_guard_indices:
                 continue
@@ -65,7 +109,11 @@ def check_repository(root: Path) -> list[str]:
                 if rule in ("forbidden high-level Salts target",
                             "forbidden alternate target namespace") and not is_cmake:
                     continue
-                if regex.search(line):
+                scan_line = line
+                if (rule == "forbidden high-level Salts target"
+                    and is_cmake and relative.parts[0] in ASN1_OWNERS):
+                    scan_line = NATIVE_ASN1_TARGET.sub("", line)
+                if regex.search(scan_line):
                     violations.append(f"{relative}:{lineno}: {rule}: {line.strip()}")
     return violations
 

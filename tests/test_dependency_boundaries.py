@@ -104,6 +104,62 @@ class DependencyGateTest(unittest.TestCase):
                               "set(_forbidden"), encoding="utf-8")
             self.assertEqual(len(module.check_repository(root)), 2)
 
+    def test_first_party_asn1_owner_is_scope_limited(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("asn1", "crypto"):
+                d = root / name
+                d.mkdir()
+                (d / "CMakeLists.txt").write_text(
+                    "target_link_libraries(native PRIVATE Salts::ASN1)\n",
+                    encoding="utf-8")
+            self.assertEqual(module.check_repository(root), [])
+            d = root / "cnet"
+            d.mkdir()
+            (d / "CMakeLists.txt").write_text(
+                "target_link_libraries(cnet PRIVATE Salts::ASN1)\n",
+                encoding="utf-8")
+            self.assertEqual(len(module.check_repository(root)), 1)
+
+    def test_negative_split_provider_guard_does_not_mask_real_links(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            d = root / "crypto" / "tests" / "owner"
+            d.mkdir(parents=True)
+            f = d / "CMakeLists.txt"
+            guard = (
+                "foreach(_split IN ITEMS Salts::TLS Crypto::ASN1)\n"
+                '  if(TARGET "' + chr(36) + '{_split}")\n'
+                '    message(FATAL_ERROR "Split provider forbidden")\n'
+                "  endif()\n"
+                "endforeach()\n"
+            )
+            f.write_text(guard, encoding="utf-8")
+            self.assertEqual(module.check_repository(root), [])
+            f.write_text(guard +
+                "target_link_libraries(app PRIVATE Crypto::ASN1)\n",
+                encoding="utf-8")
+            self.assertEqual(len(module.check_repository(root)), 1)
+            f.write_text(guard.replace(
+                'message(FATAL_ERROR "Split provider forbidden")',
+                'message(STATUS "Provider enabled")'), encoding="utf-8")
+            self.assertEqual(len(module.check_repository(root)), 1)
+
+    def test_first_party_asn1_rejects_alternate_namespace(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            d = root / "crypto" / "tests" / "asn1" / "installed"
+            d.mkdir(parents=True)
+            f = d / "CMakeLists.txt"
+            f.write_text(
+                "if(TARGET SaltsCore::ASN1 OR TARGET Crypto::ASN1)\n"
+                '  message(FATAL_ERROR "No duplicate ASN1")\n'
+                "endif()\n", encoding="utf-8")
+            self.assertEqual(module.check_repository(root), [])
+            f.write_text("target_link_libraries(app PRIVATE Crypto::ASN1)\n",
+                         encoding="utf-8")
+            self.assertEqual(len(module.check_repository(root)), 1)
+
     def test_retired_asn1_target_is_forbidden(self):
         self.assertEqual(
             len(self.check_text("target_link_libraries(app PRIVATE Salts::ASN1)\n",
