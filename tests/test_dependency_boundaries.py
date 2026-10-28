@@ -150,7 +150,8 @@ class DependencyGateTest(unittest.TestCase):
                  '    message(FATAL_ERROR "split owner")\n'
                  '  endif()\n'
                  'endforeach()\n')
-        self.assertEqual(len(self.check_text(guard, ".cmake")), 1)
+        # Both Salts::TLS and Crypto::ASN1 are forbidden outside an approved guard.
+        self.assertEqual(len(self.check_text(guard, ".cmake")), 2)
 
     def test_comments_are_not_links_but_compiled_dependencies_are(self):
         self.assertEqual(self.check_text(
