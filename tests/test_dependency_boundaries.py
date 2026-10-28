@@ -27,6 +27,31 @@ class DependencyGateTest(unittest.TestCase):
                                  ".cmake")
         self.assertEqual(len(output), 2)
 
+
+    def test_native_cpp_type_namespace_is_not_a_cmake_target(self):
+        sample = (
+            "#include <cmeta_uuid.h>\n"
+            "namespace Salts { struct UUID { unsigned char bytes[16]; }; }\n"
+            "Salts::UUID id{};\n"
+            "static_assert(sizeof(Salts::UUID) == 16, \"UUID ABI\");\n"
+        )
+        self.assertEqual(self.check_text(sample, ".cpp"), [])
+        self.assertEqual(self.check_text(sample, ".hpp"), [])
+
+    def test_same_high_level_name_is_still_denied_as_cmake_link_target(self):
+        sample = "target_link_libraries(app PRIVATE Salts::UUID)\n"
+        self.assertEqual(len(self.check_text(sample, ".cmake")), 1)
+        self.assertEqual(len(self.check_text(sample, ".cpp")), 0)
+
+    def test_cmeta_reflection_remains_denied_in_c_and_cpp(self):
+        for suffix in (".c", ".cpp", ".hpp"):
+            self.assertEqual(
+                len(self.check_text("#include <cmeta/struct.h>\n", suffix)),
+                1)
+            self.assertEqual(
+                len(self.check_text("CMETA_STRUCT(MyType, (int, x));\n", suffix)),
+                1)
+
     def test_native_salts_targets_are_allowed(self):
         content = ("add_library(Salts::Platform ALIAS saltscore_platform)\n"
                    "target_link_libraries(app PRIVATE Salts::Core Salts::NativeIO)\n")

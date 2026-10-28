@@ -56,9 +56,15 @@ def check_repository(root: Path) -> list[str]:
             if index in denied_guard_indices:
                 continue
             lineno = index + 1
-            # Build and source files must not refer to any legacy module even in
-            # disabled branches; migration is not allowed to add hidden fallback.
+            # Salts::Foo is a C++ type namespace inside .cpp/.hpp, not
+            # a CMake imported target. Target name restrictions apply ONLY
+            # to CMake source; includes/runtime forbidden patterns are still
+            # applied to C and C++ source without exceptions.
+            is_cmake = relative.name == "CMakeLists.txt" or relative.suffix == ".cmake"
             for rule, regex in PATTERNS.items():
+                if rule in ("forbidden high-level Salts target",
+                            "forbidden alternate target namespace") and not is_cmake:
+                    continue
                 if regex.search(line):
                     violations.append(f"{relative}:{lineno}: {rule}: {line.strip()}")
     return violations
