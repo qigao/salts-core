@@ -35,12 +35,14 @@ native invalid-range contract rather than reintroducing old silent truncation.
 | `utils/include/ring_buffer_spsc.h`, `utils/src/ring_buffer_spsc.c` | `concurrency/include/ring_buffer_spsc.h`, `concurrency/src/ring_buffer_spsc.c` | Original SPSC facade over the sole native `cmeta_spsc_ring` implementation; CI pending |
 | `utils/include/bucket_priority_queue_spsc.h`, `utils/src/bucket_priority_queue_spsc.c` | `concurrency/include/bucket_priority_queue_spsc.h`, `concurrency/src/bucket_priority_queue_spsc.c` | Original fixed capacity SPSC priority queue, CI pending |
 
+| `utils/parser/fmt_lexer.h`, `utils/parser/fmt_lexer.re` | `core/parser/fmt_lexer.h`, `fmt_lexer.re`, `fmt_lexer.c` | Bounded scanner port, original 8-case lexer contract and clean SDK tests, CI pending |
+
 ## Still missing: full original utils functionality
 
 **Not restored, do not mark migration complete or release:**
 
 - Logging/format: `tlog.h`, `tlog_helper.h`, `tlog.c`, `fmt.h`,
-  `fmt.c`, log-pattern and formatting lexers; sync/async sinks and flush
+  `fmt.c`, log-pattern lexer and full format rendering; sync/async sinks and flush
   parity, fatal logging, bounded queue and source capture all remain pending.
 - Containers and algorithms: `ac_automaton`, `levenshtein_automaton`,
   `bucket_priority_queue_mpmc`,

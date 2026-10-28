@@ -182,3 +182,13 @@ add_executable(spsc_consumer_cpp spsc_consumer.cpp)
 target_compile_features(spsc_consumer_cpp PRIVATE cxx_std_17)
 target_link_libraries(spsc_consumer_cpp PRIVATE Salts::Concurrency)
 add_test(NAME sdk.spsc_cpp17 COMMAND spsc_consumer_cpp)
+
+# Original formatter-lexer API must resolve from an installed Salts::Core DSO.
+add_executable(fmt_lexer_consumer_c fmt_lexer_consumer.c)
+target_compile_features(fmt_lexer_consumer_c PRIVATE c_std_11)
+target_link_libraries(fmt_lexer_consumer_c PRIVATE Salts::Core)
+add_test(NAME sdk.fmt_lexer_c11 COMMAND fmt_lexer_consumer_c)
+add_executable(fmt_lexer_consumer_cpp fmt_lexer_consumer.cpp)
+target_compile_features(fmt_lexer_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(fmt_lexer_consumer_cpp PRIVATE Salts::Core)
+add_test(NAME sdk.fmt_lexer_cpp17 COMMAND fmt_lexer_consumer_cpp)

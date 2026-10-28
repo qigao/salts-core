@@ -53,3 +53,6 @@ install(FILES
 # Original upstream SDS BSD license is mandatory for this private source.
 install(FILES src/sds/LICENSE
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/sds)
+
+# Keep the original formatter lexer grammar in its own nested module.
+add_subdirectory(parser)

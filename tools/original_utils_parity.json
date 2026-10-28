@@ -223,6 +223,18 @@
         "bucket_priority_queue_spsc_size_at",
         "bucket_priority_queue_spsc_capacity_at"
       ]
+    },
+    {
+      "module": "fmt_lexer",
+      "owner": "core",
+      "cmake": "core/parser/CMakeLists.txt",
+      "header": "core/parser/fmt_lexer.h",
+      "source": "core/parser/fmt_lexer.c",
+      "functions": [
+        "fmt_scan",
+        "fmt_scan_v",
+        "fmt_scan_v_n"
+      ]
     }
   ],
   "stage_a_support_files": [
@@ -235,7 +247,9 @@
     "tests/test_object_pool.c",
     "tests/test_bucket_priority_queue.c",
     "tests/test_ring_buffer_spsc.c",
-    "tests/test_bucket_priority_queue_spsc.c"
+    "tests/test_bucket_priority_queue_spsc.c",
+    "core/parser/fmt_lexer.re",
+    "tests/test_fmt_re2c.c"
   ],
   "pending_groups": {
     "logging_formatter": [
@@ -244,7 +258,6 @@
       "tlog.c",
       "fmt.h",
       "fmt.c",
-      "fmt_lexer",
       "log_pattern_lexer"
     ],
     "algorithms": [

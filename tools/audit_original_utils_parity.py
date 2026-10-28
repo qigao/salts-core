@@ -22,7 +22,7 @@ def check_stage_a(root: Path, manifest: dict) -> list[str]:
     core_cmake = core.read_text(encoding="utf-8") if core.is_file() else ""
     for entry in manifest["stage_a"]:
         owner = entry.get("owner", "core")
-        owner_path = root / owner / "CMakeLists.txt"
+        owner_path = root / entry.get("cmake", owner + "/CMakeLists.txt")
         cmake = owner_path.read_text(encoding="utf-8") if owner_path.is_file() else ""
         header = root / entry["header"]
         source = root / entry["source"]
@@ -46,6 +46,11 @@ def check_stage_a(root: Path, manifest: dict) -> list[str]:
     for file in manifest["stage_a_support_files"]:
         if not (root / file).is_file():
             errors.append(f"Missing original string/allocator support file: {file}")
+    if any(e.get("module") == "fmt_lexer" for e in manifest["stage_a"]) and (
+        "add_subdirectory(parser)" not in core_cmake
+        or not (root / "core/parser/fmt_lexer.re").is_file()
+    ):
+        errors.append("Original formatter lexer must have a nested Core parser owner")
     if "src/sds/sds.c" not in core_cmake or "include/tstr.h" not in core_cmake:
         errors.append("SDS or tstr not owned/installed by the canonical Core target")
     return errors
