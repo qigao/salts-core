@@ -129,7 +129,7 @@ class Stage1OwnerGate(unittest.TestCase):
             fixture(root)
             p = root / "crypto/CMakeLists.txt"
             p.write_text(p.read_text() +
-                         "target_sources(salts_crypto PRIVATE src/crypto_tls_openssl.c)\\n")
+                         "target_sources(salts_crypto PRIVATE src/crypto_tls_openssl.c)\n")
             self.assertIn("CRYPTO_UNAUDITED_TLS_ENGINE_SOURCE",
                           gate.source_errors(root))
 
