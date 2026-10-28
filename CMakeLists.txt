@@ -30,6 +30,11 @@ option(SALTSCORE_BUILD_WEBSOCKET_PARSER "Qualify CNet-private WebSocket frame pa
 if(SALTSCORE_BUILD_CNET AND NOT TARGET Salts::URI)
   message(FATAL_ERROR "Salts::CNet requires SALTSCORE_BUILD_URI=ON (real re2c at build time)")
 endif()
+# The private CNet provider source helpers belong to vendor/, not cnet/.
+# Do not build vendored crypto or erasure archives in minimal/WS-only profiles.
+if(SALTSCORE_BUILD_CNET)
+  add_subdirectory(vendor)
+endif()
 if(SALTSCORE_BUILD_WEBSOCKET_PARSER OR SALTSCORE_BUILD_CNET)
   add_subdirectory(cnet)
 endif()

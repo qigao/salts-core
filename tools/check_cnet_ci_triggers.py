@@ -26,6 +26,7 @@ REQUIRED_BASE = frozenset({
     "cnet/include/**",
     "uri/parser/**",  # re2c input is outside uri/src
     "vendor/cnet/**",
+    "vendor/CMakeLists.txt",
     "cmake/**",
     "CMakeLists.txt",
     "vcpkg.json",

@@ -21,7 +21,6 @@ endif()
 find_package(c-ares CONFIG REQUIRED)
 find_package(kcp CONFIG REQUIRED)
 find_package(GmSSL CONFIG REQUIRED)
-find_path(SALTSCORE_CNET_SIMDE_INCLUDE_DIR NAMES simde/x86/sse2.h REQUIRED)
 if(NOT TARGET c-ares::cares OR NOT TARGET kcp::kcp OR NOT TARGET GmSSL::GmSSL)
   message(FATAL_ERROR "CNet requires c-ares::cares, kcp::kcp and GmSSL::GmSSL")
 endif()
@@ -38,24 +37,11 @@ endforeach()
 # The stateless URI parser may remain an independent PIC archive.
 set_target_properties(saltscore_uri PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-# Single CNet-private Monocypher namespace avoids duplicate crypto_argon2 and
-# other generic symbols in programs containing more than one consumer DSO.
-add_library(saltscore_cnet_monocypher STATIC
-  ${PROJECT_SOURCE_DIR}/vendor/cnet/monocypher/cnet_monocypher.c)
-target_compile_features(saltscore_cnet_monocypher PUBLIC c_std_11)
-target_include_directories(saltscore_cnet_monocypher
-  PUBLIC "${PROJECT_SOURCE_DIR}/vendor/cnet/monocypher")
-set_target_properties(saltscore_cnet_monocypher PROPERTIES
-  POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
-
-add_library(saltscore_cnet_reed STATIC
-  ${PROJECT_SOURCE_DIR}/vendor/cnet/reed/gf256.c)
-target_compile_features(saltscore_cnet_reed PUBLIC c_std_11)
-target_include_directories(saltscore_cnet_reed
-  PUBLIC "${PROJECT_SOURCE_DIR}/vendor/cnet/reed"
-  PRIVATE "${SALTSCORE_CNET_SIMDE_INCLUDE_DIR}")
-set_target_properties(saltscore_cnet_reed PROPERTIES
-  POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
+# Both private code libraries are built exactly once in vendor/CMakeLists.txt.
+# No alternate crypto/erasure implementation or target alias is permitted.
+if(NOT TARGET saltscore_cnet_monocypher OR NOT TARGET saltscore_cnet_reed)
+  message(FATAL_ERROR "CNet requires its vendor-owned Monocypher and Reed targets")
+endif()
 
 # Salts source at refactor/cnet-ipc-name-native: native C11 FIFO, indexed peers,
 # and caller-owned IPC path. Keep the entire CNet DSO in one ownership domain.
@@ -156,8 +142,4 @@ install(TARGETS saltscore_cnet EXPORT SaltsCoreTargets
 install(DIRECTORY include/cnet
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.h")
-install(FILES ${PROJECT_SOURCE_DIR}/vendor/cnet/reed/LICENSE
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/reed)
-install(FILES ${PROJECT_SOURCE_DIR}/vendor/cnet/monocypher/UPSTREAM.md
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/monocypher)
 endif()

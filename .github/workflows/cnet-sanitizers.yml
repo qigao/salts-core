@@ -8,6 +8,7 @@ on:
       - ".github/workflows/cnet-sanitizers.yml"
       - "CMakeLists.txt"
       - "cnet/CMakeLists.txt"
+      - "vendor/CMakeLists.txt"
       - "core/CMakeLists.txt"
       - "platform/CMakeLists.txt"
       - "native-io/CMakeLists.txt"

@@ -31,7 +31,8 @@ class CNetTriggerTests(unittest.TestCase):
                         gate.validate(edited, self.cmake)
 
     def test_parser_and_cmake_dependency_change_are_required(self) -> None:
-        for pattern in ("uri/parser/**", "cmake/**", "cnet/CMakeLists.txt",
+        for pattern in ("uri/parser/**", "cmake/**", "vendor/CMakeLists.txt",
+                        "cnet/CMakeLists.txt",
                         "core/CMakeLists.txt", "platform/CMakeLists.txt",
                         "native-io/CMakeLists.txt", "concurrency/CMakeLists.txt",
                         "uri/CMakeLists.txt"):
