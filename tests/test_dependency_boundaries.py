@@ -143,7 +143,9 @@ class DependencyGateTest(unittest.TestCase):
             f.write_text(guard.replace(
                 'message(FATAL_ERROR "Split provider forbidden")',
                 'message(STATUS "Provider enabled")'), encoding="utf-8")
-            self.assertEqual(len(module.check_repository(root)), 1)
+            # Both Salts::TLS and Crypto::ASN1 are now exposed, so both
+            # must remain independently RED. Never weaken the scanner.
+            self.assertEqual(len(module.check_repository(root)), 2)
 
     def test_first_party_asn1_rejects_alternate_namespace(self):
         with tempfile.TemporaryDirectory() as directory:
