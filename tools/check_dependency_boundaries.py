@@ -13,7 +13,7 @@ import re
 SCANNED_EXTENSIONS = {".c", ".cc", ".cpp", ".h", ".hpp", ".m", ".mm", ".cmake"}
 IGNORED_DIRECTORIES = {".git", ".github", "vendor", "third_party", "build", "out", "tools", "docs", "_build", "_installed", "_sdk", "CMakeFiles"}
 PATTERNS = {
-    "forbidden high-level Salts target": re.compile(r"\bSalts::(?!Core\b|Platform\b|Concurrency\b|Coroutine\b|NativeIO\b|URI\b|CNet\b|Unicode\b|IDNA\b|CSerde\b|TinyTest\b|SCTP\b|SCTPWire\b|FS\b|Process\b|Crypto\b)[A-Za-z_0-9]+"),
+    "forbidden high-level Salts target": re.compile(r"\bSalts::(?!Core\b|Platform\b|Concurrency\b|Coroutine\b|NativeIO\b|URI\b|CNet\b|Unicode\b|IDNA\b|CSerde\b|TinyTest\b|SCTP\b|SCTPWire\b|FS\b|Process\b|Crypto\b|ASN1\b)[A-Za-z_0-9]+"),
     "forbidden alternate target namespace": re.compile(r"\b(?:SaltsCore|SaltsCrypto|Crypto)::[A-Za-z_0-9]+"),
     "legacy package lookup": re.compile(r"\b(?:find_package|find_dependency)\s*\(\s*Salts(?:Utils)?(?:\s|\))", re.IGNORECASE),
     "CMeta/CFlow/CSTL include": re.compile(r'^\s*#\s*include\s*[<"](?:cmeta/|cflow/|cstl(?:/|\.h))'),
@@ -21,15 +21,72 @@ PATTERNS = {
 }
 
 
-# The test-local sole-static candidate rejects split providers at configure
-# time. Two exact guard lines are non-dependency references; no other CMake
-# lines or source paths are exempt.
-STATIC_CRYPTO_GUARD_FILE = Path("tests/cnet-crypto-static/CMakeLists.txt")
-STATIC_CRYPTO_DENIED_TARGET_GUARD = (
-    "foreach(_forbidden IN ITEMS",
-    "Salts::TLS Salts::TLSCipherBIO Salts::CryptoProvider",
-    "Crypto::TLS Crypto::TLSCipherBIO Crypto::Provider)",
+# Negative CMake checks are prohibitions, not dependencies. Only these
+# exact source-contract locations can opt out, and only when the entire
+# if(TARGET ...)/FATAL_ERROR or foreach(...)/if/FATAL/endif/endforeach
+# structure remains intact. Active links elsewhere are never excluded.
+NEGATIVE_ASSERTION_FILES = frozenset({
+    Path("tests/cnet-crypto-static/CMakeLists.txt"),
+    Path("asn1/tests/installed/CMakeLists.txt"),
+    Path("crypto/tests/asn1/installed/CMakeLists.txt"),
+    Path("crypto/tests/mobile/CMakeLists.txt"),
+    Path("crypto/tests/owner/CMakeLists.txt"),
+    Path("crypto/tests/sdk/CMakeLists.txt"),
+})
+_TARGET_NAME = r"[A-Za-z_][A-Za-z_0-9]*::[A-Za-z_][A-Za-z_0-9]*"
+_LIST_GUARD = re.compile(
+    rf"foreach\(\s*([A-Za-z_][A-Za-z_0-9]*)\s+IN\s+ITEMS\s+"
+    rf"({_TARGET_NAME}(?:\s+{_TARGET_NAME})*)\s*\)"
 )
+_IF_DENY_GUARD = re.compile(
+    rf"if\(\s*TARGET\s+{_TARGET_NAME}"
+    rf"(?:\s+OR\s+TARGET\s+{_TARGET_NAME})*\s*\)"
+)
+
+
+def _negative_assertion_indices(relative: Path, lines: list[str]) -> set[int]:
+    if relative not in NEGATIVE_ASSERTION_FILES:
+        return set()
+    allowed: set[int] = set()
+    for index, line in enumerate(lines):
+        # A literal if(TARGET Old::Target OR TARGET Other::Target)
+        # followed immediately by FATAL_ERROR and endif is a denial.
+        if (_IF_DENY_GUARD.fullmatch(line.strip())
+                and index + 2 < len(lines)
+                and lines[index + 1].strip().startswith("message(FATAL_ERROR ")
+                and lines[index + 2].strip() == "endif()"):
+            allowed.add(index)
+        if not line.lstrip().startswith("foreach("):
+            continue
+        last = index
+        while last < len(lines) and not lines[last].strip().endswith(")"):
+            last += 1
+        if last >= len(lines) or last + 4 >= len(lines):
+            continue
+        declaration = " ".join(part.strip() for part in lines[index:last + 1])
+        match = _LIST_GUARD.fullmatch(declaration)
+        if match is None:
+            continue
+        variable = match.group(1)
+        if not re.fullmatch(
+                rf'if\(\s*TARGET\s+"?\$\{{{re.escape(variable)}\}}"?\s*\)',
+                lines[last + 1].strip()):
+            continue
+        if (not lines[last + 2].strip().startswith("message(FATAL_ERROR ")
+                or lines[last + 3].strip() != "endif()"
+                or lines[last + 4].strip() != "endforeach()"):
+            continue
+        allowed.update(range(index, last + 1))
+    return allowed
+
+
+def _is_comment_line(relative: Path, line: str) -> bool:
+    stripped = line.lstrip()
+    if relative.name == "CMakeLists.txt" or relative.suffix == ".cmake":
+        return stripped.startswith("#")
+    # C/C++ whole-line comments only. An active #include remains checked;
+    # disabled #if branches are still scanned, and *ptr code is not ignored.
+    return stripped.startswith(("/*", "*/", "//", "* "))
 
 
 def check_repository(root: Path) -> list[str]:
@@ -43,21 +100,13 @@ def check_repository(root: Path) -> list[str]:
         if path.suffix not in SCANNED_EXTENSIONS and path.name != "CMakeLists.txt":
             continue
         lines = path.read_text(encoding="utf-8").splitlines()
-        denied_guard_indices: set[int] = set()
-        if relative == STATIC_CRYPTO_GUARD_FILE:
-            # Only a complete, contiguous CMake foreach(_forbidden...)
-            # definition can be treated as a negative assertion; never
-            # exclude target_link_libraries or unrelated lines in this file.
-            for offset in range(len(lines) - 2):
-                if tuple(line.strip() for line in lines[offset:offset + 3]) == (
-                        STATIC_CRYPTO_DENIED_TARGET_GUARD):
-                    denied_guard_indices.update((offset + 1, offset + 2))
+        denied_guard_indices = _negative_assertion_indices(relative, lines)
         for index, line in enumerate(lines):
-            if index in denied_guard_indices:
+            if index in denied_guard_indices or _is_comment_line(relative, line):
                 continue
             lineno = index + 1
-            # Build and source files must not refer to any legacy module even in
-            # disabled branches; migration is not allowed to add hidden fallback.
+            # Legacy dependencies are forbidden even in disabled branches.
+            # Only verified negative assertions and comments are not code.
             for rule, regex in PATTERNS.items():
                 if regex.search(line):
                     violations.append(f"{relative}:{lineno}: {rule}: {line.strip()}")
