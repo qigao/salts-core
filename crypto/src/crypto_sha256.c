@@ -27,8 +27,19 @@ _Static_assert(sizeof(salts_crypto_sha256_impl) <= SALTS_CRYPTO_SHA256_CONTEXT_S
 _Static_assert(_Alignof(salts_crypto_sha256_impl) <= _Alignof(salts_crypto_sha256_ctx_t),
                "native SHA256 has stricter alignment than public ABI");
 
-static salts_crypto_sha256_impl *sha_state(salts_crypto_sha256_ctx_t *ctx) {
-    return (salts_crypto_sha256_impl *)(void *)ctx->bytes;
+/* The public ABI is a union with an unsigned-byte buffer. Casting that
+ * buffer to a struct pointer is not guaranteed by strict-aliasing C11
+ * rules, even when alignment is sufficient. Use memcpy to materialize a
+ * properly typed local state, then copy it back; never type-pun memory.
+ * All local state is wiped before returning, including failure paths.
+ */
+static void sha_load(const salts_crypto_sha256_ctx_t *ctx,
+                     salts_crypto_sha256_impl *state) {
+    memcpy(state, ctx->bytes, sizeof(*state));
+}
+static void sha_save(salts_crypto_sha256_ctx_t *ctx,
+                     const salts_crypto_sha256_impl *state) {
+    memcpy(ctx->bytes, state, sizeof(*state));
 }
 
 static uint32_t rotr32(uint32_t value, unsigned count) {
@@ -101,67 +112,79 @@ int salts_crypto_sha256_init(salts_crypto_sha256_ctx_t *context) {
         UINT32_C(0x6a09e667),UINT32_C(0xbb67ae85),UINT32_C(0x3c6ef372),UINT32_C(0xa54ff53a),
         UINT32_C(0x510e527f),UINT32_C(0x9b05688c),UINT32_C(0x1f83d9ab),UINT32_C(0x5be0cd19)
     };
-    salts_crypto_sha256_impl *impl;
+    salts_crypto_sha256_impl state = {0};
     if (!context) return SALTS_CRYPTO_EINVAL;
     memset(context, 0, sizeof(*context));
-    impl = sha_state(context);
-    memcpy(impl->state, initial, sizeof(initial));
-    impl->magic = SALTS_SHA256_MAGIC;
+    memcpy(state.state, initial, sizeof(initial));
+    state.magic = SALTS_SHA256_MAGIC;
+    sha_save(context, &state);
+    salts_crypto_secure_zero(&state, sizeof(state));
     return SALTS_CRYPTO_OK;
 }
 
 int salts_crypto_sha256_update(salts_crypto_sha256_ctx_t *context,
                                const void *data, size_t data_size) {
-    salts_crypto_sha256_impl *impl;
+    salts_crypto_sha256_impl local;
     const uint8_t *cursor = (const uint8_t *)data;
     size_t remaining = data_size;
     if (!context || (!data && data_size != 0u)) return SALTS_CRYPTO_EINVAL;
-    impl = sha_state(context);
-    if (impl->magic != SALTS_SHA256_MAGIC) return SALTS_CRYPTO_ESTATE;
+    sha_load(context, &local);
+    if (local.magic != SALTS_SHA256_MAGIC) {
+        salts_crypto_secure_zero(&local, sizeof(local));
+        return SALTS_CRYPTO_ESTATE;
+    }
     /* FIPS 180-4 encodes the message bit length in exactly 64 bits.
      * Reject overflow before modifying any state (no length wraparound).
      */
-    if (data_size > UINT64_MAX / 8u - impl->total_bytes)
+    if (data_size > UINT64_MAX / 8u - local.total_bytes) {
+        salts_crypto_secure_zero(&local, sizeof(local));
         return SALTS_CRYPTO_EINVAL;
+    }
     while (remaining) {
-        size_t take = (size_t)SALTS_SHA256_BLOCK_BYTES - impl->used;
+        size_t take = (size_t)SALTS_SHA256_BLOCK_BYTES - local.used;
         if (take > remaining) take = remaining;
-        memcpy(impl->block + impl->used, cursor, take);
+        memcpy(local.block + local.used, cursor, take);
         cursor += take;
-        impl->used += (uint32_t)take;
+        local.used += (uint32_t)take;
         remaining -= take;
-        if (impl->used == SALTS_SHA256_BLOCK_BYTES) {
-            compress(impl, impl->block);
-            impl->used = 0u;
+        if (local.used == SALTS_SHA256_BLOCK_BYTES) {
+            compress(&local, local.block);
+            local.used = 0u;
         }
     }
-    impl->total_bytes += data_size;
+    local.total_bytes += data_size;
+    sha_save(context, &local);
+    salts_crypto_secure_zero(&local, sizeof(local));
     return SALTS_CRYPTO_OK;
 }
 
 int salts_crypto_sha256_final(salts_crypto_sha256_ctx_t *context,
                               uint8_t digest[SALTS_CRYPTO_SHA256_DIGEST_SIZE]) {
-    salts_crypto_sha256_impl *impl;
+    salts_crypto_sha256_impl local;
     uint64_t length_bits;
     size_t i;
     if (!context || !digest) return SALTS_CRYPTO_EINVAL;
-    impl = sha_state(context);
-    if (impl->magic != SALTS_SHA256_MAGIC) return SALTS_CRYPTO_ESTATE;
-
-    length_bits = impl->total_bytes * UINT64_C(8);
-    impl->block[impl->used++] = 0x80u;
-    if (impl->used > 56u) {
-        memset(impl->block + impl->used, 0, SALTS_SHA256_BLOCK_BYTES - impl->used);
-        compress(impl, impl->block);
-        impl->used = 0u;
+    sha_load(context, &local);
+    if (local.magic != SALTS_SHA256_MAGIC) {
+        salts_crypto_secure_zero(&local, sizeof(local));
+        return SALTS_CRYPTO_ESTATE;
     }
-    memset(impl->block + impl->used, 0, 56u - impl->used);
+
+    length_bits = local.total_bytes * UINT64_C(8);
+    local.block[local.used++] = 0x80u;
+    if (local.used > 56u) {
+        memset(local.block + local.used, 0, SALTS_SHA256_BLOCK_BYTES - local.used);
+        compress(&local, local.block);
+        local.used = 0u;
+    }
+    memset(local.block + local.used, 0, 56u - local.used);
     for (i = 0u; i < 8u; ++i)
-        impl->block[56u + i] = (uint8_t)(length_bits >> (56u - i * 8u));
-    compress(impl, impl->block);
+        local.block[56u + i] = (uint8_t)(length_bits >> (56u - i * 8u));
+    compress(&local, local.block);
     for (i = 0u; i < 8u; ++i)
-        save_big_endian_u32(digest + i * 4u, impl->state[i]);
-    salts_crypto_secure_zero(impl, sizeof(*impl));
+        save_big_endian_u32(digest + i * 4u, local.state[i]);
+    salts_crypto_secure_zero(context, sizeof(*context));
+    salts_crypto_secure_zero(&local, sizeof(local));
     return SALTS_CRYPTO_OK;
 }
 
