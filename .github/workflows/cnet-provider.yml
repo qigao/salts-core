@@ -350,84 +350,19 @@ jobs:
           }
           cmake --install build-cnet --config Release
           if ($LASTEXITCODE -ne 0) { throw "Windows CNet installation failed" }
-      - name: Issue 64 Windows IOCP named numeric-host RESOLVE to OPEN repeated gate
+      - name: Issue 64 Windows IOCP numeric-host RESOLVE-to-OPEN first-RED stress gate
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          # TinyTest --filter selects only the original real 127.0.0.1
-          # DNS -> NativeIO IOCP connect -> OPEN acceptance case.
-          # No provider fallback or network retry; --repeat until-fail:32
-          # preserves the first RED, including terminal kind/status/stage.
+          # TinyTest --filter selects only the original numeric 127.0.0.1
+          # resolver -> IOCP connect -> OPEN case; never a fake peer or retry.
+          # A failed iteration stops immediately, preserving terminal cause.
           $vcpkgBin = Join-Path $env:GITHUB_WORKSPACE 'vcpkg_installed/x64-windows/bin'
           $buildBin = Join-Path $env:GITHUB_WORKSPACE 'build-cnet/bin/Release'
           $env:PATH = "$vcpkgBin;$buildBin;$env:PATH"
-          & ctest --test-dir build-cnet -C Release --output-on-failure --no-tests=error --timeout 18 -R '^saltscore[.]cnet_owner_original_numeric_host
-          $ErrorActionPreference = 'Stop'
-          $prefix = Join-Path $env:RUNNER_TEMP 'saltscore-sdk'
-          $vcpkgBin = Join-Path $env:GITHUB_WORKSPACE 'vcpkg_installed/x64-windows/bin'
-          $env:PATH = "$prefix/bin;$vcpkgBin;$env:PATH"
-          $cmakeArgs = @('-S', 'tests/installed', '-B', 'build-installed-cnet',
-                         '-G', 'Visual Studio 18 2026', '-A', 'x64',
-                         "-DCMAKE_PREFIX_PATH=$prefix")
-          & cmake @cmakeArgs
-          if ($LASTEXITCODE -ne 0) { throw "installed CNet consumer configure failed" }
-          cmake --build build-installed-cnet --config Release --parallel 2
-          if ($LASTEXITCODE -ne 0) { throw "installed CNet consumer build failed" }
-          ctest --test-dir build-installed-cnet -C Release --output-on-failure --no-tests=error
-          if ($LASTEXITCODE -ne 0) { throw "installed CNet consumer runtime failed" }
-          if (-not (Test-Path "$prefix/include/cnet/cnet.h")) { throw "missing installed CNet header" }
-          if (-not (Get-ChildItem -Path "$prefix/bin" -Filter '*saltscore_cnet*.dll')) {
-            throw "missing installed CNet DLL"
-          }
-          if (-not (Select-String -Path "$prefix/lib/cmake/SaltsCore/SaltsCoreTargets.cmake" -SimpleMatch 'Salts::CNet' -Quiet)) {
-            throw "missing installed CNet CMake target"
-          }
-
-      - name: Audit installed PE DLL exports and consumer imports
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          python -m unittest tests.test_audit_runtime_owner
-          if ($LASTEXITCODE -ne 0) { throw 'ABI audit parser self-tests failed' }
-          python tools/audit_runtime_owner.py --prefix "$env:RUNNER_TEMP/saltscore-sdk" --build-dir build-installed-cnet --report build/abi-audit-windows.json
-          if ($LASTEXITCODE -ne 0) { throw 'installed PE single-owner ABI audit failed' }
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: saltscore-abi-audit-windows
-          path: build/abi-audit-windows.json
-          if-no-files-found: ignore
-      - name: Relocate installed Windows SDK and repeat C11/C++17 and ABI audit
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $old = Join-Path $env:RUNNER_TEMP 'saltscore-sdk'
-          $relocated = Join-Path $env:RUNNER_TEMP 'saltscore-sdk-relocated'
-          if (Test-Path $relocated) { throw 'relocated SDK prefix already exists' }
-          Move-Item -Path $old -Destination $relocated
-          if (Test-Path $old) { throw 'original SDK prefix must be absent' }
-          $providerBin = Join-Path $env:GITHUB_WORKSPACE 'vcpkg_installed/x64-windows/bin'
-          $env:PATH = "$relocated/bin;$providerBin;$env:PATH"
-          $args = @('-S', 'tests/installed', '-B', 'build-relocated-cnet',
-                    '-G', 'Visual Studio 18 2026', '-A', 'x64',
-                    "-DCMAKE_PREFIX_PATH=$relocated")
-          & cmake @args
-          if ($LASTEXITCODE -ne 0) { throw 'relocated SDK CMake configure failed' }
-          cmake --build build-relocated-cnet --config Release --parallel 2
-          if ($LASTEXITCODE -ne 0) { throw 'relocated SDK compilation failed' }
-          ctest --test-dir build-relocated-cnet -C Release --output-on-failure --no-tests=error
-          if ($LASTEXITCODE -ne 0) { throw 'relocated SDK CTest failed' }
-          python tools/audit_runtime_owner.py --prefix $relocated --build-dir build-relocated-cnet --report build/abi-relocation-windows.json
-          if ($LASTEXITCODE -ne 0) { throw 'relocated PE owner audit failed' }
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: saltscore-abi-relocation-windows
-          path: build/abi-relocation-windows.json
-          if-no-files-found: ignore
- --repeat until-fail:32
+          & ctest --test-dir build-cnet -C Release --output-on-failure --no-tests=error --timeout 18 -R '^saltscore[.]cnet_owner_original_numeric_host$' --repeat until-fail:32
           if ($LASTEXITCODE -ne 0) {
-            throw 'Issue #64 first real Windows IOCP numeric-host RESOLVE->OPEN RED; inspect terminal stage/status'
+            throw 'Issue #64 actual Windows IOCP numeric-host RESOLVE->OPEN RED; inspect terminal stage/status'
           }
       - name: Link and run independent MSVC C11/C++17 installed consumers
         shell: pwsh
