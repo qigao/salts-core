@@ -717,6 +717,10 @@ static int external_main(int argc, char **argv)
     return run_external_san((unsigned)port, protocol, accept_peer);
 }
 
+/* Independently exercise the original CNet peer-chain ABI against a real DER
+ * fixture; the same static Owner handles TLS1.2/1.3 networking below. */
+extern int cnet_crypto_peer_chain_regression(void);
+
 int main(int argc, char **argv)
 {
     if (argc == 9 && strcmp(argv[1], "--mtls") == 0) {
@@ -733,6 +737,7 @@ int main(int argc, char **argv)
         return run_protocol(NULL, protocol, false, &m);
     }
     if (argc != 1) return external_main(argc, argv);
+    if (cnet_crypto_peer_chain_regression() != 0) return 4;
     if (check_m5_policy_admission() != 0) return 3;
     cnet_tls_client dummy = {0};
     cnet_tls_client_config default_policy = {0};

@@ -53,6 +53,7 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
     cnet/src/cnet_tls_crypto_qualification.c
     tests/cnet-crypto-static/cnet_crypto_owner_admission.c
     tests/cnet-crypto-static/public_context.c
+    tests/cnet-crypto-static/test_peer_chain.c
     tests/cnet-crypto-static/owner.c)
 
   # Source parity: original relative CNet manifest, never local test paths.
@@ -75,6 +76,8 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
   file(TO_CMAKE_PATH "${SALTSCORE_CRYPTO_TEST_FIXTURES}" _owner_fixtures)
   add_executable(saltscore_cnet_crypto_static_original_owner
     ${_static_owner_sources})
+  target_include_directories(saltscore_cnet_crypto_static_original_owner PRIVATE
+    "${PROJECT_SOURCE_DIR}/crypto/tests/x509/fixtures")
   target_compile_features(saltscore_cnet_crypto_static_original_owner
     PRIVATE c_std_11)
   set_target_properties(saltscore_cnet_crypto_static_original_owner PROPERTIES
@@ -178,6 +181,8 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
     list(APPEND _m6_dso_sources
       "${PROJECT_SOURCE_DIR}/tests/cnet-crypto-static/m6_shared_owner.c")
     add_library(saltscore_cnet_crypto_m6_shared SHARED ${_m6_dso_sources})
+    target_include_directories(saltscore_cnet_crypto_m6_shared PRIVATE
+      "${PROJECT_SOURCE_DIR}/crypto/tests/x509/fixtures")
     target_compile_features(saltscore_cnet_crypto_m6_shared PUBLIC c_std_11)
     target_compile_definitions(saltscore_cnet_crypto_m6_shared
       PRIVATE CNET_M6_BUILD_SHARED=1)
