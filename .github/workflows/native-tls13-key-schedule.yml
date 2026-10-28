@@ -10,6 +10,8 @@ on:
       - "crypto/tests/native-tls13/**"
       - ".github/workflows/native-tls13-key-schedule.yml"
   push:
+    branches:
+      - master
     paths:
       - "crypto/src/tls13_key_schedule.c"
       - "crypto/src/tls13_key_schedule.h"
@@ -19,11 +21,21 @@ on:
       - "crypto/tests/native-tls13/**"
       - ".github/workflows/native-tls13-key-schedule.yml"
   workflow_dispatch:
+concurrency:
+  group: saltscore-fifo-workflows
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   native-c11-hkdf:
+    concurrency:
+      group: saltscore-fifo-runners
+      cancel-in-progress: false
+      queue: max
     name: Provider-free C11 TLS13 HKDF / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, macos-15, windows-2022]

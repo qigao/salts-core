@@ -4,8 +4,17 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: saltscore-fifo-workflows
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   win-llvm-tinycc:
+    concurrency:
+      group: saltscore-fifo-runners
+      cancel-in-progress: false
+      queue: max
     runs-on: windows-2022
     timeout-minutes: 35
     steps:
@@ -127,6 +136,10 @@ jobs:
           if-no-files-found: error
 
   win-arm64-native-tinycc:
+    concurrency:
+      group: saltscore-fifo-runners
+      cancel-in-progress: false
+      queue: max
     needs: win-llvm-tinycc
     runs-on: windows-11-vs2026-arm
     timeout-minutes: 20
@@ -171,6 +184,10 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Native ARM64 TinyCC C11 threads.h direct link failed $i" }
           }
   linux-native-tinycc:
+    concurrency:
+      group: saltscore-fifo-runners
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     steps:
@@ -228,7 +245,12 @@ jobs:
           for i in 1 2 3 4 5; do ./build-portable/tcc_installed_c11; done
 
   macos-native-tinycc:
+    concurrency:
+      group: saltscore-fifo-runners
+      cancel-in-progress: false
+      queue: max
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         runner: [macos-15-intel, macos-15]
@@ -270,9 +292,14 @@ jobs:
 
 
   portable-thread-sanitizers:
+    concurrency:
+      group: saltscore-fifo-runners
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         include:

@@ -33,12 +33,22 @@ permissions:
   contents: read
   packages: read
 
+concurrency:
+  group: saltscore-fifo-workflows
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   linux-runtime-sanitizers:
+    concurrency:
+      group: saltscore-fifo-runners
+      cancel-in-progress: false
+      queue: max
     name: Linux CNet ${{ matrix.kind }} live owner contract
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         include:

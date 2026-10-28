@@ -10,6 +10,8 @@ on:
       - 'docs/sole-native-tls-provider.md'
       - '.github/workflows/sole-tls-owner.yml'
   push:
+    branches:
+      - master
     paths:
       - 'cnet/**'
       - 'crypto/**'
@@ -20,8 +22,17 @@ on:
       - '.github/workflows/sole-tls-owner.yml'
   workflow_dispatch:
 
+concurrency:
+  group: saltscore-fifo-workflows
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   fail-closed-source-contract:
+    concurrency:
+      group: saltscore-fifo-runners
+      cancel-in-progress: false
+      queue: max
     name: Source gate unit tests / cutover BLOCKED report
     runs-on: ubuntu-24.04
     steps:
