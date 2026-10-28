@@ -357,8 +357,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $bin = Join-Path $env:RUNNER_TEMP 'core-static-owner-build/bin/Release'
           $owner = Join-Path $bin 'saltscore_cnet_m6_static_crypto.dll'
-          $host = Join-Path $bin 'saltscore_cnet_m6_two_plugin_loader.exe'
-          if (-not (Test-Path $owner) -or -not (Test-Path $host)) {
+          $m6HostExecutable = Join-Path $bin 'saltscore_cnet_m6_two_plugin_loader.exe'
+          if (-not (Test-Path $owner) -or -not (Test-Path $m6HostExecutable)) {
             throw 'M6 candidate DLL or host executable missing'
           }
           $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
@@ -389,7 +389,7 @@ jobs:
             }
           }
           foreach ($entry in @(@('cnet-m6-owner-imports.txt', $owner),
-                               @('cnet-m6-host-imports.txt', $host))) {
+                               @('cnet-m6-host-imports.txt', $m6HostExecutable))) {
             $report = Join-Path $env:RUNNER_TEMP $entry[0]
             Save-M6PeImports $entry[1] $report
           }
