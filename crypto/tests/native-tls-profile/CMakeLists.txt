@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(SaltsCryptoTLSProfileV14Independent LANGUAGES C)
+project(SaltsCryptoTLSProfileV14Independent LANGUAGES C CXX)
 include(CTest)
 
 # Compile the EXACT production Crypto policy owner without a TLS backend.
@@ -33,4 +33,24 @@ endif()
 add_test(NAME crypto.native.tls_profile_v14.no_external_provider
   COMMAND salts_crypto_tls_profile_v14_independent)
 set_tests_properties(crypto.native.tls_profile_v14.no_external_provider
+  PROPERTIES TIMEOUT 120)
+
+# Cross-language acceptance uses the SAME compiled first-party C source.
+# It must not link a second installed/privately imported Crypto archive.
+add_executable(salts_crypto_tls_profile_v14_cpp_independent
+  ../algorithms/tls_profile_v14_cpp.cpp
+  $<TARGET_OBJECTS:salts_crypto_tls_profile_source>)
+set_target_properties(salts_crypto_tls_profile_v14_cpp_independent PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+target_include_directories(salts_crypto_tls_profile_v14_cpp_independent PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../include")
+if(MSVC)
+  target_compile_options(salts_crypto_tls_profile_v14_cpp_independent PRIVATE /W4 /WX)
+else()
+  target_compile_options(salts_crypto_tls_profile_v14_cpp_independent PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME crypto.native.tls_profile_v14.cpp17.no_external_provider
+  COMMAND salts_crypto_tls_profile_v14_cpp_independent)
+set_tests_properties(crypto.native.tls_profile_v14.cpp17.no_external_provider
   PROPERTIES TIMEOUT 120)
