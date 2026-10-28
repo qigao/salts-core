@@ -41,9 +41,12 @@ native invalid-range contract rather than reintroducing old silent truncation.
 
 | `utils/parser/log_pattern_lexer.h`, `utils/parser/log_pattern_lexer.re` | `core/parser/log_pattern_lexer.h`, `.re`, `.c` | All eight original placeholder tokens and unknown/literal grammar; source and installed tests, CI pending |
 
+| `utils/include/tlog.h`, `utils/src/tlog.c` | `core/include/tlog.h`, `core/src/tlog.c` | Original async Disruptor logger, FS file sinks, native level/entry metadata and original tests, CI pending |
+| `utils/include/tlog_helper.h` | `core/include/tlog_helper.h` | Same original C++17 container formatter helpers, CI pending |
+
 ## Still missing: full original utils functionality
 
-**Not restored, do not mark migration complete or release:**
+**Not fully accepted, do not mark migration complete or release:**
 
 - Logging/format: `tlog.h`, `tlog_helper.h`, `tlog.c`; the lexer now has a separate native owner. sync/async sinks and flush
   parity, fatal logging, bounded queue and source capture all remain pending.

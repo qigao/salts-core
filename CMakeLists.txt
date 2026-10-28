@@ -15,9 +15,12 @@ include(CTest)
 find_package(Threads REQUIRED)
 
 # Package root assembles canonical modules; modules own sources and installs.
+# Original logging uses existing FS and Concurrency implementations;
+# compile those single owners first, without a second logger provider.
 add_subdirectory(platform)
-add_subdirectory(core)
 add_subdirectory(concurrency)
+add_subdirectory(fs)
+add_subdirectory(core)
 add_subdirectory(coroutine)
 add_subdirectory(native-io)
 
@@ -72,9 +75,10 @@ endif()
 if(SALTSCORE_BUILD_IDNA)
   add_subdirectory(idna)
 endif()
-option(SALTSCORE_BUILD_FS "Build standalone native FS owner" OFF)
-if(SALTSCORE_BUILD_FS)
-  add_subdirectory(fs)
+# Salts::FS is an unconditional Core logger dependency, not a fallback.
+# A caller cannot silently disable the real file sink while preserving TLog.
+if(DEFINED SALTSCORE_BUILD_FS AND NOT SALTSCORE_BUILD_FS)
+  message(FATAL_ERROR "Restored Core/TLog requires canonical Salts::FS")
 endif()
 option(SALTSCORE_BUILD_PROCESS "Build standalone Process owner" OFF)
 if(SALTSCORE_BUILD_PROCESS)

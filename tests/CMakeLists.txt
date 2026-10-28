@@ -436,3 +436,27 @@ target_compile_features(saltscore_log_pattern_lexer_test PRIVATE c_std_11)
 target_link_libraries(saltscore_log_pattern_lexer_test PRIVATE Salts::Core)
 add_test(NAME saltscore.original_log_pattern_lexer
   COMMAND saltscore_log_pattern_lexer_test)
+
+# Original async logger: the original TinyTest and native callback exercise
+# real Disruptor/FS providers, thread drain, shutdown, not a logger mock.
+add_executable(saltscore_tlog_smoke test_tlog_smoke.c)
+target_compile_features(saltscore_tlog_smoke PRIVATE c_std_11)
+target_link_libraries(saltscore_tlog_smoke PRIVATE Salts::Core)
+add_test(NAME saltscore.original_tlog_smoke COMMAND saltscore_tlog_smoke)
+set_tests_properties(saltscore.original_tlog_smoke PROPERTIES TIMEOUT 40)
+if(TARGET Salts::TinyTest)
+  foreach(_tlog_suite IN ITEMS tlog tlog_vstr_abi tlog_header_collision)
+    add_executable(saltscore_original_${_tlog_suite}_test test_${_tlog_suite}.c)
+    target_compile_features(saltscore_original_${_tlog_suite}_test PRIVATE c_std_11)
+    target_link_libraries(saltscore_original_${_tlog_suite}_test PRIVATE
+      Salts::Core Salts::TinyTest)
+    add_test(NAME saltscore.original_${_tlog_suite}
+      COMMAND saltscore_original_${_tlog_suite}_test)
+    set_tests_properties(saltscore.original_${_tlog_suite} PROPERTIES TIMEOUT 120)
+  endforeach()
+  add_executable(saltscore_original_tlog_cpp_test test_tlog_cpp.cpp)
+  target_compile_features(saltscore_original_tlog_cpp_test PRIVATE cxx_std_17)
+  target_link_libraries(saltscore_original_tlog_cpp_test PRIVATE Salts::Core Salts::TinyTest)
+  add_test(NAME saltscore.original_tlog_cpp COMMAND saltscore_original_tlog_cpp_test)
+  set_tests_properties(saltscore.original_tlog_cpp PROPERTIES TIMEOUT 120)
+endif()

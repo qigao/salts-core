@@ -258,6 +258,45 @@
         "log_pattern_scan",
         "log_pattern_scan_n"
       ]
+    },
+    {
+      "module": "tlog",
+      "owner": "core",
+      "header": "core/include/tlog.h",
+      "source": "core/src/tlog.c",
+      "functions": [
+        "cmeta_sink_set_min_level",
+        "cmeta_sink_get_min_level",
+        "cmeta_sink_set_user_data",
+        "cmeta_sink_get_user_data",
+        "cmeta_sink_console_create",
+        "cmeta_sink_file_create",
+        "cmeta_sink_callback_create",
+        "cmeta_sink_custom_create",
+        "cmeta_sink_filter_create",
+        "cmeta_sink_format_create",
+        "cmeta_sink_metrics_create",
+        "cmeta_sink_metrics_snapshot",
+        "cmeta_sink_destroy",
+        "tlog_create",
+        "tlog_destroy",
+        "tlog_add_sink",
+        "tlog_remove_sink",
+        "tlog_flush",
+        "cmeta_log_str",
+        "cmeta_log_typed",
+        "tlog_set_level_ex",
+        "tlog_set_level",
+        "tlog_get_level",
+        "tlog_set_default",
+        "tlog_get_default",
+        "tlog_peek_default",
+        "tlog_get_written",
+        "tlog_get_dropped",
+        "tlog_get_queue_size",
+        "cmeta_log_level_name",
+        "cmeta_log_level_from_name"
+      ]
     }
   ],
   "stage_a_support_files": [
@@ -279,14 +318,15 @@
     "tests/test_fmt_cpp.cpp",
     "tests/test_fmt_vstr_pattern.c",
     "core/parser/log_pattern_lexer.re",
-    "tests/test_log_pattern_lexer.c"
+    "tests/test_log_pattern_lexer.c",
+    "core/include/tlog_helper.h",
+    "tests/test_tlog.c",
+    "tests/test_tlog_cpp.cpp",
+    "tests/test_tlog_vstr_abi.c",
+    "tests/test_tlog_header_collision.c"
   ],
   "pending_groups": {
-    "logging_formatter": [
-      "tlog.h",
-      "tlog_helper.h",
-      "tlog.c"
-    ],
+    "logging_formatter": [],
     "algorithms": [
       "ac_automaton",
       "levenshtein_automaton",
