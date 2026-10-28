@@ -23,7 +23,7 @@ target_sources(saltscore_core PRIVATE
   src/runtime_abi.c src/utf8.c
   # Original utils/Core ownership restored; no CMeta provider or second core.
   src/vstr.c src/tstr.c src/memory_pool.c src/object_pool.c
-  src/bucket_priority_queue.c src/sds/sds.c)
+  src/bucket_priority_queue.c src/fmt.c src/sds/sds.c)
 # SDS is original private C string storage, not an exported provider target.
 target_include_directories(saltscore_core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/sds")
 if(APPLE)
@@ -48,6 +48,7 @@ install(FILES
   include/cmeta_buffer.h include/ring_buffer.h
   include/tstr.h include/str.h include/memory_pool.h include/object_pool.h
   include/bucket_priority_queue.h
+  include/fmt.h include/fmt_pp.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 # Original upstream SDS BSD license is mandatory for this private source.

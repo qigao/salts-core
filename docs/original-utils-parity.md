@@ -37,12 +37,13 @@ native invalid-range contract rather than reintroducing old silent truncation.
 
 | `utils/parser/fmt_lexer.h`, `utils/parser/fmt_lexer.re` | `core/parser/fmt_lexer.h`, `fmt_lexer.re`, `fmt_lexer.c` | Bounded scanner port, original 8-case lexer contract and clean SDK tests, CI pending |
 
+| `utils/include/fmt.h`, `utils/src/fmt.c` | `core/include/fmt.h`, `core/src/fmt.c` | Original typed C11/C++17 renderer, standalone native enum metadata (no CMeta runtime), original tests; CI pending |
+
 ## Still missing: full original utils functionality
 
 **Not restored, do not mark migration complete or release:**
 
-- Logging/format: `tlog.h`, `tlog_helper.h`, `tlog.c`, `fmt.h`,
-  `fmt.c`, log-pattern lexer and full format rendering; sync/async sinks and flush
+- Logging/format: `tlog.h`, `tlog_helper.h`, `tlog.c`, log-pattern lexer; sync/async sinks and flush
   parity, fatal logging, bounded queue and source capture all remain pending.
 - Containers and algorithms: `ac_automaton`, `levenshtein_automaton`,
   `bucket_priority_queue_mpmc`,

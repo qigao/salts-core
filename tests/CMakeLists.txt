@@ -405,3 +405,27 @@ if(TARGET Salts::TinyTest)
   target_link_libraries(saltscore_original_fmt_lexer_test PRIVATE Salts::Core Salts::TinyTest)
   add_test(NAME saltscore.original_fmt_lexer_contract COMMAND saltscore_original_fmt_lexer_test)
 endif()
+
+# Original formatter implementation: typed C11 and C++17 metadata, bounded
+# rendering, invalid specifier rejection, time formatting, dynamic tstr and views.
+if(TARGET Salts::TinyTest)
+  add_executable(saltscore_original_fmt_test test_fmt.c)
+  target_compile_features(saltscore_original_fmt_test PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_fmt_test PRIVATE Salts::Core Salts::TinyTest)
+  add_test(NAME saltscore.original_fmt_c11 COMMAND saltscore_original_fmt_test)
+
+  add_executable(saltscore_original_fmt_cpp_test test_fmt_cpp.cpp)
+  target_compile_features(saltscore_original_fmt_cpp_test PRIVATE cxx_std_17)
+  target_link_libraries(saltscore_original_fmt_cpp_test PRIVATE Salts::Core Salts::TinyTest)
+  add_test(NAME saltscore.original_fmt_cpp17 COMMAND saltscore_original_fmt_cpp_test)
+
+  add_executable(saltscore_original_fmt_view_test test_fmt_vstr_pattern.c)
+  target_compile_features(saltscore_original_fmt_view_test PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_fmt_view_test PRIVATE Salts::Core Salts::TinyTest)
+  add_test(NAME saltscore.original_fmt_bounded_vstr COMMAND saltscore_original_fmt_view_test)
+endif()
+# Always-on no-framework formatter contract (also when TinyTest is OFF).
+add_executable(saltscore_fmt_smoke test_fmt_smoke.c)
+target_compile_features(saltscore_fmt_smoke PRIVATE c_std_11)
+target_link_libraries(saltscore_fmt_smoke PRIVATE Salts::Core)
+add_test(NAME saltscore.original_fmt_smoke COMMAND saltscore_fmt_smoke)

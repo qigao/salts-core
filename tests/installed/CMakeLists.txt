@@ -192,3 +192,13 @@ add_executable(fmt_lexer_consumer_cpp fmt_lexer_consumer.cpp)
 target_compile_features(fmt_lexer_consumer_cpp PRIVATE cxx_std_17)
 target_link_libraries(fmt_lexer_consumer_cpp PRIVATE Salts::Core)
 add_test(NAME sdk.fmt_lexer_cpp17 COMMAND fmt_lexer_consumer_cpp)
+
+# Installed formatter type tags, enum metadata and C11/C++17 wrappers.
+add_executable(fmt_consumer_c fmt_consumer.c)
+target_compile_features(fmt_consumer_c PRIVATE c_std_11)
+target_link_libraries(fmt_consumer_c PRIVATE Salts::Core)
+add_test(NAME sdk.fmt_c11 COMMAND fmt_consumer_c)
+add_executable(fmt_consumer_cpp fmt_consumer.cpp)
+target_compile_features(fmt_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(fmt_consumer_cpp PRIVATE Salts::Core)
+add_test(NAME sdk.fmt_cpp17 COMMAND fmt_consumer_cpp)

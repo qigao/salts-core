@@ -235,6 +235,18 @@
         "fmt_scan_v",
         "fmt_scan_v_n"
       ]
+    },
+    {
+      "module": "fmt",
+      "owner": "core",
+      "header": "core/include/fmt.h",
+      "source": "core/src/fmt.c",
+      "functions": [
+        "fmt_print_v",
+        "fmt_print",
+        "fmt_print_tstr_v",
+        "fmt_print_tstr"
+      ]
     }
   ],
   "stage_a_support_files": [
@@ -249,15 +261,18 @@
     "tests/test_ring_buffer_spsc.c",
     "tests/test_bucket_priority_queue_spsc.c",
     "core/parser/fmt_lexer.re",
-    "tests/test_fmt_re2c.c"
+    "tests/test_fmt_re2c.c",
+    "core/include/fmt_pp.h",
+    "platform/include/salts/timeval.h",
+    "tests/test_fmt.c",
+    "tests/test_fmt_cpp.cpp",
+    "tests/test_fmt_vstr_pattern.c"
   ],
   "pending_groups": {
     "logging_formatter": [
       "tlog.h",
       "tlog_helper.h",
       "tlog.c",
-      "fmt.h",
-      "fmt.c",
       "log_pattern_lexer"
     ],
     "algorithms": [
