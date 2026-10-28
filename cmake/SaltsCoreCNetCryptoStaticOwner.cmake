@@ -150,6 +150,8 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
       tests/cnet-crypto-static/m6_shared_owner.c)
     add_library(saltscore_cnet_crypto_m6_shared SHARED ${_m6_dso_sources})
     target_compile_features(saltscore_cnet_crypto_m6_shared PUBLIC c_std_11)
+    target_compile_definitions(saltscore_cnet_crypto_m6_shared
+      PRIVATE CNET_M6_BUILD_SHARED=1)
     set_target_properties(saltscore_cnet_crypto_m6_shared PROPERTIES
       C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
       WINDOWS_EXPORT_ALL_SYMBOLS ON
