@@ -104,6 +104,7 @@ jobs:
             -DSALTSCORE_CNET_STATIC_CRYPTO_OPENSSL_SAN_TEST=ON \
             -DSALTSCORE_CNET_M5_PYTHON_MTLS_TEST=ON \
             -DSALTSCORE_CNET_M6_SHARED_DSO_TEST=ON \
+            -DSALTSCORE_CNET_M6_CONCURRENT_MTLS_TEST=ON \
             "-DSALTSCORE_CRYPTO_PYTHON_FIXTURE_SOURCE=$RUNNER_TEMP/crypto-src/crypto/tests/sdk/python_mtls.py" \
             "-DSALTSCORE_CRYPTO_TEST_FIXTURES=$RUNNER_TEMP/crypto-src/crypto/tests/fixtures" \
             "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/crypto-installed"
@@ -114,7 +115,7 @@ jobs:
             --repeat until-fail:1
           ctest --test-dir "$RUNNER_TEMP/core-static-owner-build" -C Release \
             --output-on-failure --no-tests=error \
-            -R '^saltscore[.]cnet_crypto_m6_two_plugin_shared_owner$' \
+            -R '^saltscore[.]cnet_crypto_m6_two_plugin_(shared_owner|concurrent_mtls)$' \
             --repeat until-fail:3
           ctest --test-dir "$RUNNER_TEMP/core-static-owner-build" -C Release \
             --output-on-failure --no-tests=error \
@@ -320,6 +321,7 @@ jobs:
             '-DSALTSCORE_CNET_STATIC_CRYPTO_OPENSSL_SAN_TEST=ON',
             '-DSALTSCORE_CNET_M5_PYTHON_MTLS_TEST=ON',
             '-DSALTSCORE_CNET_M6_SHARED_DSO_TEST=ON',
+            '-DSALTSCORE_CNET_M6_CONCURRENT_MTLS_TEST=ON',
             "-DSALTSCORE_CRYPTO_PYTHON_FIXTURE_SOURCE=$env:RUNNER_TEMP/crypto-src/crypto/tests/sdk/python_mtls.py",
             "-DSALTSCORE_CRYPTO_TEST_FIXTURES=$env:RUNNER_TEMP/crypto-src/crypto/tests/fixtures",
             "-DCMAKE_PREFIX_PATH=$sdk")
@@ -329,7 +331,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Original Owner static CNet compile/link failed' }
           & ctest --test-dir $build -C Release --output-on-failure --no-tests=error -R '^saltscore[.]cnet_crypto_static_(original_owner_tls12_tls13|python_san_tls12|python_san_tls13|original_owner_python_mtls)$' --repeat until-fail:1
           if ($LASTEXITCODE -ne 0) { throw 'M2 genuine IOCP Crypto TLS Owner failed' }
-          & ctest --test-dir $build -C Release --output-on-failure --no-tests=error -R '^saltscore[.]cnet_crypto_m6_two_plugin_shared_owner$' --repeat until-fail:3
+          & ctest --test-dir $build -C Release --output-on-failure --no-tests=error -R '^saltscore[.]cnet_crypto_m6_two_plugin_(shared_owner|concurrent_mtls)$' --repeat until-fail:3
           if ($LASTEXITCODE -ne 0) { throw 'M6 two-plugin sole Crypto runtime failed on IOCP' }
           & ctest --test-dir $build -C Release --output-on-failure --no-tests=error -R '^saltscore[.]cnet_(tcp_loopback|tls_ca_san)$'
           if ($LASTEXITCODE -ne 0) { throw 'Incumbent GmSSL regression failed' }
