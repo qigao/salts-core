@@ -54,6 +54,7 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
     tests/cnet-crypto-static/cnet_crypto_owner_admission.c
     tests/cnet-crypto-static/public_context.c
     tests/cnet-crypto-static/test_peer_chain.c
+    tests/cnet-crypto-static/test_rfc5929.c
     tests/cnet-crypto-static/owner.c)
 
   # Source parity: original relative CNet manifest, never local test paths.
@@ -93,7 +94,9 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
   target_compile_definitions(saltscore_cnet_crypto_static_original_owner PRIVATE
     "SDK_CA_FILE=\"${_owner_fixtures}/external-io-ca-cert.pem\""
     "SDK_SERVER_CERT_FILE=\"${_owner_fixtures}/external-io-server-cert.pem\""
-    "SDK_SERVER_KEY_FILE=\"${_owner_fixtures}/external-io-server-key.pem\"")
+    "SDK_SERVER_KEY_FILE=\"${_owner_fixtures}/external-io-server-key.pem\""
+    "SDK_RSA_SHA256_PEM=\"${PROJECT_SOURCE_DIR}/crypto/tests/fixtures/external-io-server-cert.pem\""
+    "SDK_ECDSA_SHA384_PEM=\"${PROJECT_SOURCE_DIR}/crypto/tests/fixtures/p256-leaf-sha384.pem\"")
   target_link_libraries(saltscore_cnet_crypto_static_original_owner PRIVATE
     Salts::Core Salts::NativeIO Salts::Concurrency
     Salts::URI Salts::Platform Salts::Crypto
@@ -193,7 +196,9 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
     target_compile_definitions(saltscore_cnet_crypto_m6_shared PRIVATE
       "SDK_CA_FILE=\"${_owner_fixtures}/external-io-ca-cert.pem\""
       "SDK_SERVER_CERT_FILE=\"${_owner_fixtures}/external-io-server-cert.pem\""
-      "SDK_SERVER_KEY_FILE=\"${_owner_fixtures}/external-io-server-key.pem\"")
+      "SDK_SERVER_KEY_FILE=\"${_owner_fixtures}/external-io-server-key.pem\""
+    "SDK_RSA_SHA256_PEM=\"${PROJECT_SOURCE_DIR}/crypto/tests/fixtures/external-io-server-cert.pem\""
+    "SDK_ECDSA_SHA384_PEM=\"${PROJECT_SOURCE_DIR}/crypto/tests/fixtures/p256-leaf-sha384.pem\"")
     target_include_directories(saltscore_cnet_crypto_m6_shared
       PUBLIC
         "${PROJECT_SOURCE_DIR}/cnet/include"
