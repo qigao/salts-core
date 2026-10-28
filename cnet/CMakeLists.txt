@@ -1,3 +1,18 @@
+# Original CNet transport target is owned here; SCTP is independent.
+# Provider-free C11 WebSocket frame parser. This is a private CNet build
+# component, not a public SDK target. Minimal Core never links it.
+if(SALTSCORE_BUILD_WEBSOCKET_PARSER OR SALTSCORE_BUILD_CNET)
+  add_library(saltscore_wsparser OBJECT
+    src/wsparser/websocket_frame_parser.c)
+  target_compile_features(saltscore_wsparser PUBLIC c_std_11)
+  set_target_properties(saltscore_wsparser PROPERTIES
+    C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+    POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
+  target_include_directories(saltscore_wsparser PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/wsparser")
+endif()
+
+if(SALTSCORE_BUILD_CNET)
 # Core CNet: explicit provider-backed network transport. No fallback and
 # no target/source import from the historical Salts or SaltsUtils packages.
 if(NOT TARGET Salts::URI OR NOT TARGET saltscore_wsparser)
@@ -26,18 +41,18 @@ set_target_properties(saltscore_uri PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # Single CNet-private Monocypher namespace avoids duplicate crypto_argon2 and
 # other generic symbols in programs containing more than one consumer DSO.
 add_library(saltscore_cnet_monocypher STATIC
-  vendor/cnet/monocypher/cnet_monocypher.c)
+  ${PROJECT_SOURCE_DIR}/vendor/cnet/monocypher/cnet_monocypher.c)
 target_compile_features(saltscore_cnet_monocypher PUBLIC c_std_11)
 target_include_directories(saltscore_cnet_monocypher
-  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/monocypher")
+  PUBLIC "${PROJECT_SOURCE_DIR}/vendor/cnet/monocypher")
 set_target_properties(saltscore_cnet_monocypher PROPERTIES
   POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
 
 add_library(saltscore_cnet_reed STATIC
-  vendor/cnet/reed/gf256.c)
+  ${PROJECT_SOURCE_DIR}/vendor/cnet/reed/gf256.c)
 target_compile_features(saltscore_cnet_reed PUBLIC c_std_11)
 target_include_directories(saltscore_cnet_reed
-  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/reed"
+  PUBLIC "${PROJECT_SOURCE_DIR}/vendor/cnet/reed"
   PRIVATE "${SALTSCORE_CNET_SIMDE_INCLUDE_DIR}")
 set_target_properties(saltscore_cnet_reed PROPERTIES
   POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
@@ -80,7 +95,18 @@ set(_saltscore_cnet_sources
   cnet/src/cnet_handoff.c
   $<TARGET_OBJECTS:saltscore_wsparser>)
 
-add_library(saltscore_cnet SHARED ${_saltscore_cnet_sources})
+# Keep exact original Owner test inputs repo-relative; make module library
+# sources absolute so its CMakeLists owns the target from cnet/.
+set(_saltscore_cnet_sources "${_saltscore_cnet_sources}" PARENT_SCOPE)
+set(_saltscore_cnet_local_sources)
+foreach(_unit IN LISTS _saltscore_cnet_sources)
+  if(_unit MATCHES "^\\$<TARGET_OBJECTS:")
+    list(APPEND _saltscore_cnet_local_sources "${_unit}")
+  else()
+    list(APPEND _saltscore_cnet_local_sources "${PROJECT_SOURCE_DIR}/${_unit}")
+  endif()
+endforeach()
+add_library(saltscore_cnet SHARED ${_saltscore_cnet_local_sources})
 add_library(Salts::CNet ALIAS saltscore_cnet)
 target_compile_features(saltscore_cnet PUBLIC c_std_11)
 set_target_properties(saltscore_cnet PROPERTIES
@@ -93,14 +119,14 @@ if(WIN32)
 endif()
 target_include_directories(saltscore_cnet
   PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/cnet/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
   PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/cnet/src"
-    "${CMAKE_CURRENT_SOURCE_DIR}/cnet/src/wsparser"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/wsparser"
     "${CMAKE_CURRENT_SOURCE_DIR}/native-io/src"
-    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/monocypher"
-    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/cnet/reed")
+    "${PROJECT_SOURCE_DIR}/vendor/cnet/monocypher"
+    "${PROJECT_SOURCE_DIR}/vendor/cnet/reed")
 target_link_libraries(saltscore_cnet
   PUBLIC
     Salts::Core
@@ -130,7 +156,8 @@ install(TARGETS saltscore_cnet EXPORT SaltsCoreTargets
 install(DIRECTORY cnet/include/cnet
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.h")
-install(FILES vendor/cnet/reed/LICENSE
+install(FILES ${PROJECT_SOURCE_DIR}/vendor/cnet/reed/LICENSE
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/reed)
-install(FILES vendor/cnet/monocypher/UPSTREAM.md
+install(FILES ${PROJECT_SOURCE_DIR}/vendor/cnet/monocypher/UPSTREAM.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/monocypher)
+endif()
