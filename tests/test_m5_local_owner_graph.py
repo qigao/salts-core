@@ -69,7 +69,7 @@ class M5LocalOwnerGraph(unittest.TestCase):
                      "two_plugin_(shared_owner|concurrent_mtls)"):
             self.assertIn(name, workflow)
         for target in ("saltscore_cnet_crypto_static_original_owner",
-                       "saltscore_cnet_m6_shared",
+                       "saltscore_cnet_crypto_m6_shared",
                        "saltscore_cnet_m6_two_plugin_loader"):
             self.assertIn(target, cmake)
         self.assertIn("--repeat until-fail:3", workflow)
