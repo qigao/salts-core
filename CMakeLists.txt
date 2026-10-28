@@ -21,11 +21,38 @@ add_subdirectory(concurrency)
 add_subdirectory(coroutine)
 add_subdirectory(native-io)
 
+# ASN1/Crypto are first-party MODULES of SaltsCore, not external archives.
+# The independent qigao/crypto repository is a historical source donor.
+option(SALTSCORE_BUILD_ASN1 "Build local first-party ASN1 codec" OFF)
+option(SALTSCORE_BUILD_CRYPTO
+  "Build one first-party Salts::Crypto static owner from crypto/" OFF)
+if(SALTSCORE_BUILD_ASN1 OR SALTSCORE_BUILD_CRYPTO)
+  if(TARGET Salts::ASN1)
+    message(FATAL_ERROR "Duplicate ASN1 owner: never import and build twice")
+  endif()
+  add_subdirectory(asn1)
+endif()
+if(SALTSCORE_BUILD_CRYPTO)
+  if(TARGET Salts::Crypto)
+    message(FATAL_ERROR "Duplicate Crypto owner: use exactly one archive")
+  endif()
+  add_subdirectory(crypto)
+endif()
+
+
 option(SALTSCORE_BUILD_URI "Build standalone re2c-generated URI parser" OFF)
 if(SALTSCORE_BUILD_URI)
   add_subdirectory(uri)
 endif()
 option(SALTSCORE_BUILD_CNET "Build standalone CNet with required pinned providers" OFF)
+# The old direct-GmSSL CNet implementation and the local Crypto owner must
+# never be installed together as two different TLS states. Until real native
+# profile parity and cutover, select no competing production TLS engines.
+if(SALTSCORE_BUILD_CNET AND SALTSCORE_BUILD_CRYPTO)
+  message(FATAL_ERROR
+    "CNet direct GmSSL and the local Salts::Crypto are two TLS engines; "
+    "finish CNet native Crypto migration before building both together.")
+endif()
 option(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST
   "Qualify test-only original CNet Owner with sole static Salts::Crypto" OFF)
 if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST AND NOT BUILD_TESTING)
