@@ -26,6 +26,13 @@ M6_PLUGIN_EXPORT int m6_plugin_snapshot(const void **owner, uint32_t *claims,
                                         uint32_t *sessions, uint64_t *epoch) {
     return cnet_m6_shared_snapshot(owner, claims, sessions, epoch);
 }
+/* Test-only synchronization is forwarded to the same physical CNet DLL;
+ * it cannot instantiate a second TLS provider in either plugin module.
+ */
+M6_PLUGIN_EXPORT int m6_plugin_native_admission_gate(
+    uint32_t command, uint32_t *out_admitted) {
+    return cnet_m6_test_native_admission_gate(command, out_admitted);
+}
 M6_PLUGIN_EXPORT int m6_plugin_native_smoke(cnet_m6_lease *lease) {
     return cnet_m6_shared_native_smoke(lease);
 }
