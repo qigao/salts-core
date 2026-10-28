@@ -20,8 +20,11 @@ cutover. The static Crypto also still contains GmSSL internally, so it
 is NOT a third-party-free native TLS implementation yet.
 
 RETIREMENT BLOCKERS:
-- Transfer the 18 changed files of qigao/crypto Draft PR #43, including
-  the real TLS auth source, Python mTLS fixtures, tests and patch inputs.
+- The 18 changed inputs of qigao/crypto Draft PR #43 have now
+  been staged in this migration branch: 17 byte-exact Git blobs and one
+  adapted module-ownership checker. They must still pass real TLS/mTLS
+  native tests before retirement. Their original GmSSL-backed workflow
+  is preserved as a historical input, not a production approval.
 - Replace the actual third-party TLS engine inside Crypto (not merely
   the public link target) with a fully qualified native TLS/TLCP engine.
 - Preserve TLS1.2/1.3, ShangMi, TLCP, CA/SAN, mTLS, full binary ALPN,

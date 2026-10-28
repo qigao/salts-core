@@ -33,6 +33,12 @@ jobs:
       - name: Verify every root source module owns a CMake target
         shell: bash
         run: python3 tools/check_module_layout.py
+      - name: Preserve every qigao/crypto PR43 source and negative regression
+        shell: bash
+        run: |
+          python3 tools/check_crypto_module_ownership.py
+          python3 tools/check_crypto_pr43_handoff.py
+          python3 -m unittest discover -s tests -p 'test_crypto_pr43_handoff.py' -v
       - name: Compile SaltsCore local ASN1 without an external Crypto SDK
         shell: bash
         run: |
