@@ -358,6 +358,22 @@ jobs:
           }
           cmake --install build-cnet --config Release
           if ($LASTEXITCODE -ne 0) { throw "Windows CNet installation failed" }
+      - name: Issue 64 Windows IOCP numeric-host RESOLVE-to-OPEN first-RED stress gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # TinyTest --filter selects only the original numeric 127.0.0.1
+          # resolver -> IOCP connect -> OPEN case; never a fake peer or retry.
+          # A failed iteration stops immediately, preserving terminal cause.
+          $vcpkgBin = Join-Path $env:GITHUB_WORKSPACE 'vcpkg_installed/x64-windows/bin'
+          $buildBin = Join-Path $env:GITHUB_WORKSPACE 'build-cnet/bin/Release'
+          $env:PATH = "$vcpkgBin;$buildBin;$env:PATH"
+          & ctest --test-dir build-cnet -C Release --output-on-failure --no-tests=error --timeout 18 -R '^saltscore[.]cnet_owner_numeric_host_gate_contract$'
+          if ($LASTEXITCODE -ne 0) { throw 'Issue #64 fail-closed numeric-host selection contract failed' }
+          & ctest --test-dir build-cnet -C Release --output-on-failure --no-tests=error --timeout 18 -R '^saltscore[.]cnet_owner_original_numeric_host$' --repeat until-fail:32
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Issue #64 actual Windows IOCP numeric-host RESOLVE->OPEN RED; inspect terminal stage/status'
+          }
       - name: Link and run independent MSVC C11/C++17 installed consumers
         shell: pwsh
         run: |

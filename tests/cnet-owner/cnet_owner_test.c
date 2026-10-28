@@ -226,7 +226,11 @@ static int cnet_owner_test_drive_to_state(cnet_owner *owner, cnet_session_table 
       return SALTS_EIO;
     }
     status = cnet_owner_drive(owner, 10u);
-    if (status != SALTS_OK) return status;
+    if (status != SALTS_OK) {
+      fprintf(stderr, "CNET_ORIGINAL_OWNER_DRIVE_FAILED state=%d expected=%d status=%d\n",
+              (int)state, (int)expected, status);
+      return status;
+    }
     if (cmeta_monotonic_ms() >= deadline) {
       fprintf(stderr,
           "CNet Owner state admission deadline:"
