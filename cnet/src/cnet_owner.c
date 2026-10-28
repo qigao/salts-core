@@ -176,7 +176,7 @@ static void cnet_owner_issue64_trace_connect(
           "CNET_ISSUE64 phase=%s session=%u:%u query=%u:%u"
           " request=%u:%u endpoint=%u:%u"
           " family=%u addr_v4=%08lx port=%u wanted_port=%u"
-          " address_length=%zu status=%d native_status=%d\\n",
+          " address_length=%zu status=%d native_status=%d\n",
           phase, (unsigned)session->handle.slot,
           (unsigned)session->handle.generation,
           (unsigned)session->resolve_query.slot,

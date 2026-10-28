@@ -207,7 +207,7 @@ static void cnet_owner_test_issue64_listener_snapshot(
           " expected_family=%u expected_ipv4=%08lx expected_port=%u"
           " actual_family=%u actual_ipv4=%08lx actual_port=%u"
           " getsockname_rc=%d getsockname_error=%d"
-          " acceptconn_rc=%d acceptconn=%d acceptconn_error=%d\\n",
+          " acceptconn_rc=%d acceptconn=%d acceptconn_error=%d\n",
           phase, (unsigned long long)(uintptr_t)listener,
           (unsigned)session.slot, (unsigned)session.generation,
           (unsigned)expected->sin_family,
@@ -429,7 +429,7 @@ static void cnet_owner_test_tcp(native_io_backend_kind backend_kind, bool resolv
       fprintf(stderr,
               "CNET_ISSUE64_OWNER_FAILURE status=%d"
               " backend_stats=%d active_requests=%zu"
-              " coroutine_active=%zu retained_frames=%zu\\n",
+              " coroutine_active=%zu retained_frames=%zu\n",
               admission_status, has_stats ? 1 : 0,
               has_stats ? (size_t)native_stats.active_requests : 0u,
               has_stats ? (size_t)coroutine_stats.active : 0u,
