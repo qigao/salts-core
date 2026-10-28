@@ -20,6 +20,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(CNET_M6_BUILD_SHARED)
+#include <stdatomic.h>
+#include <salts/thread.h>
+#endif
 
 #ifndef SDK_CA_FILE
 #error SDK_CA_FILE is required
@@ -271,6 +275,29 @@ typedef struct m5_mtls_case {
 /* The original CNet clients and NativeIO Owners remain unchanged.
  * Python-generated file fixtures remain alive until full owner teardown.
  */
+#if defined(CNET_M6_BUILD_SHARED)
+/* Both independent CNet workers must have already submitted real native
+ * TCP/TLS connection commands before either enters the handshake pump.
+ * This proves the test exercises simultaneous native transport admission,
+ * rather than sequentially running two already-passed M5 single-owner tests.
+ */
+static atomic_uint m6_native_tls_ready = 0u;
+
+static int m6_parallel_native_tls_gate(void)
+{
+    const unsigned ticket = atomic_fetch_add_explicit(
+        &m6_native_tls_ready, 1u, memory_order_acq_rel);
+    if ((ticket & 1u) != 0u) return SALTS_OK;
+    const uint64_t deadline = cmeta_monotonic_ms() + UINT64_C(5000);
+    while (atomic_load_explicit(&m6_native_tls_ready,
+                                memory_order_acquire) <= ticket) {
+        if (cmeta_monotonic_ms() >= deadline) return SALTS_ETIMEDOUT;
+        cmeta_thread_yield();
+    }
+    return SALTS_OK;
+}
+#endif
+
 static int run_protocol(crypto_tls_provider *borrowed_provider,
                         uint32_t protocol, bool with_alpn,
                         const m5_mtls_case *mtls)
@@ -368,6 +395,10 @@ static int run_protocol(crypto_tls_provider *borrowed_provider,
         connect.observer = client_observer;
         CHECK(cnet_connect(&dialer, &connect, &dialed) == SALTS_OK);
     }
+#if defined(CNET_M6_BUILD_SHARED)
+    if (borrowed_provider != NULL)
+        CHECK(m6_parallel_native_tls_gate() == SALTS_OK);
+#endif
 
     deadline = cmeta_monotonic_ms() + APP_TIMEOUT_MS;
     for (poll_count = 0u; poll_count < MAX_POLL &&
