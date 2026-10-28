@@ -37,8 +37,28 @@ int main(void) {
     uint8_t expand256[32],expand384[48],long256[97],long384[101];
     uint8_t untouched[128],secret_alias[48];
     uint8_t max_context[255],max_label[250];
+    uint8_t long_salt[200], long_salt_prk256[32],long_salt_prk384[48];
+    uint8_t empty_salt_prk256[32],empty_salt_prk384[48];
+
     for(size_t i=0u;i<sizeof(salt);++i)salt[i]=(uint8_t)i;
     memset(ikm,0x0bu,sizeof(ikm));
+    for(size_t i=0u;i<sizeof(long_salt);++i)
+        long_salt[i]=(uint8_t)((i*11u+7u)&0xffu);
+    CHECK(crypto_native_tls13_hkdf_extract(
+        CRYPTO_NATIVE_TLS13_SHA256,long_salt,sizeof(long_salt),
+        ikm,sizeof(ikm),long_salt_prk256,sizeof(long_salt_prk256))
+        ==CRYPTO_NATIVE_TLS13_OK);
+    CHECK(crypto_native_tls13_hkdf_extract(
+        CRYPTO_NATIVE_TLS13_SHA384,long_salt,sizeof(long_salt),
+        ikm,sizeof(ikm),long_salt_prk384,sizeof(long_salt_prk384))
+        ==CRYPTO_NATIVE_TLS13_OK);
+    CHECK(crypto_native_tls13_hkdf_extract(
+        CRYPTO_NATIVE_TLS13_SHA256,NULL,0u,NULL,0u,
+        empty_salt_prk256,sizeof(empty_salt_prk256))==CRYPTO_NATIVE_TLS13_OK);
+    CHECK(crypto_native_tls13_hkdf_extract(
+        CRYPTO_NATIVE_TLS13_SHA384,NULL,0u,NULL,0u,
+        empty_salt_prk384,sizeof(empty_salt_prk384))==CRYPTO_NATIVE_TLS13_OK);
+
 
     CHECK(crypto_native_tls13_hkdf_extract(
         CRYPTO_NATIVE_TLS13_SHA256,salt,sizeof(salt),ikm,sizeof(ikm),
@@ -65,6 +85,10 @@ int main(void) {
         label,sizeof(label),context384,sizeof(context384),
         long384,sizeof(long384))==CRYPTO_NATIVE_TLS13_OK);
 
+    dump_hex("LONGSALT256",long_salt_prk256,sizeof(long_salt_prk256));
+    dump_hex("LONGSALT384",long_salt_prk384,sizeof(long_salt_prk384));
+    dump_hex("EMPTYSALT256",empty_salt_prk256,sizeof(empty_salt_prk256));
+    dump_hex("EMPTYSALT384",empty_salt_prk384,sizeof(empty_salt_prk384));
     dump_hex("PRK256",prk256,sizeof(prk256));
     dump_hex("PRK384",prk384,sizeof(prk384));
     dump_hex("LBL256",expand256,sizeof(expand256));
