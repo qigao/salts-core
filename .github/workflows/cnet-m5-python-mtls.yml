@@ -278,23 +278,27 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check --no-cache-dir "cryptography==46.0.4"
           if ($LASTEXITCODE -ne 0) { throw 'Python X509 fixtures unavailable' }
-      - name: Fetch immutable Crypto and verified GmSSL source port
+      - name: Stage local Crypto mTLS and pinned GmSSL test port (Windows)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $src = Join-Path $env:RUNNER_TEMP 'crypto-src'
+          python tools/check_crypto_module_ownership.py
+          if ($LASTEXITCODE -ne 0) { throw 'Local Crypto source owner failed' }
+          python tools/check_crypto_pr43_handoff.py
+          if ($LASTEXITCODE -ne 0) { throw 'PR43 local source SHA handoff failed' }
+          python -m unittest discover -s tests -p test_crypto_pr43_handoff.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'PR43 source provenance test failed' }
           $cache = Join-Path $env:RUNNER_TEMP 'vcpkg-cache'
-          New-Item -ItemType Directory -Force -Path $src, $cache | Out-Null
-          & curl.exe -fLsS --retry 3 "https://api.github.com/repos/qigao/crypto/tarball/$env:CRYPTO_SHA" -o "$env:RUNNER_TEMP/crypto-source.tar.gz"
-          if ($LASTEXITCODE -ne 0) { throw 'Pinned Crypto download failed' }
-          & tar.exe -xzf "$env:RUNNER_TEMP/crypto-source.tar.gz" --strip-components=1 -C $src
-          if ($LASTEXITCODE -ne 0) { throw 'Pinned Crypto extraction failed' }
+          New-Item -ItemType Directory -Force -Path $cache | Out-Null
           & curl.exe -fLsS --retry 3 "https://api.github.com/repos/qigao/vcpkg-cache/tarball/$env:PORT_SHA" -o "$env:RUNNER_TEMP/vcpkg-cache.tar.gz"
           if ($LASTEXITCODE -ne 0) { throw 'Pinned port source download failed' }
           & tar.exe -xzf "$env:RUNNER_TEMP/vcpkg-cache.tar.gz" --strip-components=1 -C $cache
           if ($LASTEXITCODE -ne 0) { throw 'Pinned port source extraction failed' }
-          python "$src/crypto/tools/stage_mtls_gmssl_overlay.py" "$cache/ports/gmssl"
-          if ($LASTEXITCODE -ne 0) { throw 'Strict GmSSL #14 M5 overlay staging failed' }
+          if (-not (Select-String -Path "$cache/ports/gmssl/vcpkg.json" -SimpleMatch '"port-version": 14' -Quiet)) {
+            throw 'Pinned GmSSL 3.2.0#14 source required'
+          }
+          python crypto/tools/stage_mtls_gmssl_overlay.py "$cache/ports/gmssl"
+          if ($LASTEXITCODE -ne 0) { throw 'Strict local GmSSL #14 overlay staging failed' }
       - name: Bootstrap pinned canonical vcpkg scripts (no Mono or NuGet)
         shell: pwsh
         run: |
@@ -310,28 +314,37 @@ jobs:
           & "$root/bootstrap-vcpkg.bat" -disableMetrics
           if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed' }
           "VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: Build and audit ONE installed static Salts::Crypto (MSVC x64)
+      - name: Build and audit local ASN1/Crypto static modules (MSVC x64)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $src = Join-Path $env:RUNNER_TEMP 'crypto-src'
           $cache = Join-Path $env:RUNNER_TEMP 'vcpkg-cache'
-          $prefix = Join-Path $src 'vcpkg_installed/x64-windows'
+          $root = Join-Path $env:GITHUB_WORKSPACE 'crypto'
+          $install = Join-Path $env:RUNNER_TEMP 'crypto-vcpkg-installed'
+          $prefix = Join-Path $install 'x64-windows'
           $sdk = Join-Path $env:RUNNER_TEMP 'crypto-installed'
           $env:VCPKG_OVERLAY_PORTS = Join-Path $cache 'ports'
-          & "$env:VCPKG_ROOT/vcpkg.exe" install "--x-manifest-root=$src/crypto" "--x-install-root=$src/vcpkg_installed" --triplet=x64-windows "--overlay-ports=$env:VCPKG_OVERLAY_PORTS"
+          & "$env:VCPKG_ROOT/vcpkg.exe" install "--x-manifest-root=$root" "--x-install-root=$install" --triplet=x64-windows "--overlay-ports=$env:VCPKG_OVERLAY_PORTS"
           if ($LASTEXITCODE -ne 0) { throw 'Pinned GmSSL vcpkg installation failed' }
           if (-not (Test-Path "$prefix/lib/gmssl.lib")) { throw 'Pinned GmSSL static archive missing' }
-          & cmake -S $src -B "$env:RUNNER_TEMP/crypto-build" -G 'Visual Studio 18 2026' -A x64 -DBUILD_TESTING=ON "-DCRYPTO_GMSSL_ROOT=$prefix" "-DCMAKE_INSTALL_PREFIX=$sdk"
-          if ($LASTEXITCODE -ne 0) { throw 'Static Crypto SDK configure failed' }
+          & cmake -S asn1 -B "$env:RUNNER_TEMP/native-asn1-build" -G 'Visual Studio 18 2026' -A x64 -DBUILD_TESTING=ON "-DCMAKE_INSTALL_PREFIX=$sdk"
+          if ($LASTEXITCODE -ne 0) { throw 'Local ASN1 configure failed' }
+          & cmake --build "$env:RUNNER_TEMP/native-asn1-build" --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'Local ASN1 build failed' }
+          & ctest --test-dir "$env:RUNNER_TEMP/native-asn1-build" -C Release --output-on-failure --no-tests=error
+          if ($LASTEXITCODE -ne 0) { throw 'Local ASN1 tests failed' }
+          & cmake --install "$env:RUNNER_TEMP/native-asn1-build" --config Release
+          if ($LASTEXITCODE -ne 0) { throw 'Local ASN1 install failed' }
+          & cmake -S crypto -B "$env:RUNNER_TEMP/crypto-build" -G 'Visual Studio 18 2026' -A x64 -DBUILD_TESTING=ON "-DCRYPTO_GMSSL_ROOT=$prefix" "-DCMAKE_PREFIX_PATH=$sdk" "-DCMAKE_INSTALL_PREFIX=$sdk"
+          if ($LASTEXITCODE -ne 0) { throw 'Local Crypto configure failed' }
           & cmake --build "$env:RUNNER_TEMP/crypto-build" --config Release --parallel 2
-          if ($LASTEXITCODE -ne 0) { throw 'Static Crypto SDK build failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'Local Crypto build failed' }
           & ctest --test-dir "$env:RUNNER_TEMP/crypto-build" -C Release --output-on-failure --no-tests=error
-          if ($LASTEXITCODE -ne 0) { throw 'Static Crypto source tests failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'Local Crypto tests failed' }
           & cmake --install "$env:RUNNER_TEMP/crypto-build" --config Release
-          if ($LASTEXITCODE -ne 0) { throw 'Static Crypto SDK install failed' }
-          python "$src/crypto/tools/audit_static_crypto.py" --prefix $sdk --report "$env:RUNNER_TEMP/crypto-static-audit.json"
-          if ($LASTEXITCODE -ne 0) { throw 'Static Crypto archive audit failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'Local Crypto install failed' }
+          python crypto/tools/audit_static_crypto.py --prefix $sdk --report "$env:RUNNER_TEMP/crypto-static-audit.json"
+          if ($LASTEXITCODE -ne 0) { throw 'Local static ASN1/Crypto archive audit failed' }
       - name: M2 full original CNet Owner with STATIC Crypto and real Windows IOCP
         shell: pwsh
         run: |
@@ -353,9 +366,10 @@ jobs:
             '-DSALTSCORE_CNET_M5_PYTHON_MTLS_TEST=ON',
             '-DSALTSCORE_CNET_M6_SHARED_DSO_TEST=ON',
             '-DSALTSCORE_CNET_M6_CONCURRENT_MTLS_TEST=ON',
-            "-DSALTSCORE_CRYPTO_PYTHON_FIXTURE_SOURCE=$env:RUNNER_TEMP/crypto-src/crypto/tests/sdk/python_mtls.py",
-            "-DSALTSCORE_CRYPTO_TEST_FIXTURES=$env:RUNNER_TEMP/crypto-src/crypto/tests/fixtures",
-            "-DCMAKE_PREFIX_PATH=$sdk")
+            "-DSALTSCORE_CRYPTO_PYTHON_FIXTURE_SOURCE=$env:GITHUB_WORKSPACE/crypto/tests/sdk/python_mtls.py",
+            "-DSALTSCORE_CRYPTO_TEST_FIXTURES=$env:GITHUB_WORKSPACE/crypto/tests/fixtures",
+            "-DVCPKG_INSTALLED_DIR=$env:RUNNER_TEMP/crypto-vcpkg-installed",
+            "-DCRYPTO_GMSSL_ROOT=$env:RUNNER_TEMP/crypto-vcpkg-installed/x64-windows")
           & cmake @params
           if ($LASTEXITCODE -ne 0) { throw 'Original Owner static CNet configure failed' }
           & cmake --build $build --config Release --parallel 2
