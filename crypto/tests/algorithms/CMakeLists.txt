@@ -67,3 +67,26 @@ add_test(NAME crypto.algorithms.native_tls_profile_v14_cpp17
   COMMAND salts_crypto_tls_profile_v14_cpp)
 set_tests_properties(crypto.algorithms.native_tls_profile_v14_cpp17
   PROPERTIES TIMEOUT 120)
+
+# Real GmSSL-backed session created by the versioned Crypto-owned profile,
+# without a second TLS engine or test-only CNet adapter. Not handshake parity.
+add_executable(salts_crypto_tls_profile_v14_session
+  tls_profile_v14_session.c)
+target_compile_features(salts_crypto_tls_profile_v14_session PRIVATE c_std_11)
+set_target_properties(salts_crypto_tls_profile_v14_session PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+target_compile_definitions(salts_crypto_tls_profile_v14_session PRIVATE
+  "CRYPTO_PROFILE_TEST_CA_FILE=\"${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/external-io-ca-cert.pem\""
+  "CRYPTO_PROFILE_TEST_SERVER_CERT=\"${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/external-io-server-cert.pem\""
+  "CRYPTO_PROFILE_TEST_SERVER_KEY=\"${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/external-io-server-key.pem\"")
+target_link_libraries(salts_crypto_tls_profile_v14_session PRIVATE Salts::Crypto)
+if(MSVC)
+  target_compile_options(salts_crypto_tls_profile_v14_session PRIVATE /W4 /WX)
+else()
+  target_compile_options(salts_crypto_tls_profile_v14_session PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME crypto.algorithms.native_tls_profile_v14_real_session
+  COMMAND salts_crypto_tls_profile_v14_session)
+set_tests_properties(crypto.algorithms.native_tls_profile_v14_real_session
+  PROPERTIES TIMEOUT 120)
