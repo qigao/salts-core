@@ -145,7 +145,8 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
     "Qualify one physical STATIC Crypto owner across two CNet plugin DSOs" OFF)
   if(SALTSCORE_CNET_M6_SHARED_DSO_TEST)
     set(_m6_dso_sources ${_static_owner_sources})
-    list(REMOVE_ITEM _m6_dso_sources tests/cnet-crypto-static/owner.c)
+    # Link the existing M5 original CNet handshake acceptance source into
+    # the same shared candidate. CNET_M6_BUILD_SHARED excludes its CLI main.
     list(APPEND _m6_dso_sources
       tests/cnet-crypto-static/m6_shared_owner.c)
     add_library(saltscore_cnet_crypto_m6_shared SHARED ${_m6_dso_sources})
@@ -157,7 +158,9 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
       WINDOWS_EXPORT_ALL_SYMBOLS ON
       OUTPUT_NAME saltscore_cnet_m6_static_crypto)
     target_compile_definitions(saltscore_cnet_crypto_m6_shared PRIVATE
-      "SDK_CA_FILE=\"${_owner_fixtures}/external-io-ca-cert.pem\"")
+      "SDK_CA_FILE=\"${_owner_fixtures}/external-io-ca-cert.pem\""
+      "SDK_SERVER_CERT_FILE=\"${_owner_fixtures}/external-io-server-cert.pem\""
+      "SDK_SERVER_KEY_FILE=\"${_owner_fixtures}/external-io-server-key.pem\"")
     target_include_directories(saltscore_cnet_crypto_m6_shared
       PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/cnet/include"
