@@ -12,8 +12,8 @@ import hashlib
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_REF = "qigao/salts@13dbd7266e7aed7277daeb103fb40c4684c3a367"
 EXPECTED = {
-  "sctp/include/sctp_session.h": "849966e279cac31fbd78f1c851143d505c2222cd",
-  "sctp/include/sctp_wire.h": "a96278e1552e17b9980c72e34dc02de05afc694f",
+  "sctp/include/cnet/sctp_session.h": "849966e279cac31fbd78f1c851143d505c2222cd",
+  "sctp/include/cnet/sctp_wire.h": "a96278e1552e17b9980c72e34dc02de05afc694f",
   "sctp/src/sctp_assoc_internal.h": "afd056ca5e05db8bc9cbf65610cfa6cf7bb8e675",
   "sctp/src/sctp_assoc.c": "a3bc6e9a2ab7e4b3d48aa78ca5d8f7dd015f257b",
   "sctp/src/sctp_collision_internal.h": "1a83ecced215cc6ce4af2df95d7052a17d103382",

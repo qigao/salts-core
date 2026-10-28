@@ -1,3 +1,10 @@
+# Original CNet test-only build owns direct provider references, which
+# must be discovered in this sibling CMake directory rather than relying
+# on the private imported-target scope of cnet/CMakeLists.txt.
+find_package(c-ares CONFIG REQUIRED)
+find_package(kcp CONFIG REQUIRED)
+find_package(GmSSL CONFIG REQUIRED)
+
 # CNet test-only link closure: same real CNet implementation as the
 # installed shared target, compiled as a PRIVATE owner only for this test image.
 # The executable links exactly one CNet state machine, never Salts::CNet.
