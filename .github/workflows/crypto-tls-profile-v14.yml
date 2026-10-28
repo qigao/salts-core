@@ -1,0 +1,35 @@
+name: Crypto TLS Profile v1.4 native owner (not TLS cutover)
+on:
+  pull_request:
+    paths:
+      - 'crypto/**'
+      - 'tools/check_crypto_pr43_handoff.py'
+      - 'tools/crypto_pr43_retirement_manifest.json'
+      - 'tests/test_crypto_pr43_handoff.py'
+      - '.github/workflows/crypto-tls-profile-v14.yml'
+  push:
+    paths:
+      - 'crypto/**'
+      - 'tools/check_crypto_pr43_handoff.py'
+      - 'tools/crypto_pr43_retirement_manifest.json'
+      - 'tests/test_crypto_pr43_handoff.py'
+      - '.github/workflows/crypto-tls-profile-v14.yml'
+  workflow_dispatch:
+jobs:
+  source-contract:
+    name: Strict first-party TLS profile C11/C++17 / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-15]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require byte-exact PR43 historical donor provenance
+        run: python3 -m unittest discover -s tests -p test_crypto_pr43_handoff.py -v
+      - name: Configure no-third-party source-only contract
+        run: cmake -S crypto/tests/native-tls-profile -B build-profile -DCMAKE_BUILD_TYPE=Release
+      - name: Compile real C11 profile with warnings as errors
+        run: cmake --build build-profile --config Release --parallel 3
+      - name: Require C11 and C++17 runtime/ABI negative gates
+        run: ctest --test-dir build-profile -C Release --output-on-failure --no-tests=error
