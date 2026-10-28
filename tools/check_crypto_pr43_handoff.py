@@ -19,6 +19,43 @@ DONOR_HEAD = "0b4ee094ce8002e6169ce231028107eba63588c6"
 DONOR_BASE = "57e03d9ebefc3b9348764edaddb834862e669a45"
 ORIGINAL_COUNT = 18
 
+# Stage-1 live build obligations are distinct from the immutable donor SHA.
+# The archived original CMake must NEVER be substituted for proof that the
+# active one still builds its original TLS/crypto sources and regression tests.
+STAGE1_LIVE_CMAKE_REQUIRED = (
+    "add_library(salts_crypto STATIC",
+    "add_library(Salts::Crypto ALIAS salts_crypto)",
+    "src/crypto_tls_gmssl.c",
+    "src/crypto_tls_cipher_bio.c",
+    "src/crypto_tls_profile.c",
+    "src/crypto_tls_profile_session.c",
+    "src/crypto_sha256.c",
+    "src/crypto_ed448.c",
+    "src/crypto_random.c",
+    "src/crypto_x509_der.c",
+    "src/asn1/crypto.c",
+    "target_link_libraries(salts_crypto PUBLIC Threads::Threads Salts::ASN1)",
+    "install(TARGETS salts_crypto EXPORT SaltsCryptoTargets",
+    "add_subdirectory(tests/algorithms)",
+    "add_subdirectory(tests/asn1)",
+    "add_subdirectory(tests/x509)",
+)
+
+def check_live_cmake(content: str) -> list[str]:
+    failures = ["Active Crypto CMake lost mandatory Stage 1 owner: " + name
+                for name in STAGE1_LIVE_CMAKE_REQUIRED
+                if name not in content]
+    if content.count("add_library(salts_crypto STATIC") != 1:
+        failures.append("Active Crypto must declare exactly one canonical STATIC target")
+    # Do not stage a second handshake/record TLS implementation next to
+    # the existing GmSSL engine during the Stage 1 migration.
+    for marker in ("src/crypto_tls_native.c", "src/crypto_tls_openssl.c",
+                   "src/crypto_tls_boringssl.c", "src/crypto_tls_mbedtls.c"):
+        if marker in content:
+            failures.append("Active Crypto contains second TLS engine: " + marker)
+    return failures
+
+
 def blob_sha(p: Path) -> str:
     raw = p.read_bytes().replace(b"\r\n", b"\n")
     header = b"blob " + str(len(raw)).encode("ascii") + b"\0"
@@ -37,6 +74,12 @@ def check(root: Path, source: dict) -> list[str]:
         errors.append("Must migrate all 18 Crypto PR #43 files")
     if len({x.get("original") for x in files}) != len(files):
         errors.append("Crypto PR #43 source path duplicated")
+    active_cmake = root / "crypto/CMakeLists.txt"
+    if active_cmake.is_file():
+        errors.extend(check_live_cmake(
+            active_cmake.read_text(encoding="utf-8")))
+    else:
+        errors.append("Missing active Crypto CMake owner")
     adapted = 0
     for entry in files:
         relative = entry.get("destination", "")
