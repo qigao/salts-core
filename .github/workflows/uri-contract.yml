@@ -5,6 +5,7 @@ on:
     paths:
       - "uri/src/**"
       - "uri/parser/**"
+      - "uri/CMakeLists.txt"
       - "uri/include/uri_parser.h"
       - "CMakeLists.txt"
       - "tests/test_uri.c"
@@ -15,6 +16,7 @@ on:
     paths:
       - "uri/src/**"
       - "uri/parser/**"
+      - "uri/CMakeLists.txt"
       - "uri/include/uri_parser.h"
       - "CMakeLists.txt"
       - "tests/test_uri.c"

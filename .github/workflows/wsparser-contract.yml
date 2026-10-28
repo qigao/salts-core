@@ -3,6 +3,7 @@ on:
   push:
     paths:
       - "cnet/src/wsparser/**"
+      - "cnet/CMakeLists.txt"
       - "tests/test_wsparser.c"
       - "tests/CMakeLists.txt"
       - "CMakeLists.txt"
@@ -10,6 +11,7 @@ on:
   pull_request:
     paths:
       - "cnet/src/wsparser/**"
+      - "cnet/CMakeLists.txt"
       - "tests/test_wsparser.c"
       - "tests/CMakeLists.txt"
       - "CMakeLists.txt"

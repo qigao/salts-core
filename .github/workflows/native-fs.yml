@@ -4,8 +4,8 @@ on:
     paths:
       - "fs/src/**"
       - "fs/include/salts/fs.h"
-      - "cmake/SaltsCoreFS.cmake"
-      - "cmake/SaltsCoreExtraModules.cmake"
+      - "fs/CMakeLists.txt"
+      - "CMakeLists.txt"
       - "tests/test_fs.c"
       - "tests/fs-installed/**"
       - "tools/check_dependency_boundaries.py"
