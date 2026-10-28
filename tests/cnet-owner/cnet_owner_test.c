@@ -212,34 +212,29 @@ static int cnet_owner_test_drive_to_state(cnet_owner *owner, cnet_session_table 
     if (status != SALTS_OK) return status;
     if (state == expected) return SALTS_OK;
     if (state == CNET_SESSION_TERMINAL) {
-      /* This is a genuine unexpected terminal from the original Owner.
-       * Preserve its cause before TinyTest stops at the first failed
-       * assertion; do not retry or silently reinterpret it as success.
-       * The test case has already failed, so consuming the terminal here
-       * is diagnostic only and cannot make an acceptance pass.
-       */
+      /* Diagnostic only on an unexpected failure; no retry, no acceptance
+       * reduction, no mutation of the live production Owner. Capture the
+       * original terminal stage before TinyTest reports its assertion. */
       cnet_session_terminal terminal = {0};
-      const int take = cnet_session_table_take_terminal(
+      const int received = cnet_session_table_take_terminal(
           sessions, handle, &terminal);
       fprintf(stderr,
-          "CNET_ORIGINAL_OWNER_UNEXPECTED_TERMINAL"
-          " expected=%d read=%d kind=%d status=%d stage=%d\n",
-          (int)expected, take, (int)terminal.kind,
+          "Unexpected CNet Owner terminal during state admission:"
+          " expected=%d terminal-read=%d kind=%d status=%d stage=%d\n",
+          (int)expected, received, (int)terminal.kind,
           terminal.status, (int)terminal.stage);
       return SALTS_EIO;
     }
     status = cnet_owner_drive(owner, 10u);
     if (status != SALTS_OK) {
-      fprintf(stderr,
-          "CNET_ORIGINAL_OWNER_DRIVE_FAILED"
-          " state=%d expected=%d status=%d\n",
-          (int)state, (int)expected, status);
+      fprintf(stderr, "CNET_ORIGINAL_OWNER_DRIVE_FAILED state=%d expected=%d status=%d\n",
+              (int)state, (int)expected, status);
       return status;
     }
     if (cmeta_monotonic_ms() >= deadline) {
       fprintf(stderr,
-          "CNET_ORIGINAL_OWNER_UNEXPECTED_DEADLINE"
-          " state=%d expected=%d timeout_ms=%d\n",
+          "CNet Owner state admission deadline:"
+          " state=%d expected=%d elapsed-limit-ms=%d\n",
           (int)state, (int)expected, CNET_OWNER_TEST_TIMEOUT_MS);
       return SALTS_ETIMEDOUT;
     }

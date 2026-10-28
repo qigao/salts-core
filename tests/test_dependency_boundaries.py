@@ -37,6 +37,48 @@ class DependencyGateTest(unittest.TestCase):
                    "target_link_libraries(app PRIVATE Salts::IDNA Salts::CSerde Salts::TinyTest)\n")
         self.assertEqual(self.check_text(content, ".cmake"), [])
 
+    def test_canonical_crypto_is_allowed_but_split_tls_is_not(self):
+        self.assertEqual(
+            self.check_text("target_link_libraries(app PRIVATE Salts::Crypto)\n",
+                            ".cmake"), [])
+        self.assertEqual(len(self.check_text(
+            "target_link_libraries(app PRIVATE Salts::TLS)\n", ".cmake")), 1)
+        self.assertEqual(len(self.check_text(
+            "target_link_libraries(app PRIVATE Crypto::TLS)\n", ".cmake")), 1)
+
+    def test_single_static_crypto_negative_guard_is_not_a_dependency(self):
+        guard = (
+            "foreach(_forbidden IN ITEMS\n"
+            "  Salts::TLS Salts::TLSCipherBIO Salts::CryptoProvider\n"
+            "  Crypto::TLS Crypto::TLSCipherBIO Crypto::Provider)\n"
+            "endforeach()\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cmake = root / "tests" / "cnet-crypto-static"
+            cmake.mkdir(parents=True)
+            guard_file = cmake / "CMakeLists.txt"
+            guard_file.write_text(guard, encoding="utf-8")
+            self.assertEqual(module.check_repository(root), [])
+
+            # Any real provider link next to negative guard remains forbidden.
+            guard_file.write_text(
+                guard + "target_link_libraries(app PRIVATE Crypto::TLS)\n",
+                encoding="utf-8")
+            self.assertEqual(len(module.check_repository(root)), 1)
+
+            # Same deny-list words in another file still trigger scan.
+            guard_file.write_text(guard, encoding="utf-8")
+            (root / "extra.cmake").write_text(guard, encoding="utf-8")
+            self.assertEqual(len(module.check_repository(root)), 2)
+
+            # A renamed guard cannot hide dependencies.
+            (root / "extra.cmake").unlink()
+            guard_file.write_text(
+                guard.replace("foreach(_forbidden IN ITEMS",
+                              "set(_forbidden"), encoding="utf-8")
+            self.assertEqual(len(module.check_repository(root)), 2)
+
     def test_retired_asn1_target_is_forbidden(self):
         self.assertEqual(
             len(self.check_text("target_link_libraries(app PRIVATE Salts::ASN1)\n",

@@ -313,3 +313,8 @@ target_compile_features(saltscore_clock_atomic_owner_test PRIVATE c_std_11)
 target_link_libraries(saltscore_clock_atomic_owner_test PRIVATE Salts::Platform)
 add_test(NAME saltscore.clock_atomic_owner COMMAND saltscore_clock_atomic_owner_test)
 set_tests_properties(saltscore.clock_atomic_owner PROPERTIES TIMEOUT 30)
+
+# Test-only native Crypto Owner, never part of the production CNet target.
+if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
+  add_subdirectory(cnet-crypto-static)
+endif()
