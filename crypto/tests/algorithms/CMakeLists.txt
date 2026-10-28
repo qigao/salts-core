@@ -30,3 +30,13 @@ target_compile_features(salts_crypto_native_sha224_kat PRIVATE c_std_11)
 target_link_libraries(salts_crypto_native_sha224_kat PRIVATE Salts::Crypto)
 add_test(NAME crypto.algorithms.native_sha224_fips COMMAND salts_crypto_native_sha224_kat)
 set_tests_properties(crypto.algorithms.native_sha224_fips PROPERTIES TIMEOUT 120)
+
+# One installed Crypto archive owns SHA384/512: native FIPS tests run linked
+# against the ACTUAL production Salts::Crypto target, not an external program.
+add_executable(salts_crypto_native_sha384_512_kat sha384_512_native_vectors.c)
+target_compile_features(salts_crypto_native_sha384_512_kat PRIVATE c_std_11)
+target_link_libraries(salts_crypto_native_sha384_512_kat PRIVATE Salts::Crypto)
+add_test(NAME crypto.algorithms.native_sha384_512_fips
+         COMMAND salts_crypto_native_sha384_512_kat)
+set_tests_properties(crypto.algorithms.native_sha384_512_fips
+  PROPERTIES TIMEOUT 120)

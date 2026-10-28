@@ -6,6 +6,7 @@
 #include <crypto/x509_binding.h>
 #include <crypto/sha256.h>
 #include <crypto/sha224.h>
+#include <crypto/sha512.h>
 #include <gmssl/digest.h>
 
 #include <string.h>
@@ -469,8 +470,8 @@ salts_asn1_status crypto_x509_der_common_name(
 /* RFC 5929 digest policy stays inside the one existing Crypto X.509 module.
  * Keep the byte-identical PR43 Crypto/CMakeLists.txt source owner intact.
  * SHA256 now uses the first-party FIPS C11 SHA256 from this SAME archive.
- * SHA-224 shares the first-party SHA-256 compression; SHA384/512 and SM3
- * still use private algorithm APIs. The TLS engine
+ * SHA-224 shares SHA-256 compression; SHA384/512 share one native
+ * 64-bit compressor; only SM3 still uses a private GmSSL algorithm API. The TLS engine
  * remains GmSSL-backed pending full native TLS/TLCP admission.
  */
 static int oid_matches(const crypto_x509_der_view *cert,
@@ -484,8 +485,8 @@ typedef enum binding_digest_choice {
     BINDING_UNSUPPORTED = 0,
     BINDING_NATIVE_SHA256,
     BINDING_NATIVE_SHA224,
-    BINDING_GMSSL_SHA384,
-    BINDING_GMSSL_SHA512,
+    BINDING_NATIVE_SHA384,
+    BINDING_NATIVE_SHA512,
     BINDING_GMSSL_SM3
 } binding_digest_choice;
 
@@ -515,8 +516,8 @@ static binding_digest_choice binding_digest(const crypto_x509_der_view *cert)
         case 5u: /* sha1WithRSAEncryption: RFC 5929 substitutes SHA256. */
         case 11u: return BINDING_NATIVE_SHA256;
         case 14u: return BINDING_NATIVE_SHA224;
-        case 12u: return BINDING_GMSSL_SHA384;
-        case 13u: return BINDING_GMSSL_SHA512;
+        case 12u: return BINDING_NATIVE_SHA384;
+        case 13u: return BINDING_NATIVE_SHA512;
         default: return BINDING_UNSUPPORTED;
         }
     }
@@ -527,8 +528,8 @@ static binding_digest_choice binding_digest(const crypto_x509_der_view *cert)
         switch (oid[sizeof(ec_sha2_prefix)]) {
         case 1u: return BINDING_NATIVE_SHA224;
         case 2u: return BINDING_NATIVE_SHA256;
-        case 3u: return BINDING_GMSSL_SHA384;
-        case 4u: return BINDING_GMSSL_SHA512;
+        case 3u: return BINDING_NATIVE_SHA384;
+        case 4u: return BINDING_NATIVE_SHA512;
         default: return BINDING_UNSUPPORTED;
         }
     }
@@ -541,8 +542,6 @@ static binding_digest_choice binding_digest(const crypto_x509_der_view *cert)
 static const DIGEST *binding_private_gmssl_digest(binding_digest_choice kind)
 {
     switch (kind) {
-    case BINDING_GMSSL_SHA384: return DIGEST_sha384();
-    case BINDING_GMSSL_SHA512: return DIGEST_sha512();
     case BINDING_GMSSL_SM3: return DIGEST_sm3();
     default: return NULL;
     }
@@ -574,6 +573,10 @@ crypto_x509_binding_status crypto_x509_der_server_end_point_binding(
         required = SALTS_CRYPTO_SHA256_DIGEST_SIZE;
     } else if (chosen == BINDING_NATIVE_SHA224) {
         required = SALTS_CRYPTO_SHA224_DIGEST_SIZE;
+    } else if (chosen == BINDING_NATIVE_SHA384) {
+        required = SALTS_CRYPTO_SHA384_DIGEST_SIZE;
+    } else if (chosen == BINDING_NATIVE_SHA512) {
+        required = SALTS_CRYPTO_SHA512_DIGEST_SIZE;
     } else {
         selected = binding_private_gmssl_digest(chosen);
         if (!selected) return CRYPTO_X509_BINDING_DIGEST_FAILURE;
@@ -600,6 +603,20 @@ crypto_x509_binding_status crypto_x509_der_server_end_point_binding(
             return CRYPTO_X509_BINDING_DIGEST_FAILURE;
         }
         bytes = SALTS_CRYPTO_SHA224_DIGEST_SIZE;
+    } else if (chosen == BINDING_NATIVE_SHA384) {
+        if (salts_crypto_sha384(certificate, certificate_size, calculated)
+            != SALTS_CRYPTO_OK) {
+            memset(calculated, 0, sizeof(calculated));
+            return CRYPTO_X509_BINDING_DIGEST_FAILURE;
+        }
+        bytes = SALTS_CRYPTO_SHA384_DIGEST_SIZE;
+    } else if (chosen == BINDING_NATIVE_SHA512) {
+        if (salts_crypto_sha512(certificate, certificate_size, calculated)
+            != SALTS_CRYPTO_OK) {
+            memset(calculated, 0, sizeof(calculated));
+            return CRYPTO_X509_BINDING_DIGEST_FAILURE;
+        }
+        bytes = SALTS_CRYPTO_SHA512_DIGEST_SIZE;
     } else if (digest(selected, certificate, certificate_size,
                       calculated, &bytes) != 1) {
         memset(calculated, 0, sizeof(calculated));

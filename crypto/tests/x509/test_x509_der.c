@@ -3,6 +3,8 @@
  * No OpenSSL/GmSSL in the fixture loader, test executable or implementation.
  */
 #include <crypto/x509_der.h>
+#include <crypto/x509_binding.h>
+#include <crypto/sha512.h>
 
 #include <stdio.h>
 #include <stdint.h>
@@ -219,6 +221,56 @@ static int concatenated_chain(const uint8_t *a, size_t an,
     return 1;
 }
 
+
+/* Offline RFC5929 *digest policy* only. Mutating an AlgorithmIdentifier
+ * cannot yield a cryptographically authentic certificate; TLS owns
+ * signature/chain/SAN verification and must never accept this fixture
+ * as a live authenticated identity.
+ */
+static int native_sha384_512_binding(const uint8_t *good, size_t n) {
+    static const uint8_t ec_sha384[] = {
+        0x06u,0x08u,0x2au,0x86u,0x48u,0xceu,0x3du,0x04u,0x03u,0x03u
+    };
+    uint8_t changed[CRYPTO_X509_DER_MAX_CERT_BYTES];
+    uint8_t output[64], expected[64];
+    size_t used=0u, count=0u, i;
+    crypto_x509_der_view view={0};
+    REQUIRE(n <= sizeof(changed));
+    memset(output,0xa5,sizeof(output));
+    REQUIRE(crypto_x509_der_server_end_point_binding(
+        good,n,output,47u,&used)==CRYPTO_X509_BINDING_BUFFER_TOO_SMALL);
+    REQUIRE(used==SALTS_CRYPTO_SHA384_DIGEST_SIZE);
+    for (i=0u;i<sizeof(output);++i) REQUIRE(output[i]==0xa5u);
+    REQUIRE(crypto_x509_der_server_end_point_binding(
+        good,n,output,sizeof(output),&used)==CRYPTO_X509_BINDING_OK);
+    REQUIRE(used==SALTS_CRYPTO_SHA384_DIGEST_SIZE);
+    REQUIRE(salts_crypto_sha384(good,n,expected)==SALTS_CRYPTO_OK);
+    REQUIRE(memcmp(output,expected,used)==0);
+
+    memcpy(changed,good,n);
+    for (i=0u;i+sizeof(ec_sha384)<=n;++i) {
+        if (memcmp(changed+i,ec_sha384,sizeof(ec_sha384))==0) {
+            changed[i+sizeof(ec_sha384)-1u]=0x04u; /* ECDSA with SHA512 */
+            ++count;
+            i+=sizeof(ec_sha384)-1u;
+        }
+    }
+    REQUIRE(count==2u); /* both tbsCertificate and outer signatureAlgorithm */
+    REQUIRE(crypto_x509_der_inspect(changed,n,&view)==SALTS_ASN1_OK);
+    memset(output,0xa5,sizeof(output));
+    used=0u;
+    REQUIRE(crypto_x509_der_server_end_point_binding(
+        changed,n,output,63u,&used)==CRYPTO_X509_BINDING_BUFFER_TOO_SMALL);
+    REQUIRE(used==SALTS_CRYPTO_SHA512_DIGEST_SIZE);
+    for (i=0u;i<sizeof(output);++i) REQUIRE(output[i]==0xa5u);
+    REQUIRE(crypto_x509_der_server_end_point_binding(
+        changed,n,output,sizeof(output),&used)==CRYPTO_X509_BINDING_OK);
+    REQUIRE(used==SALTS_CRYPTO_SHA512_DIGEST_SIZE);
+    REQUIRE(salts_crypto_sha512(changed,n,expected)==SALTS_CRYPTO_OK);
+    REQUIRE(memcmp(output,expected,used)==0);
+    return 1;
+}
+
 int main(void) {
     uint8_t p256[CRYPTO_X509_DER_MAX_CERT_BYTES];
     uint8_t p384[CRYPTO_X509_DER_MAX_CERT_BYTES];
@@ -232,7 +284,8 @@ int main(void) {
     if (!real_certificate(p256, n256, &a) ||
         !real_certificate(p384, n384, &b) ||
         !negative_cases(p256, n256, &a) ||
-        !concatenated_chain(p256, n256, p384, n384))
+        !concatenated_chain(p256, n256, p384, n384) ||
+         !native_sha384_512_binding(p384, n384))
         return 1;
     puts("PASS real DER P256/P384 certificates, negative format and TLS chain walk");
     return 0;
