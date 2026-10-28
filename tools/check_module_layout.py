@@ -88,10 +88,24 @@ for module, target in (("asn1", "Salts::ASN1"), ("crypto", "Salts::Crypto")):
     cmake = local.read_text(encoding="utf-8")
     if f"add_library({target} ALIAS " not in cmake:
         raise SystemExit(f"missing native first-party target: {target}")
-if not ("option(SALTSCORE_BUILD_CRYPTO" in source
-        and "option(SALTSCORE_BUILD_ASN1" in source
-        and "SALTSCORE_BUILD_CNET AND SALTSCORE_BUILD_CRYPTO" in source):
-    raise SystemExit("first-party modules / double TLS owner admission missing")
+# ASN1 is a root default; Crypto requires an explicit pinned installed
+# provider path (not a new boolean switch). Refuse stale build flags.
+if not re.search(r"(?m)^add_subdirectory\(asn1\)\s*$", source):
+    raise SystemExit("first-party ASN1 must always be assembled")
+crypto_segment = source.split("if(DEFINED CRYPTO_GMSSL_ROOT)", 1)
+if len(crypto_segment) != 2 or not (
+    "if(SALTSCORE_BUILD_CNET)" in crypto_segment[1].split("add_subdirectory(crypto)", 1)[0]
+    and "add_subdirectory(crypto)" in crypto_segment[1]
+    and "if(TARGET Salts::Crypto)" in crypto_segment[1].split("add_subdirectory(crypto)", 1)[0]
+):
+    raise SystemExit("local Crypto must require pinned provider and reject duplicate CNet TLS")
+for suffix in ("ASN1", "CRYPTO"):
+    retired = "SALTSCORE_BUILD_" + suffix
+    for path in (ROOT / "CMakeLists.txt",
+                 ROOT / ".github/workflows/first-party-asn1.yml",
+                 ROOT / "docs/crypto-repository-retirement.md"):
+        if retired in path.read_text(encoding="utf-8"):
+            raise SystemExit(f"retired build switch remains in {path}: {retired}")
 
 for module in MODULES:
     # Only package assembly belongs to the root; no module binary is made

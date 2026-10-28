@@ -1,18 +1,24 @@
 # qigao/crypto repository retirement — native source ownership
 
-The canonical source home is now qigao/salts-core, with module-local
+The intended canonical source home, pending acceptance and merge, is
+qigao/salts-core, with module-local
 asn1/ and crypto/ directories. The separate qigao/crypto repository
 becomes a historical donor only; it must not remain the active authority
 for code, CI and future installed packages after migration completes.
 
 Salts::ASN1 is the one independent BER/DER C11 codec, not a TLS engine.
-Salts::Crypto is the one TLS and algorithms owner. SaltsCore's CMake
-may assemble both locally when explicitly selected. It must not import
-a second Crypto build, duplicate archives or silently retry other backends.
+The SaltsCore root always assembles and installs it; it is not controlled
+by a build option. Its C/C++ module tests run in a standalone ASN1 configure
+so C-only root and cross-compiler profiles do not require C++.
 
-Source-assembly options:
-  SALTSCORE_BUILD_ASN1=ON   build local codec without third-party TLS
-  SALTSCORE_BUILD_CRYPTO=ON build local Crypto + ASN1 sources
+Salts::Crypto is the one TLS and algorithms owner. Its local CMake module
+is assembled when the caller supplies `CRYPTO_GMSSL_ROOT`, the exact installed
+pinned static GmSSL prefix currently needed by that implementation.
+This is a required dependency path, not a source-owner build switch.
+Without it, the root continues building its provider-neutral modules;
+it neither creates a placeholder Crypto target nor silently picks another
+TLS backend. The standalone crypto/ package still enforces its own
+required dependency and is not replaced by another source repository.
 
 Existing CNet still has a direct GmSSL implementation. Combining it with
 the staged Salts::Crypto archive is disallowed until real production

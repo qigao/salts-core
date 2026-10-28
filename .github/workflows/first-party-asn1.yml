@@ -50,8 +50,6 @@ jobs:
           cmake -S . -B build-asn1 \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTING=OFF \
-            -DSALTSCORE_BUILD_ASN1=ON \
-            -DSALTSCORE_BUILD_CRYPTO=OFF \
             -DSALTSCORE_BUILD_CNET=OFF \
             "-DCMAKE_INSTALL_PREFIX=$prefix"
           cmake --build build-asn1 --config Release --parallel 3
@@ -60,4 +58,13 @@ jobs:
             "-DCMAKE_PREFIX_PATH=$prefix"
           cmake --build build-asn1-consumer --config Release --parallel 3
           ctest --test-dir build-asn1-consumer -C Release \
+            --output-on-failure --no-tests=error
+      - name: Run standalone ASN1 C11 and C++17 module tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S asn1 -B build-asn1-native \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build build-asn1-native --config Release --parallel 3
+          ctest --test-dir build-asn1-native -C Release \
             --output-on-failure --no-tests=error

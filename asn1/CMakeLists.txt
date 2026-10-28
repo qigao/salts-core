@@ -34,7 +34,9 @@ install(FILES
   DESTINATION "${_package_dir}")
 install(FILES LICENSE
   DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/ASN1")
-if(BUILD_TESTING)
+# Under SaltsCore, ASN1 must not silently require a C++ cross compiler.
+# Run C11/C++17 module tests through a standalone ASN1 configure instead.
+if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   enable_language(CXX)
   add_subdirectory(tests)
 endif()
