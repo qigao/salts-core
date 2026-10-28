@@ -23,6 +23,8 @@ jobs:
           python3 tools/check_original_module_paths.py
           python3 tools/audit_original_utils_parity.py
           python3 tools/audit_original_utils_tree.py
+          python3 tools/check_original_promela_sources.py
+          python3 -m unittest discover -s tests -p 'test_original_promela.py' -v
           python3 -m unittest discover -s tests -p 'test_original_utils_tree.py' -v
           python3 -m unittest discover -s tests -p 'test_original_module_paths.py' -v
           python3 tools/check_cnet_ci_triggers.py

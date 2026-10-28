@@ -23,6 +23,8 @@ add_subdirectory(fs)
 add_subdirectory(core)
 add_subdirectory(coroutine)
 add_subdirectory(native-io)
+# Original formal concurrency/ownership models, source-owned and retained.
+add_subdirectory(verification)
 
 option(SALTSCORE_BUILD_URI "Build standalone re2c-generated URI parser" OFF)
 if(SALTSCORE_BUILD_URI)
