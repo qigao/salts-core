@@ -164,9 +164,15 @@ crypto_tls_result crypto_tls_session_create_profile_v1_4(
         status = crypto_tls_session_set_alpn_v1_1(
             candidate, names, profile->alpn_count);
         if (status != CRYPTO_TLS_OK) {
-            /* No I/O or handshake has begun, so retirement is quiescent. */
-            (void)crypto_tls_session_destroy(&candidate);
-            return status;
+            crypto_tls_result retired;
+            /* No I/O or handshake has begun, so retirement is quiescent.
+             * Reject this profile atomically; do not leak a live provider
+             * session or leave the caller's output non-NULL.
+             */
+            retired = crypto_tls_session_destroy(&candidate);
+            salts_crypto_secure_zero(labels, sizeof(labels));
+            return retired == CRYPTO_TLS_OK
+                ? status : CRYPTO_TLS_BACKEND_ERROR;
         }
     }
     *out_session = candidate;
