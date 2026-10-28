@@ -223,11 +223,18 @@ CNET_M6_API int cnet_m6_shared_native_mtls(
     const char *client_cert, const char *client_key, int expected_accept)
 {
     crypto_tls_provider *shared;
+    uint32_t crypto_protocol;
     int status;
     unsigned ticket;
+    /* Expose only literal test protocol IDs to the plugin/loader.
+     * Neither consumer needs Crypto headers, a static Crypto link or a
+     * second protocol adapter. The shared DSO alone maps to Crypto ABI.
+     */
+    crypto_protocol = protocol == 12u ? CRYPTO_TLS_1_2 :
+                      protocol == 13u ? CRYPTO_TLS_1_3 : 0u;
     if (!lease || !ca || !server_cert || !server_key ||
         ((client_cert == NULL) != (client_key == NULL)) ||
-        (protocol != CRYPTO_TLS_1_2 && protocol != CRYPTO_TLS_1_3) ||
+        crypto_protocol == 0u ||
         (expected_accept != 0 && expected_accept != 1))
         return SALTS_EINVAL;
     status = lock_owner();
@@ -254,6 +261,6 @@ CNET_M6_API int cnet_m6_shared_native_mtls(
         }
     }
     return cnet_m6_original_owner_mtls_case(
-        shared, protocol, ca, server_cert, server_key, client_cert,
+        shared, crypto_protocol, ca, server_cert, server_key, client_cert,
         client_key, expected_accept != 0);
 }
