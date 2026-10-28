@@ -19,14 +19,6 @@
 #error SDK_CA_FILE is mandatory for M6 real CNet profile
 #endif
 
-#if defined(_WIN32)
-#define M6_EXPORT __declspec(dllexport)
-#elif defined(__GNUC__) || defined(__clang__)
-#define M6_EXPORT __attribute__((visibility("default")))
-#else
-#define M6_EXPORT
-#endif
-
 struct cnet_m6_lease {
     uint64_t epoch;
     const void *owner;
@@ -53,7 +45,7 @@ static void unlock_owner(void)
     atomic_flag_clear_explicit(&owner_lock, memory_order_release);
 }
 
-M6_EXPORT int cnet_m6_shared_acquire(cnet_m6_lease **out_lease,
+CNET_M6_API int cnet_m6_shared_acquire(cnet_m6_lease **out_lease,
                                      const void **out_owner,
                                      uint64_t *out_epoch)
 {
@@ -94,7 +86,7 @@ M6_EXPORT int cnet_m6_shared_acquire(cnet_m6_lease **out_lease,
     return SALTS_OK;
 }
 
-M6_EXPORT int cnet_m6_shared_snapshot(const void **out_owner,
+CNET_M6_API int cnet_m6_shared_snapshot(const void **out_owner,
                                       uint32_t *out_leases,
                                       uint32_t *out_sessions,
                                       uint64_t *out_epoch)
@@ -118,7 +110,7 @@ M6_EXPORT int cnet_m6_shared_snapshot(const void **out_owner,
     return SALTS_OK;
 }
 
-M6_EXPORT int cnet_m6_shared_release(cnet_m6_lease **in_out)
+CNET_M6_API int cnet_m6_shared_release(cnet_m6_lease **in_out)
 {
     int status;
     cnet_m6_lease *lease;
@@ -145,7 +137,7 @@ M6_EXPORT int cnet_m6_shared_release(cnet_m6_lease **in_out)
     return SALTS_OK;
 }
 
-M6_EXPORT int cnet_m6_shared_native_smoke(cnet_m6_lease *lease)
+CNET_M6_API int cnet_m6_shared_native_smoke(cnet_m6_lease *lease)
 {
     cnet_client client = {0};
     cnet_client_config cfg = {0};
