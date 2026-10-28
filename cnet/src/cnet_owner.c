@@ -3192,6 +3192,28 @@ bool cnet_owner_test_backend_stats(const cnet_owner *owner,
          native_io_backend_get_coroutine_stats(&impl->backend, out_coroutine);
 }
 
+int cnet_owner_test_copy_peer_sockaddr(const cnet_owner *owner,
+                                       cnet_session_handle session_handle,
+                                       void *out_address, size_t address_capacity,
+                                       size_t *out_address_length) {
+  cnet_owner_impl *impl =
+      owner != NULL ? (cnet_owner_impl *)owner->impl : NULL;
+  cnet_owner_session *session;
+  size_t length;
+  if (out_address_length == NULL) return SALTS_EINVAL;
+  *out_address_length = 0u;
+  if (impl == NULL) return SALTS_EINVAL;
+  session = cnet_owner_find_session(impl, session_handle);
+  if (session == NULL) return SALTS_ENOENT;
+  length = session->peer.address_length;
+  if (length == 0u || length > sizeof(session->peer.address))
+    return SALTS_EBUSY;
+  *out_address_length = length;
+  if (out_address == NULL || address_capacity < length) return SALTS_ENOBUFS;
+  memcpy(out_address, session->peer.address, length);
+  return SALTS_OK;
+}
+
 bool cnet_owner_test_get_request_snapshot(const cnet_owner *owner, size_t request_index,
                                           cnet_owner_test_request_snapshot *out_snapshot) {
   const cnet_owner_impl *impl = owner != NULL ? (const cnet_owner_impl *)owner->impl : NULL;

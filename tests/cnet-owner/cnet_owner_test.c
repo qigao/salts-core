@@ -441,6 +441,19 @@ static void cnet_owner_test_tcp(native_io_backend_kind backend_kind, bool resolv
     check_equal(cnet_owner_test_drive_to_state(&owner, &sessions, session, CNET_SESSION_OPEN),
                 SALTS_OK);
   }
+#if defined(_WIN32) && defined(CNET_INTERNAL_TESTING)
+  if (timeout == CNET_OWNER_TEST_NO_TIMEOUT) {
+    struct sockaddr_in selected = {0};
+    size_t selected_length = 0u;
+    check_equal(cnet_owner_test_copy_peer_sockaddr(
+                    &owner, session, &selected, sizeof(selected),
+                    &selected_length), SALTS_OK);
+    check_equal(selected_length, sizeof(address));
+    check_equal(selected.sin_family, AF_INET);
+    check_equal(selected.sin_addr.s_addr, address.sin_addr.s_addr);
+    check_equal(selected.sin_port, address.sin_port);
+  }
+#endif
   for (event_index = 0u; event_index < event_config.capacity; ++event_index) {
     check_equal(cnet_event_queue_take(&events, &event), SALTS_OK);
     check_equal(event.state, CNET_EVENT_STATE_CLOSING);
@@ -702,6 +715,19 @@ static void cnet_owner_test_refused_connect_win32(bool via_resolver) {
   check_equal(cnet_command_queue_publish(&commands, &command), SALTS_OK);
   check_equal(cnet_owner_test_drive_to_state(
                   &owner, &sessions, session, CNET_SESSION_TERMINAL), SALTS_OK);
+  /* A refused connection to the wrong resolved endpoint would also produce
+   * a refusal. Prove the exact bound listener IP/port survived resolution. */
+  {
+    struct sockaddr_in selected = {0};
+    size_t selected_length = 0u;
+    check_equal(cnet_owner_test_copy_peer_sockaddr(
+                    &owner, session, &selected, sizeof(selected),
+                    &selected_length), SALTS_OK);
+    check_equal(selected_length, sizeof(bound));
+    check_equal(selected.sin_family, AF_INET);
+    check_equal(selected.sin_addr.s_addr, bound.sin_addr.s_addr);
+    check_equal(selected.sin_port, bound.sin_port);
+  }
   check_equal(cnet_event_queue_take(&events, &event), SALTS_OK);
   check_equal(event.kind, CNET_EVENT_STATE);
   check_equal(event.state, CNET_EVENT_STATE_FAILED);
