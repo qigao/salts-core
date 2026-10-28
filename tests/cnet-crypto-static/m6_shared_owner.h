@@ -35,7 +35,17 @@ CNET_M6_API int cnet_m6_shared_acquire(cnet_m6_lease **out_lease,
 CNET_M6_API int cnet_m6_shared_snapshot(const void **out_owner, uint32_t *out_leases,
                             uint32_t *out_sessions, uint64_t *out_epoch);
 CNET_M6_API int cnet_m6_shared_release(cnet_m6_lease **lease);
-/* Caller must hold a lease until this completes; no concurrent release. */
+
+/* TEST-ONLY deterministic native-admission gate. 1=arm (before workers),
+ * 0=query native CNet connect commands admitted, 2=release the gate.
+ * This stops both worker threads AFTER real cnet_connect admission and
+ * BEFORE Owner pumping. It is NOT a cancellation/handshake callback gate.
+ * The host must release the gate before joining or unloading modules.
+ */
+CNET_M6_API int cnet_m6_test_native_admission_gate(
+    uint32_t command, uint32_t *out_admitted);
+
+/* Active invocation holds this lease; release must return BUSY while active. */
 CNET_M6_API int cnet_m6_shared_native_smoke(cnet_m6_lease *lease);
 /* Real original CNet/NativeIO TLS 1.2 or 1.3 mTLS with the Provider
  * borrowed from this sole DLL. The leased caller owns all file paths through
