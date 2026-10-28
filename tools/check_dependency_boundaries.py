@@ -13,12 +13,23 @@ import re
 SCANNED_EXTENSIONS = {".c", ".cc", ".cpp", ".h", ".hpp", ".m", ".mm", ".cmake"}
 IGNORED_DIRECTORIES = {".git", ".github", "vendor", "third_party", "build", "out", "tools", "docs", "_build", "_installed", "_sdk", "CMakeFiles"}
 PATTERNS = {
-    "forbidden high-level Salts target": re.compile(r"\bSalts::(?!Core\b|Platform\b|Concurrency\b|Coroutine\b|NativeIO\b|URI\b|CNet\b|Unicode\b|IDNA\b|CSerde\b|TinyTest\b|SCTP\b|SCTPWire\b|FS\b|Process\b)[A-Za-z_0-9]+"),
+    "forbidden high-level Salts target": re.compile(r"\bSalts::(?!Core\b|Platform\b|Concurrency\b|Coroutine\b|NativeIO\b|URI\b|CNet\b|Unicode\b|IDNA\b|CSerde\b|TinyTest\b|SCTP\b|SCTPWire\b|FS\b|Process\b|Crypto\b)[A-Za-z_0-9]+"),
     "forbidden alternate target namespace": re.compile(r"\b(?:SaltsCore|SaltsCrypto|Crypto)::[A-Za-z_0-9]+"),
     "legacy package lookup": re.compile(r"\b(?:find_package|find_dependency)\s*\(\s*Salts(?:Utils)?(?:\s|\))", re.IGNORECASE),
     "CMeta/CFlow/CSTL include": re.compile(r'^\s*#\s*include\s*[<"](?:cmeta/|cflow/|cstl(?:/|\.h))'),
     "CMeta/CFlow runtime object": re.compile(r"\b(?:CMETA_STRUCT|CMETA_IMPLEMENTS|cmeta_type_desc|cflow_executor|cflow_io_actor|cflow_waker|cflow_publisher)\b"),
 }
+
+
+# The test-local sole-static candidate rejects split providers at configure
+# time. Two exact guard lines are non-dependency references; no other CMake
+# lines or source paths are exempt.
+STATIC_CRYPTO_GUARD_FILE = Path("tests/cnet-crypto-static/CMakeLists.txt")
+STATIC_CRYPTO_DENIED_TARGET_GUARD = (
+    "foreach(_forbidden IN ITEMS",
+    "Salts::TLS Salts::TLSCipherBIO Salts::CryptoProvider",
+    "Crypto::TLS Crypto::TLSCipherBIO Crypto::Provider)",
+)
 
 
 def check_repository(root: Path) -> list[str]:
@@ -31,7 +42,20 @@ def check_repository(root: Path) -> list[str]:
             continue
         if path.suffix not in SCANNED_EXTENSIONS and path.name != "CMakeLists.txt":
             continue
-        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        denied_guard_indices: set[int] = set()
+        if relative == STATIC_CRYPTO_GUARD_FILE:
+            # Only a complete, contiguous CMake foreach(_forbidden...)
+            # definition can be treated as a negative assertion; never
+            # exclude target_link_libraries or unrelated lines in this file.
+            for offset in range(len(lines) - 2):
+                if tuple(line.strip() for line in lines[offset:offset + 3]) == (
+                        STATIC_CRYPTO_DENIED_TARGET_GUARD):
+                    denied_guard_indices.update((offset + 1, offset + 2))
+        for index, line in enumerate(lines):
+            if index in denied_guard_indices:
+                continue
+            lineno = index + 1
             # Build and source files must not refer to any legacy module even in
             # disabled branches; migration is not allowed to add hidden fallback.
             for rule, regex in PATTERNS.items():

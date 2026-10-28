@@ -86,7 +86,8 @@ for module in MODULES:
 if (ROOT / "cnet" / "sctp").exists():
     raise SystemExit("nested cnet/sctp source owner must not exist")
 for retired in ("SaltsCoreCNet.cmake", "SaltsCoreExtraModules.cmake",
-                "SaltsCoreFS.cmake", "SaltsCoreProcess.cmake"):
+                "SaltsCoreFS.cmake", "SaltsCoreProcess.cmake",
+                "SaltsCoreCNetCryptoStaticOwner.cmake"):
     if (ROOT / "cmake" / retired).exists():
         raise SystemExit(f"obsolete central CMake module owner: {retired}")
 extra = {

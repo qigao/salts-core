@@ -1,0 +1,425 @@
+name: CNet M5 original NativeIO Owner required mTLS / one static Crypto
+on:
+  pull_request:
+    paths:
+      - "CMakeLists.txt"
+      - "tests/cnet-crypto-static/**"
+      - "cnet/src/cnet_tls_crypto_qualification.*"
+      - "cnet/CMakeLists.txt"
+      - "vendor/CMakeLists.txt"
+      - "tests/CMakeLists.txt"
+      - "native-io/CMakeLists.txt"
+      - "tests/cnet-owner/**"
+      - "tools/check_dependency_boundaries.py"
+      - "tests/test_dependency_boundaries.py"
+      - ".github/workflows/cnet-m5-python-mtls.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  posix-static-admission:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            triplet: x64-linux
+          - runner: macos-15
+            triplet: arm64-osx
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 70
+    env:
+      CRYPTO_SHA: 0b4ee094ce8002e6169ce231028107eba63588c6
+      PORT_SHA: 65c12e71d02b9b7dacfafc3d188a3bda18184296
+      VCPKG_SCRIPTS_SHA: 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
+      VCPKG_DEFAULT_TRIPLET: ${{ matrix.triplet }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Linux native prerequisites
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build pkg-config             autoconf automake libtool nasm curl zip unzip tar re2c
+      - name: Install macOS native prerequisites
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install ninja pkg-config autoconf automake libtool nasm re2c
+      - name: Python-only mTLS certificate generator (no OpenSSL CLI/dev)
+        shell: bash
+        run: |
+          python3 -m pip install --disable-pip-version-check --no-cache-dir "cryptography==46.0.4"
+          python3 -c 'import ssl, cryptography; assert ssl.HAS_TLSv1_3'
+      - name: Fetch immutable Crypto and official private GmSSL port input
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/crypto-src" "$RUNNER_TEMP/vcpkg-cache"
+          curl -fLsS --retry 3             "https://api.github.com/repos/qigao/crypto/tarball/$CRYPTO_SHA"             -o "$RUNNER_TEMP/crypto-source.tar.gz"
+          tar -xzf "$RUNNER_TEMP/crypto-source.tar.gz"             --strip-components=1 -C "$RUNNER_TEMP/crypto-src"
+          curl -fLsS --retry 3             "https://api.github.com/repos/qigao/vcpkg-cache/tarball/$PORT_SHA"             -o "$RUNNER_TEMP/vcpkg-cache.tar.gz"
+          tar -xzf "$RUNNER_TEMP/vcpkg-cache.tar.gz"             --strip-components=1 -C "$RUNNER_TEMP/vcpkg-cache"
+          grep -Fq '"port-version": 14' "$RUNNER_TEMP/vcpkg-cache/ports/gmssl/vcpkg.json"
+          python3 "$RUNNER_TEMP/crypto-src/crypto/tools/stage_mtls_gmssl_overlay.py"             "$RUNNER_TEMP/vcpkg-cache/ports/gmssl"
+      - name: Bootstrap pinned canonical vcpkg scripts (no Mono or NuGet)
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/vcpkg"
+          mkdir -p "$root"
+          git -C "$root" init -q
+          git -C "$root" remote add origin https://github.com/microsoft/vcpkg.git
+          git -C "$root" fetch --no-tags origin "$VCPKG_SCRIPTS_SHA"
+          git -C "$root" checkout --detach FETCH_HEAD
+          test "$(git -C "$root" rev-parse HEAD)" = "$VCPKG_SCRIPTS_SHA"
+          "$root/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$root" >> "$GITHUB_ENV"
+      - name: Build and audit ONE installed static Salts::Crypto
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="$RUNNER_TEMP/crypto-src/vcpkg_installed/$VCPKG_DEFAULT_TRIPLET"
+          export VCPKG_OVERLAY_PORTS="$RUNNER_TEMP/vcpkg-cache/ports"
+          "$VCPKG_ROOT/vcpkg" install             --x-manifest-root="$RUNNER_TEMP/crypto-src/crypto"             --x-install-root="$RUNNER_TEMP/crypto-src/vcpkg_installed"             --triplet="$VCPKG_DEFAULT_TRIPLET" --overlay-ports="$VCPKG_OVERLAY_PORTS"
+          test -s "$prefix/lib/libgmssl.a"
+          cmake -S "$RUNNER_TEMP/crypto-src" -B "$RUNNER_TEMP/crypto-build" -G Ninja             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON             "-DCRYPTO_GMSSL_ROOT=$prefix"             "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/crypto-installed"
+          cmake --build "$RUNNER_TEMP/crypto-build" --parallel 2
+          ctest --test-dir "$RUNNER_TEMP/crypto-build" -C Release             --output-on-failure --no-tests=error
+          cmake --install "$RUNNER_TEMP/crypto-build" --config Release
+          python3 "$RUNNER_TEMP/crypto-src/crypto/tools/audit_static_crypto.py"             --prefix "$RUNNER_TEMP/crypto-installed"             --report "$RUNNER_TEMP/crypto-static-audit.json"
+      - name: M2 original CNet Owner NativeIO over one static Crypto
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The incumbent historical CNet/GmSSL remains built only for
+          # independent regression. It is never linked to this candidate.
+          export VCPKG_OVERLAY_PORTS="$RUNNER_TEMP/vcpkg-cache/ports"
+          cmake -S . -B "$RUNNER_TEMP/core-static-owner-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            "-DVCPKG_TARGET_TRIPLET=$VCPKG_DEFAULT_TRIPLET" \
+            -DVCPKG_MANIFEST_FEATURES=cnet \
+            -DSALTSCORE_BUILD_URI=ON -DSALTSCORE_BUILD_CNET=ON \
+            -DSALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST=ON \
+            -DSALTSCORE_CNET_STATIC_CRYPTO_OPENSSL_SAN_TEST=ON \
+            -DSALTSCORE_CNET_M5_PYTHON_MTLS_TEST=ON \
+            -DSALTSCORE_CNET_M6_SHARED_DSO_TEST=ON \
+            -DSALTSCORE_CNET_M6_CONCURRENT_MTLS_TEST=ON \
+            "-DSALTSCORE_CRYPTO_PYTHON_FIXTURE_SOURCE=$RUNNER_TEMP/crypto-src/crypto/tests/sdk/python_mtls.py" \
+            "-DSALTSCORE_CRYPTO_TEST_FIXTURES=$RUNNER_TEMP/crypto-src/crypto/tests/fixtures" \
+            "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/crypto-installed"
+          cmake --build "$RUNNER_TEMP/core-static-owner-build" --parallel 2
+          ctest --test-dir "$RUNNER_TEMP/core-static-owner-build" -C Release \
+            --output-on-failure --no-tests=error \
+            -R '^saltscore[.]cnet_crypto_static_(original_owner_tls12_tls13|python_san_tls12|python_san_tls13|original_owner_python_mtls)$' \
+            --repeat until-fail:1
+          ctest --test-dir "$RUNNER_TEMP/core-static-owner-build" -C Release \
+            --output-on-failure --no-tests=error \
+            -R '^saltscore[.]cnet_crypto_m6_two_plugin_(shared_owner|concurrent_mtls)$' \
+            --repeat until-fail:3
+          ctest --test-dir "$RUNNER_TEMP/core-static-owner-build" -C Release \
+            --output-on-failure --no-tests=error \
+            -R '^saltscore[.]cnet_(tcp_loopback|tls_ca_san)$'
+          candidate="$RUNNER_TEMP/core-static-owner-build/tests/cnet-crypto-static/saltscore_cnet_crypto_static_original_owner"
+          test -x "$candidate"
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            readelf -d "$candidate" > "$RUNNER_TEMP/cnet-static-owner-imports.txt"
+          else
+            otool -L "$candidate" > "$RUNNER_TEMP/cnet-static-owner-imports.txt"
+          fi
+          grep -Eiq 'saltscore_core' "$RUNNER_TEMP/cnet-static-owner-imports.txt"
+          if grep -Ei 'libgmssl|libcrypto_tls|libcrypto_provider|libsaltscore_cnet' \
+            "$RUNNER_TEMP/cnet-static-owner-imports.txt"; then
+            echo "SECURITY FAIL: candidate imported a second provider" >&2
+            exit 1
+          fi
+      - name: M6 audit shared physical Crypto Owner imports (ELF/Mach-O)
+        shell: bash
+        run: |
+          set -euo pipefail
+          build="$RUNNER_TEMP/core-static-owner-build"
+          owner=$(find "$build" -type f \
+            \( -name 'libsaltscore_cnet_m6_static_crypto.so' -o \
+               -name 'libsaltscore_cnet_m6_static_crypto.dylib' \) -print -quit)
+          host=$(find "$build" -type f \
+            -name saltscore_cnet_m6_two_plugin_loader -print -quit)
+          test -n "$owner" && test -n "$host"
+          for module in a b; do
+            plugin=$(find "$build" -type f \
+              \( -name "libsaltscore_cnet_m6_plugin_$module.so" -o \
+                 -name "libsaltscore_cnet_m6_plugin_$module.dylib" \) -print -quit)
+            test -n "$plugin"
+            if [ "${{ runner.os }}" = "Linux" ]; then
+              readelf -d "$plugin" > "$RUNNER_TEMP/cnet-m6-plugin-$module-imports.txt"
+            else
+              otool -L "$plugin" > "$RUNNER_TEMP/cnet-m6-plugin-$module-imports.txt"
+            fi
+            grep -Fq 'saltscore_cnet_m6_static_crypto' \
+              "$RUNNER_TEMP/cnet-m6-plugin-$module-imports.txt"
+            if grep -Eiq 'libgmssl|libsalts_crypto|libsaltscore_cnet[.](so|dylib)|libcrypto_provider|libcrypto_tls' \
+              "$RUNNER_TEMP/cnet-m6-plugin-$module-imports.txt"; then
+              echo "M6 fail: plugin imported a second physical TLS owner" >&2
+              exit 1
+            fi
+          done
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            readelf -d "$owner" > "$RUNNER_TEMP/cnet-m6-owner-imports.txt"
+            readelf -d "$host" > "$RUNNER_TEMP/cnet-m6-host-imports.txt"
+          else
+            otool -L "$owner" > "$RUNNER_TEMP/cnet-m6-owner-imports.txt"
+            # otool -L first prints the executable path as a heading.
+            # That is NOT a dependency and contains "saltscore_cnet_m6".
+            # Keep only actual linked dylib entries, without omitting any.
+            otool -L "$host" | sed '1d' > "$RUNNER_TEMP/cnet-m6-host-imports.txt"
+          fi
+          if grep -Eiq 'libgmssl|libsalts_crypto|libsaltscore_cnet[.](so|dylib)|libcrypto_provider|libcrypto_tls' \
+            "$RUNNER_TEMP/cnet-m6-owner-imports.txt"; then
+            echo "M6 fail: shared CNet candidate imports a second TLS provider" >&2
+            exit 1
+          fi
+          if grep -Eiq 'saltscore_cnet|gmssl|salts_crypto|crypto_tls|crypto_provider' \
+            "$RUNNER_TEMP/cnet-m6-host-imports.txt"; then
+            echo "M6 fail: host directly links CNet or Crypto" >&2
+            exit 1
+          fi
+      - name: Preserve exact-head candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cnet-static-m0-${{ matrix.triplet }}
+          path: |
+            ${{ runner.temp }}/crypto-static-audit.json
+            ${{ runner.temp }}/cnet-static-imports.txt
+            ${{ runner.temp }}/cnet-static-symbols.txt
+            ${{ runner.temp }}/cnet-static-owner-imports.txt
+            ${{ runner.temp }}/cnet-m6-owner-imports.txt
+            ${{ runner.temp }}/cnet-m6-host-imports.txt
+            ${{ runner.temp }}/cnet-m6-plugin-a-imports.txt
+            ${{ runner.temp }}/cnet-m6-plugin-b-imports.txt
+            ${{ runner.temp }}/core-static-owner-build/Testing/Temporary/LastTest.log
+            ${{ runner.temp }}/core-static-build/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+
+  windows-static-admission:
+    runs-on: windows-2025
+    timeout-minutes: 80
+    env:
+      CRYPTO_SHA: 0b4ee094ce8002e6169ce231028107eba63588c6
+      PORT_SHA: 65c12e71d02b9b7dacfafc3d188a3bda18184296
+      VCPKG_SCRIPTS_SHA: 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile pinned upstream re2c 4.6 from verified GitHub source (MSVC)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = Join-Path $env:RUNNER_TEMP 're2c-4.6.tar.xz'
+          $src = Join-Path $env:RUNNER_TEMP 're2c-source'
+          $build = Join-Path $env:RUNNER_TEMP 're2c-build'
+          New-Item -ItemType Directory -Path $src -Force | Out-Null
+          & curl.exe -fLsS --retry 3 'https://github.com/skvadrik/re2c/releases/download/4.6/re2c-4.6.tar.xz' -o $archive
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned re2c source download failed' }
+          $digest = (Get-FileHash -Algorithm SHA256 -Path $archive).Hash.ToLowerInvariant()
+          if ($digest -ne '75bf2696445e831d0d44e0d9f2909eeffc18c09757f222b2fb025f7e59fe130b') {
+            throw 'Pinned official re2c 4.6 release digest mismatch'
+          }
+          & tar.exe -xJf $archive --strip-components=1 -C $src
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned re2c archive extraction failed' }
+          $configure = @(
+            '-S', $src, '-B', $build, '-G', 'Visual Studio 18 2026', '-A', 'x64',
+            '-DRE2C_REBUILD_LEXERS=OFF', '-DRE2C_REBUILD_PARSERS=OFF',
+            '-DRE2C_REBUILD_SYNTAX=OFF', '-DRE2C_REBUILD_DOCS=OFF',
+            '-DRE2C_BUILD_TESTS=OFF')
+          & cmake @configure
+          if ($LASTEXITCODE -ne 0) { throw 'MSVC re2c bootstrap configure failed' }
+          & cmake --build $build --config Release --target re2c --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'MSVC native re2c build failed' }
+          $binaries = @(Get-ChildItem -Path $build -Filter re2c.exe -Recurse -File)
+          if ($binaries.Count -ne 1) { throw 're2c host executable missing or ambiguous' }
+          & $binaries[0].FullName --version
+          if ($LASTEXITCODE -ne 0) { throw 're2c host bootstrap smoke failed' }
+          (Split-Path $binaries[0].FullName) | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Pinned Python mTLS certificate generator
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check --no-cache-dir "cryptography==46.0.4"
+          if ($LASTEXITCODE -ne 0) { throw 'Python X509 fixtures unavailable' }
+      - name: Fetch immutable Crypto and verified GmSSL source port
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src = Join-Path $env:RUNNER_TEMP 'crypto-src'
+          $cache = Join-Path $env:RUNNER_TEMP 'vcpkg-cache'
+          New-Item -ItemType Directory -Force -Path $src, $cache | Out-Null
+          & curl.exe -fLsS --retry 3 "https://api.github.com/repos/qigao/crypto/tarball/$env:CRYPTO_SHA" -o "$env:RUNNER_TEMP/crypto-source.tar.gz"
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Crypto download failed' }
+          & tar.exe -xzf "$env:RUNNER_TEMP/crypto-source.tar.gz" --strip-components=1 -C $src
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Crypto extraction failed' }
+          & curl.exe -fLsS --retry 3 "https://api.github.com/repos/qigao/vcpkg-cache/tarball/$env:PORT_SHA" -o "$env:RUNNER_TEMP/vcpkg-cache.tar.gz"
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned port source download failed' }
+          & tar.exe -xzf "$env:RUNNER_TEMP/vcpkg-cache.tar.gz" --strip-components=1 -C $cache
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned port source extraction failed' }
+          python "$src/crypto/tools/stage_mtls_gmssl_overlay.py" "$cache/ports/gmssl"
+          if ($LASTEXITCODE -ne 0) { throw 'Strict GmSSL #14 M5 overlay staging failed' }
+      - name: Bootstrap pinned canonical vcpkg scripts (no Mono or NuGet)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'vcpkg'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          git -C $root init -q
+          git -C $root remote add origin https://github.com/microsoft/vcpkg.git
+          git -C $root fetch --no-tags origin $env:VCPKG_SCRIPTS_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned vcpkg fetch failed' }
+          git -C $root checkout --detach FETCH_HEAD
+          if ((git -C $root rev-parse HEAD).Trim() -ne $env:VCPKG_SCRIPTS_SHA) { throw 'vcpkg SHA mismatch' }
+          & "$root/bootstrap-vcpkg.bat" -disableMetrics
+          if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed' }
+          "VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Build and audit ONE installed static Salts::Crypto (MSVC x64)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src = Join-Path $env:RUNNER_TEMP 'crypto-src'
+          $cache = Join-Path $env:RUNNER_TEMP 'vcpkg-cache'
+          $prefix = Join-Path $src 'vcpkg_installed/x64-windows'
+          $sdk = Join-Path $env:RUNNER_TEMP 'crypto-installed'
+          $env:VCPKG_OVERLAY_PORTS = Join-Path $cache 'ports'
+          & "$env:VCPKG_ROOT/vcpkg.exe" install "--x-manifest-root=$src/crypto" "--x-install-root=$src/vcpkg_installed" --triplet=x64-windows "--overlay-ports=$env:VCPKG_OVERLAY_PORTS"
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned GmSSL vcpkg installation failed' }
+          if (-not (Test-Path "$prefix/lib/gmssl.lib")) { throw 'Pinned GmSSL static archive missing' }
+          & cmake -S $src -B "$env:RUNNER_TEMP/crypto-build" -G 'Visual Studio 18 2026' -A x64 -DBUILD_TESTING=ON "-DCRYPTO_GMSSL_ROOT=$prefix" "-DCMAKE_INSTALL_PREFIX=$sdk"
+          if ($LASTEXITCODE -ne 0) { throw 'Static Crypto SDK configure failed' }
+          & cmake --build "$env:RUNNER_TEMP/crypto-build" --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'Static Crypto SDK build failed' }
+          & ctest --test-dir "$env:RUNNER_TEMP/crypto-build" -C Release --output-on-failure --no-tests=error
+          if ($LASTEXITCODE -ne 0) { throw 'Static Crypto source tests failed' }
+          & cmake --install "$env:RUNNER_TEMP/crypto-build" --config Release
+          if ($LASTEXITCODE -ne 0) { throw 'Static Crypto SDK install failed' }
+          python "$src/crypto/tools/audit_static_crypto.py" --prefix $sdk --report "$env:RUNNER_TEMP/crypto-static-audit.json"
+          if ($LASTEXITCODE -ne 0) { throw 'Static Crypto archive audit failed' }
+      - name: M2 full original CNet Owner with STATIC Crypto and real Windows IOCP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $build = Join-Path $env:RUNNER_TEMP 'core-static-owner-build'
+          $sdk = Join-Path $env:RUNNER_TEMP 'crypto-installed'
+          $env:VCPKG_OVERLAY_PORTS = Join-Path $env:RUNNER_TEMP 'vcpkg-cache/ports'
+          $toolchain = Join-Path $env:VCPKG_ROOT 'scripts/buildsystems/vcpkg.cmake'
+          $params = @(
+            '-S', '.', '-B', $build, '-G', 'Visual Studio 18 2026', '-A', 'x64',
+            '-DBUILD_TESTING=ON',
+            "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
+            '-DVCPKG_TARGET_TRIPLET=x64-windows',
+            '-DVCPKG_MANIFEST_FEATURES=cnet',
+            '-DSALTSCORE_BUILD_URI=ON',
+            '-DSALTSCORE_BUILD_CNET=ON',
+            '-DSALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST=ON',
+            '-DSALTSCORE_CNET_STATIC_CRYPTO_OPENSSL_SAN_TEST=ON',
+            '-DSALTSCORE_CNET_M5_PYTHON_MTLS_TEST=ON',
+            '-DSALTSCORE_CNET_M6_SHARED_DSO_TEST=ON',
+            '-DSALTSCORE_CNET_M6_CONCURRENT_MTLS_TEST=ON',
+            "-DSALTSCORE_CRYPTO_PYTHON_FIXTURE_SOURCE=$env:RUNNER_TEMP/crypto-src/crypto/tests/sdk/python_mtls.py",
+            "-DSALTSCORE_CRYPTO_TEST_FIXTURES=$env:RUNNER_TEMP/crypto-src/crypto/tests/fixtures",
+            "-DCMAKE_PREFIX_PATH=$sdk")
+          & cmake @params
+          if ($LASTEXITCODE -ne 0) { throw 'Original Owner static CNet configure failed' }
+          & cmake --build $build --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'Original Owner static CNet compile/link failed' }
+          & ctest --test-dir $build -C Release --output-on-failure --no-tests=error -R '^saltscore[.]cnet_crypto_static_(original_owner_tls12_tls13|python_san_tls12|python_san_tls13|original_owner_python_mtls)$' --repeat until-fail:1
+          if ($LASTEXITCODE -ne 0) { throw 'M2 genuine IOCP Crypto TLS Owner failed' }
+          & ctest --test-dir $build -C Release --output-on-failure --no-tests=error -R '^saltscore[.]cnet_crypto_m6_two_plugin_(shared_owner|concurrent_mtls)$' --repeat until-fail:3
+          if ($LASTEXITCODE -ne 0) { throw 'M6 two-plugin sole Crypto runtime failed on IOCP' }
+          & ctest --test-dir $build -C Release --output-on-failure --no-tests=error -R '^saltscore[.]cnet_(tcp_loopback|tls_ca_san)$'
+          if ($LASTEXITCODE -ne 0) { throw 'Incumbent GmSSL regression failed' }
+          $binary = Join-Path $build 'bin/Release/saltscore_cnet_crypto_static_original_owner.exe'
+          if (-not (Test-Path $binary)) { throw 'Original Owner candidate binary missing' }
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $vsroot = & $vswhere -latest -products '*' -property installationPath
+          $dumpbin = Get-ChildItem -Path (Join-Path $vsroot 'VC/Tools/MSVC') -Filter dumpbin.exe -Recurse |
+            Where-Object { $_.FullName -match 'Hostx64\\x64' } | Select-Object -First 1
+          if (-not $dumpbin) { throw 'MSVC dumpbin missing' }
+          $imports = Join-Path $env:RUNNER_TEMP 'cnet-static-owner-imports.txt'
+          & $dumpbin.FullName /DEPENDENTS $binary | Out-File -FilePath $imports -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw 'M2 PE import dump failed' }
+          if (-not (Select-String -Path $imports -Pattern 'saltscore_core' -Quiet)) {
+            throw 'Shared foundation Owner missing from candidate PE imports'
+          }
+          if (Select-String -Path $imports -Pattern 'gmssl.*dll|crypto_tls.*dll|crypto_provider.*dll|saltscore_cnet.*dll') {
+            throw 'SECURITY FAIL: original candidate imported duplicate native provider'
+          }
+      - name: M6 audit two Windows plugin DLLs and shared Crypto candidate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bin = Join-Path $env:RUNNER_TEMP 'core-static-owner-build/bin/Release'
+          $owner = Join-Path $bin 'saltscore_cnet_m6_static_crypto.dll'
+          $m6HostExecutable = Join-Path $bin 'saltscore_cnet_m6_two_plugin_loader.exe'
+          if (-not (Test-Path $owner) -or -not (Test-Path $m6HostExecutable)) {
+            throw 'M6 candidate DLL or host executable missing'
+          }
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $vsroot = & $vswhere -latest -products '*' -property installationPath
+          $dumpbin = Get-ChildItem -Path (Join-Path $vsroot 'VC/Tools/MSVC') -Filter dumpbin.exe -Recurse |
+            Where-Object { $_.FullName -match 'Hostx64\\x64' } | Select-Object -First 1
+          if (-not $dumpbin) { throw 'M6 dumpbin unavailable' }
+          function Save-M6PeImports([string]$image, [string]$report) {
+            $output = & $dumpbin.FullName /DEPENDENTS $image
+            if ($LASTEXITCODE -ne 0) { throw "M6 PE import audit failed for $image" }
+            # Restrict to the DLL dependency-name lines. The dumpbin
+            # "Dump of file $image" header is NOT a linked dependency.
+            $deps = @($output | Where-Object { $_ -match '^\s+[^\s:]+[.]dll\s*$' } |
+                        ForEach-Object { $_.Trim() })
+            if ($deps.Count -eq 0) { throw "M6 PE import list unexpectedly empty: $image" }
+            $deps | Set-Content -Path $report -Encoding utf8
+          }
+          foreach ($module in @('a','b')) {
+            # MSVC MODULE targets go to the module-owned build subdirectory, while the
+            # executable and SHARED candidate are in <build>/bin/Release.
+            $plugin = Join-Path $env:RUNNER_TEMP "core-static-owner-build/tests/cnet-crypto-static/Release/saltscore_cnet_m6_plugin_$module.dll"
+            if (-not (Test-Path $plugin)) { throw "M6 plugin $module missing" }
+            $report = Join-Path $env:RUNNER_TEMP "cnet-m6-plugin-$module-imports.txt"
+            Save-M6PeImports $plugin $report
+            if (-not (Select-String -Path $report -Pattern 'saltscore_cnet_m6_static_crypto' -Quiet)) {
+              throw "M6 plugin $module does not resolve sole shared Crypto Owner"
+            }
+            if (Select-String -Path $report -Pattern 'gmssl.*dll|salts_crypto.*dll|saltscore_cnet-[0-9]|crypto_provider.*dll|crypto_tls.*dll') {
+              throw "M6 plugin $module imports a second TLS implementation"
+            }
+          }
+          foreach ($entry in @(@('cnet-m6-owner-imports.txt', $owner),
+                               @('cnet-m6-host-imports.txt', $m6HostExecutable))) {
+            $report = Join-Path $env:RUNNER_TEMP $entry[0]
+            Save-M6PeImports $entry[1] $report
+          }
+          if (Select-String -Path (Join-Path $env:RUNNER_TEMP 'cnet-m6-owner-imports.txt') -Pattern 'gmssl.*dll|salts_crypto.*dll|saltscore_cnet-[0-9]|crypto_provider.*dll|crypto_tls.*dll') {
+            throw 'M6 shared CNet candidate imported a second TLS provider'
+          }
+          if (Select-String -Path (Join-Path $env:RUNNER_TEMP 'cnet-m6-host-imports.txt') -Pattern 'saltscore_cnet|gmssl|salts_crypto|crypto_provider|crypto_tls') {
+            throw 'M6 host directly links CNet/Crypto; plugin isolation unproven'
+          }
+      - name: Preserve exact-head Windows static evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cnet-static-m0-x64-windows
+          path: |
+            ${{ runner.temp }}/crypto-static-audit.json
+            ${{ runner.temp }}/cnet-static-imports.txt
+            ${{ runner.temp }}/cnet-static-owner-imports.txt
+            ${{ runner.temp }}/cnet-m6-owner-imports.txt
+            ${{ runner.temp }}/cnet-m6-host-imports.txt
+            ${{ runner.temp }}/cnet-m6-plugin-a-imports.txt
+            ${{ runner.temp }}/cnet-m6-plugin-b-imports.txt
+            ${{ runner.temp }}/core-static-build/Testing/Temporary/LastTest.log
+            ${{ runner.temp }}/core-static-owner-build/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
