@@ -95,6 +95,8 @@ if not re.search(r"(?m)^add_subdirectory\(asn1\)\s*$", source):
 crypto_segment = source.split("if(DEFINED CRYPTO_GMSSL_ROOT)", 1)
 if len(crypto_segment) != 2 or not (
     "if(SALTSCORE_BUILD_CNET)" in crypto_segment[1].split("add_subdirectory(crypto)", 1)[0]
+    and "if(NOT (BUILD_TESTING AND SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST))"
+        in crypto_segment[1].split("add_subdirectory(crypto)", 1)[0]
     and "add_subdirectory(crypto)" in crypto_segment[1]
     and "if(TARGET Salts::Crypto)" in crypto_segment[1].split("add_subdirectory(crypto)", 1)[0]
 ):

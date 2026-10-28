@@ -33,30 +33,32 @@ if(SALTSCORE_BUILD_URI)
   add_subdirectory(uri)
 endif()
 option(SALTSCORE_BUILD_CNET "Build standalone CNet with required pinned providers" OFF)
-# Local Crypto is assembled by supplying its required *installed* pinned
-# provider prefix, not by a second BUILD_ option. No implicit download, stub,
-# TLS fallback or competing owner is allowed.
-# The existing direct-GmSSL CNet and local Crypto remain mutually exclusive
-# until the native provider cutover is qualified on real transport owners.
+option(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST
+  "Qualify test-only original CNet Owner with sole local static Salts::Crypto" OFF)
+if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST AND
+   (NOT BUILD_TESTING OR NOT SALTSCORE_BUILD_CNET OR NOT DEFINED CRYPTO_GMSSL_ROOT))
+  message(FATAL_ERROR
+    "Local M5 Crypto Owner requires BUILD_TESTING, CNet and the exact pinned CRYPTO_GMSSL_ROOT")
+endif()
+# The local static Crypto archive requires its pinned installed GmSSL input.
+# No source download, split provider, alternate TLS engine or compatibility alias.
+# The incumbent direct-GmSSL CNet must stay separate from a local Crypto
+# Owner. Only the explicit test-only M5 qualification may assemble both
+# targets in one CMake graph; NO executable/DSO may link both TLS engines.
 if(DEFINED CRYPTO_GMSSL_ROOT)
   if("${CRYPTO_GMSSL_ROOT}" STREQUAL "")
     message(FATAL_ERROR "CRYPTO_GMSSL_ROOT was supplied but is empty")
   endif()
   if(SALTSCORE_BUILD_CNET)
-    message(FATAL_ERROR
-      "CNet direct GmSSL and local Salts::Crypto are two TLS engines; "
-      "qualify CNet Crypto cutover before assembling both.")
+    if(NOT (BUILD_TESTING AND SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST))
+      message(FATAL_ERROR
+        "Dual TLS source assembly is forbidden except for isolated M5 static Crypto Owner tests")
+    endif()
   endif()
   if(TARGET Salts::Crypto)
     message(FATAL_ERROR "Duplicate Crypto owner: use exactly one static archive")
   endif()
   add_subdirectory(crypto)
-endif()
-
-option(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST
-  "Qualify test-only original CNet Owner with sole static Salts::Crypto" OFF)
-if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST AND NOT BUILD_TESTING)
-  message(FATAL_ERROR "Original static Crypto Owner qualification requires BUILD_TESTING")
 endif()
 option(SALTSCORE_BUILD_WEBSOCKET_PARSER "Qualify CNet-private WebSocket frame parser" OFF)
 if(SALTSCORE_BUILD_CNET AND NOT TARGET Salts::URI)
