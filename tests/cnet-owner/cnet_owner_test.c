@@ -182,6 +182,44 @@ static int cnet_owner_test_listener(cnet_owner_test_socket *out_listener,
   return SALTS_OK;
 }
 
+#if defined(_WIN32)
+/* Issue #64: record the real loopback listener at command admission and
+ * on the first unexpected terminal. Diagnostics must never change outcome. */
+static void cnet_owner_test_issue64_listener_snapshot(
+    const char *phase, cnet_owner_test_socket listener,
+    const struct sockaddr_in *expected, cnet_session_handle session) {
+  struct sockaddr_in actual = {0};
+  int actual_length = (int)sizeof(actual);
+  int accepting = 0;
+  int accepting_length = (int)sizeof(accepting);
+  const int name_rc =
+      getsockname(listener, (struct sockaddr *)&actual, &actual_length);
+  const int name_error = name_rc == SOCKET_ERROR ? WSAGetLastError() : 0;
+  int listen_rc = SOCKET_ERROR;
+  int listen_error = 0;
+#if defined(SO_ACCEPTCONN)
+  listen_rc = getsockopt(listener, SOL_SOCKET, SO_ACCEPTCONN,
+                         (char *)&accepting, &accepting_length);
+  if (listen_rc == SOCKET_ERROR) listen_error = WSAGetLastError();
+#endif
+  fprintf(stderr,
+          "CNET_ISSUE64_LISTENER phase=%s socket=%llu session=%u:%u"
+          " expected_family=%u expected_ipv4=%08lx expected_port=%u"
+          " actual_family=%u actual_ipv4=%08lx actual_port=%u"
+          " getsockname_rc=%d getsockname_error=%d"
+          " acceptconn_rc=%d acceptconn=%d acceptconn_error=%d\\n",
+          phase, (unsigned long long)(uintptr_t)listener,
+          (unsigned)session.slot, (unsigned)session.generation,
+          (unsigned)expected->sin_family,
+          (unsigned long)ntohl(expected->sin_addr.s_addr),
+          (unsigned)ntohs(expected->sin_port),
+          name_rc == 0 ? (unsigned)actual.sin_family : 0u,
+          name_rc == 0 ? (unsigned long)ntohl(actual.sin_addr.s_addr) : 0ul,
+          name_rc == 0 ? (unsigned)ntohs(actual.sin_port) : 0u,
+          name_rc, name_error, listen_rc, accepting, listen_error);
+}
+#endif
+
 static int cnet_owner_test_udp_peer(cnet_owner_test_socket *out_socket,
                                     struct sockaddr_in *out_address) {
 #if defined(_WIN32)
@@ -335,6 +373,11 @@ static void cnet_owner_test_tcp(native_io_backend_kind backend_kind, bool resolv
   command =
       (cnet_command){CNET_COMMAND_CONNECT, session, &connect_payload, sizeof(connect_payload), 0u};
   check_equal(cnet_command_queue_publish(&commands, &command), SALTS_OK);
+#if defined(_WIN32)
+  if (resolve_host && timeout == CNET_OWNER_TEST_NO_TIMEOUT)
+    cnet_owner_test_issue64_listener_snapshot("before_drive", listener,
+                                              &address, session);
+#endif
   if (timeout == CNET_OWNER_TEST_CONNECT_TIMEOUT) {
     check_equal(cnet_owner_test_drive_to_state(&owner, &sessions, session, CNET_SESSION_TERMINAL),
                 SALTS_OK);
@@ -371,8 +414,33 @@ static void cnet_owner_test_tcp(native_io_backend_kind backend_kind, bool resolv
 #endif
     goto cleanup;
   }
-  check_equal(cnet_owner_test_drive_to_state(&owner, &sessions, session, CNET_SESSION_OPEN),
-              SALTS_OK);
+  if (resolve_host && timeout == CNET_OWNER_TEST_NO_TIMEOUT) {
+    const int admission_status =
+        cnet_owner_test_drive_to_state(&owner, &sessions, session, CNET_SESSION_OPEN);
+#if defined(_WIN32)
+    if (admission_status != SALTS_OK) {
+      native_io_backend_stats native_stats = {0};
+      native_io_coroutine_stats coroutine_stats =
+          NATIVE_IO_COROUTINE_STATS_V1_INITIALIZER;
+      const bool has_stats =
+          cnet_owner_test_backend_stats(&owner, &native_stats, &coroutine_stats);
+      cnet_owner_test_issue64_listener_snapshot("after_failure", listener,
+                                                &address, session);
+      fprintf(stderr,
+              "CNET_ISSUE64_OWNER_FAILURE status=%d"
+              " backend_stats=%d active_requests=%zu"
+              " coroutine_active=%zu retained_frames=%zu\\n",
+              admission_status, has_stats ? 1 : 0,
+              has_stats ? (size_t)native_stats.active_requests : 0u,
+              has_stats ? (size_t)coroutine_stats.active : 0u,
+              has_stats ? (size_t)coroutine_stats.retained_frames : 0u);
+    }
+#endif
+    check_equal(admission_status, SALTS_OK);
+  } else {
+    check_equal(cnet_owner_test_drive_to_state(&owner, &sessions, session, CNET_SESSION_OPEN),
+                SALTS_OK);
+  }
   for (event_index = 0u; event_index < event_config.capacity; ++event_index) {
     check_equal(cnet_event_queue_take(&events, &event), SALTS_OK);
     check_equal(event.state, CNET_EVENT_STATE_CLOSING);
