@@ -46,3 +46,11 @@ target_compile_features(crypto_owner_native_sha224 PRIVATE c_std_11)
 target_link_libraries(crypto_owner_native_sha224 PRIVATE Salts::Crypto)
 add_test(NAME crypto.static.installed_native_sha224_fips
          COMMAND crypto_owner_native_sha224)
+
+# Separate installed C++17 SHA224 consumer. NEVER edit the original frozen
+# Crypto PR43 consumer.cpp; SHA224 is an additive exact-owner SDK interface.
+add_executable(crypto_owner_native_sha224_cpp17 sha224_cpp_consumer.cpp)
+target_compile_features(crypto_owner_native_sha224_cpp17 PRIVATE cxx_std_17)
+target_link_libraries(crypto_owner_native_sha224_cpp17 PRIVATE Salts::Crypto)
+add_test(NAME crypto.static.installed_native_sha224_cpp17
+         COMMAND crypto_owner_native_sha224_cpp17)

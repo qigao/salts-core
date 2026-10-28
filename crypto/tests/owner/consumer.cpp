@@ -1,5 +1,4 @@
 #include <crypto/sha256.h>
-#include <crypto/sha224.h>
 #include <crypto/ed448.h>
 #include <gmssl/sm3.h>
 #include <crypto/tls.h>
@@ -59,20 +58,6 @@ int main() {
   if (salts_crypto_sha256("abc", 3u, sha.data()) != SALTS_CRYPTO_OK
       || sha[0] != 0xbau || sha[31] != 0xadu)
     return 9;
-  /* The separately installed first-party SHA224 API must link through
-   * the same C11/C++17 Salts::Crypto archive and preserve full FIPS digest.
-   * A declaration-only header or C++ name-mangling mismatch fails here.
-   */
-  static constexpr std::uint8_t sha224_abc[SALTS_CRYPTO_SHA224_DIGEST_SIZE] = {
-    0x23u,0x09u,0x7du,0x22u,0x34u,0x05u,0xd8u,0x22u,
-    0x86u,0x42u,0xa4u,0x77u,0xbdu,0xa2u,0x55u,0xb3u,
-    0x2au,0xadu,0xbcu,0xe4u,0xbdu,0xa0u,0xb3u,0xf7u,
-    0xe3u,0x6cu,0x9du,0xa7u
-  };
-  std::array<std::uint8_t, SALTS_CRYPTO_SHA224_DIGEST_SIZE> sha224{};
-  if (salts_crypto_sha224("abc", 3u, sha224.data()) != SALTS_CRYPTO_OK
-      || std::memcmp(sha224.data(), sha224_abc, sha224.size()) != 0)
-    return 11;
   if (salts_crypto_ed448_public_key(seed,pub.data()) != SALTS_CRYPTO_OK)
     return 10;
   return 0;
