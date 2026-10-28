@@ -123,6 +123,14 @@ target_include_directories(salts_crypto
 target_compile_definitions(salts_crypto PRIVATE
   ENABLE_TLS ENABLE_SECP256R1 ENABLE_SECP384R1
   ENABLE_SHA1 ENABLE_SHA2 ENABLE_AES)
+# Private, metadata-only TLS handshake trace for test failure localization.
+# NEVER built into normal SDK/release; no transcript, cert or secrets emitted.
+option(CRYPTO_TLS_TEST_HANDSHAKE_DIAGNOSTICS
+  "Enable metadata-only TLS handshake state trace in isolated test jobs" OFF)
+if(BUILD_TESTING AND CRYPTO_TLS_TEST_HANDSHAKE_DIAGNOSTICS)
+  target_compile_definitions(salts_crypto PRIVATE
+    CRYPTO_TLS_PRIVATE_TEST_HANDSHAKE_TRACE)
+endif()
 
 # Keep the Ed448 facade's configuration consistent with the private object
 # target. No SHA256/SM3 libecc implementation or alternate RNG is built.
