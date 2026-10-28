@@ -247,6 +247,17 @@
         "fmt_print_tstr_v",
         "fmt_print_tstr"
       ]
+    },
+    {
+      "module": "log_pattern_lexer",
+      "owner": "core",
+      "cmake": "core/parser/CMakeLists.txt",
+      "header": "core/parser/log_pattern_lexer.h",
+      "source": "core/parser/log_pattern_lexer.c",
+      "functions": [
+        "log_pattern_scan",
+        "log_pattern_scan_n"
+      ]
     }
   ],
   "stage_a_support_files": [
@@ -266,14 +277,15 @@
     "platform/include/salts/timeval.h",
     "tests/test_fmt.c",
     "tests/test_fmt_cpp.cpp",
-    "tests/test_fmt_vstr_pattern.c"
+    "tests/test_fmt_vstr_pattern.c",
+    "core/parser/log_pattern_lexer.re",
+    "tests/test_log_pattern_lexer.c"
   ],
   "pending_groups": {
     "logging_formatter": [
       "tlog.h",
       "tlog_helper.h",
-      "tlog.c",
-      "log_pattern_lexer"
+      "tlog.c"
     ],
     "algorithms": [
       "ac_automaton",

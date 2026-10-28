@@ -39,11 +39,13 @@ native invalid-range contract rather than reintroducing old silent truncation.
 
 | `utils/include/fmt.h`, `utils/src/fmt.c` | `core/include/fmt.h`, `core/src/fmt.c` | Original typed C11/C++17 renderer, standalone native enum metadata (no CMeta runtime), original tests; CI pending |
 
+| `utils/parser/log_pattern_lexer.h`, `utils/parser/log_pattern_lexer.re` | `core/parser/log_pattern_lexer.h`, `.re`, `.c` | All eight original placeholder tokens and unknown/literal grammar; source and installed tests, CI pending |
+
 ## Still missing: full original utils functionality
 
 **Not restored, do not mark migration complete or release:**
 
-- Logging/format: `tlog.h`, `tlog_helper.h`, `tlog.c`, log-pattern lexer; sync/async sinks and flush
+- Logging/format: `tlog.h`, `tlog_helper.h`, `tlog.c`; the lexer now has a separate native owner. sync/async sinks and flush
   parity, fatal logging, bounded queue and source capture all remain pending.
 - Containers and algorithms: `ac_automaton`, `levenshtein_automaton`,
   `bucket_priority_queue_mpmc`,

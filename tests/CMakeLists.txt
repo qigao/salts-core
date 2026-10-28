@@ -429,3 +429,10 @@ add_executable(saltscore_fmt_smoke test_fmt_smoke.c)
 target_compile_features(saltscore_fmt_smoke PRIVATE c_std_11)
 target_link_libraries(saltscore_fmt_smoke PRIVATE Salts::Core)
 add_test(NAME saltscore.original_fmt_smoke COMMAND saltscore_fmt_smoke)
+
+# Original log pattern lexer tokens, C11 parser/format ownership.
+add_executable(saltscore_log_pattern_lexer_test test_log_pattern_lexer.c)
+target_compile_features(saltscore_log_pattern_lexer_test PRIVATE c_std_11)
+target_link_libraries(saltscore_log_pattern_lexer_test PRIVATE Salts::Core)
+add_test(NAME saltscore.original_log_pattern_lexer
+  COMMAND saltscore_log_pattern_lexer_test)
