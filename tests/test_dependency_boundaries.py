@@ -51,6 +51,9 @@ class DependencyGateTest(unittest.TestCase):
             "foreach(_forbidden IN ITEMS\n"
             "  Salts::TLS Salts::TLSCipherBIO Salts::CryptoProvider\n"
             "  Crypto::TLS Crypto::TLSCipherBIO Crypto::Provider)\n"
+            '  if(TARGET "${_forbidden}")\n'
+            '    message(FATAL_ERROR "Second static Crypto owner is forbidden")\n'
+            "  endif()\n"
             "endforeach()\n"
         )
         with tempfile.TemporaryDirectory() as directory:
@@ -72,11 +75,15 @@ class DependencyGateTest(unittest.TestCase):
             (root / "extra.cmake").write_text(guard, encoding="utf-8")
             self.assertEqual(len(module.check_repository(root)), 2)
 
-            # A renamed guard cannot hide dependencies.
+            # A renamed or non-fatal guard cannot hide dependencies.
             (root / "extra.cmake").unlink()
             guard_file.write_text(
                 guard.replace("foreach(_forbidden IN ITEMS",
                               "set(_forbidden"), encoding="utf-8")
+            self.assertEqual(len(module.check_repository(root)), 2)
+            guard_file.write_text(
+                guard.replace("message(FATAL_ERROR", "message(STATUS"),
+                encoding="utf-8")
             self.assertEqual(len(module.check_repository(root)), 2)
 
     def test_canonical_asn1_allowed_but_legacy_targets_rejected(self):
