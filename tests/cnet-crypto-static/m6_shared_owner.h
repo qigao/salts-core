@@ -37,6 +37,16 @@ CNET_M6_API int cnet_m6_shared_snapshot(const void **out_owner, uint32_t *out_le
 CNET_M6_API int cnet_m6_shared_release(cnet_m6_lease **lease);
 /* Caller must hold a lease until this completes; no concurrent release. */
 CNET_M6_API int cnet_m6_shared_native_smoke(cnet_m6_lease *lease);
+/* Real original CNet/NativeIO TLS 1.2 or 1.3 mTLS with the Provider
+ * borrowed from this sole DLL. The leased caller owns all file paths through
+ * the call; the module NEVER persists a raw TLS or callback pointer.
+ * expected_accept=0 demands exactly one handshake failure with no plaintext;
+ * expected_accept=1 requires verified transport, payload, close and drain.
+ */
+CNET_M6_API int cnet_m6_shared_native_mtls(
+    cnet_m6_lease *lease, uint32_t protocol,
+    const char *ca, const char *server_cert, const char *server_key,
+    const char *client_cert, const char *client_key, int expected_accept);
 
 #ifdef __cplusplus
 }
