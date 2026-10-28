@@ -1,5 +1,5 @@
 #include "tlog.h"
-#include "cmeta_fs.h"
+#include <salts/fs.h>
 #include "tinytest.h"
 #include <stdbool.h>
 #include <stdint.h>
