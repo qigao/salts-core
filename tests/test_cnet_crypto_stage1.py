@@ -123,6 +123,16 @@ class Stage1OwnerGate(unittest.TestCase):
             self.assertIn("CRYPTO_ALTERNATE_THIRD_PARTY_TLS_ENGINE",
                           gate.source_errors(root))
 
+    def test_unreviewed_second_compiled_tls_unit_forbidden(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            fixture(root)
+            p = root / "crypto/CMakeLists.txt"
+            p.write_text(p.read_text() +
+                         "target_sources(salts_crypto PRIVATE src/crypto_tls_openssl.c)\\n")
+            self.assertIn("CRYPTO_UNAUDITED_TLS_ENGINE_SOURCE",
+                          gate.source_errors(root))
+
     def test_missing_mtls_contract_cannot_pass(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
