@@ -29,6 +29,17 @@ M6_PLUGIN_EXPORT int m6_plugin_snapshot(const void **owner, uint32_t *claims,
 M6_PLUGIN_EXPORT int m6_plugin_native_smoke(cnet_m6_lease *lease) {
     return cnet_m6_shared_native_smoke(lease);
 }
+/* An independent plugin invokes its shared CNet Owner's real TLS test.
+ * This module never links or embeds Crypto, GmSSL or CNet source.
+ */
+M6_PLUGIN_EXPORT int m6_plugin_real_mtls(
+    cnet_m6_lease *lease, uint32_t protocol,
+    const char *ca, const char *server_cert, const char *server_key,
+    const char *client_cert, const char *client_key, int expected_accept) {
+    return cnet_m6_shared_native_mtls(
+        lease, protocol, ca, server_cert, server_key,
+        client_cert, client_key, expected_accept);
+}
 M6_PLUGIN_EXPORT mem_pool_t *m6_plugin_core_pool(void) {
     return mem_global();
 }
