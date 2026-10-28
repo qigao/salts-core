@@ -21,11 +21,38 @@ add_subdirectory(concurrency)
 add_subdirectory(coroutine)
 add_subdirectory(native-io)
 
+# ASN1 is an always-assembled, first-party, provider-neutral codec.
+# Never import a second ASN1 implementation or an external source repository.
+if(TARGET Salts::ASN1)
+  message(FATAL_ERROR "Duplicate ASN1 owner: never import and build twice")
+endif()
+add_subdirectory(asn1)
+
 option(SALTSCORE_BUILD_URI "Build standalone re2c-generated URI parser" OFF)
 if(SALTSCORE_BUILD_URI)
   add_subdirectory(uri)
 endif()
 option(SALTSCORE_BUILD_CNET "Build standalone CNet with required pinned providers" OFF)
+# Local Crypto is assembled by supplying its required *installed* pinned
+# provider prefix, not by a second BUILD_ option. No implicit download, stub,
+# TLS fallback or competing owner is allowed.
+# The existing direct-GmSSL CNet and local Crypto remain mutually exclusive
+# until the native provider cutover is qualified on real transport owners.
+if(DEFINED CRYPTO_GMSSL_ROOT)
+  if("${CRYPTO_GMSSL_ROOT}" STREQUAL "")
+    message(FATAL_ERROR "CRYPTO_GMSSL_ROOT was supplied but is empty")
+  endif()
+  if(SALTSCORE_BUILD_CNET)
+    message(FATAL_ERROR
+      "CNet direct GmSSL and local Salts::Crypto are two TLS engines; "
+      "qualify CNet Crypto cutover before assembling both.")
+  endif()
+  if(TARGET Salts::Crypto)
+    message(FATAL_ERROR "Duplicate Crypto owner: use exactly one static archive")
+  endif()
+  add_subdirectory(crypto)
+endif()
+
 option(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST
   "Qualify test-only original CNet Owner with sole static Salts::Crypto" OFF)
 if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST AND NOT BUILD_TESTING)

@@ -13,6 +13,9 @@ import sys
 CRYPTO_SYMBOLS = (
     "sm3_init", "sm3_update", "sm3_finish",
     "crypto_tls_session_handshake",
+    "crypto_tls_auth_abi_version",
+    "crypto_tls_session_create_auth_v1_3",
+    "crypto_tls_session_client_authenticated_v1_3",
     "crypto_tls_session_export_v1_2",
     "crypto_tls_cipher_bio_create",
     "salts_crypto_sha256", "salts_crypto_ed448_sign",
@@ -89,7 +92,8 @@ def inspect(prefix: Path, asn1_prefix: Path | None = None) -> dict:
         _check_archive_inventory(asn1_prefix, [asn1_archive])
     crypto_inc = prefix / "include" / "crypto"
     asn1_inc = asn1_prefix / "include" / "salts"
-    for name in ("status.h", "sha256.h", "ed448.h", "asn1_crypto.h"):
+    for name in ("status.h", "sha256.h", "ed448.h", "asn1_crypto.h",
+                 "tls_auth.h"):
         if not (crypto_inc / name).is_file():
             raise ValueError("missing canonical Crypto header: " + name)
     for name in ("asn1.h", "asn1_value.h"):

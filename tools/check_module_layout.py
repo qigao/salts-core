@@ -78,6 +78,35 @@ for module in sorted(root_code_modules):
     if f"add_subdirectory({module})" not in source:
         raise SystemExit(f"root does not assemble source module: {module}")
 
+# ASN1 and Crypto now belong to this repository's native module graph.
+# They MUST have local CMake and explicit root assembly; no external-owner
+# exemption and no alternate TLS target is accepted.
+for module, target in (("asn1", "Salts::ASN1"), ("crypto", "Salts::Crypto")):
+    local = ROOT / module / "CMakeLists.txt"
+    if not local.is_file() or f"add_subdirectory({module})" not in source:
+        raise SystemExit(f"missing native first-party module assembly: {module}")
+    cmake = local.read_text(encoding="utf-8")
+    if f"add_library({target} ALIAS " not in cmake:
+        raise SystemExit(f"missing native first-party target: {target}")
+# ASN1 is a root default; Crypto requires an explicit pinned installed
+# provider path (not a new boolean switch). Refuse stale build flags.
+if not re.search(r"(?m)^add_subdirectory\(asn1\)\s*$", source):
+    raise SystemExit("first-party ASN1 must always be assembled")
+crypto_segment = source.split("if(DEFINED CRYPTO_GMSSL_ROOT)", 1)
+if len(crypto_segment) != 2 or not (
+    "if(SALTSCORE_BUILD_CNET)" in crypto_segment[1].split("add_subdirectory(crypto)", 1)[0]
+    and "add_subdirectory(crypto)" in crypto_segment[1]
+    and "if(TARGET Salts::Crypto)" in crypto_segment[1].split("add_subdirectory(crypto)", 1)[0]
+):
+    raise SystemExit("local Crypto must require pinned provider and reject duplicate CNet TLS")
+for suffix in ("ASN1", "CRYPTO"):
+    retired = "SALTSCORE_BUILD_" + suffix
+    for path in (ROOT / "CMakeLists.txt",
+                 ROOT / ".github/workflows/first-party-asn1.yml",
+                 ROOT / "docs/crypto-repository-retirement.md"):
+        if retired in path.read_text(encoding="utf-8"):
+            raise SystemExit(f"retired build switch remains in {path}: {retired}")
+
 for module in MODULES:
     # Only package assembly belongs to the root; no module binary is made
     # from source files in the package-wide build description.

@@ -1,0 +1,70 @@
+name: Native ASN1 source owner (no external crypto repository)
+on:
+  push:
+    paths:
+      - "CMakeLists.txt"
+      - "asn1/**"
+      - "crypto/**"
+      - "tools/check_module_layout.py"
+      - "docs/crypto-repository-retirement.md"
+      - ".github/workflows/first-party-asn1.yml"
+  pull_request:
+    paths:
+      - "CMakeLists.txt"
+      - "asn1/**"
+      - "crypto/**"
+      - "tools/check_module_layout.py"
+      - "docs/crypto-repository-retirement.md"
+      - ".github/workflows/first-party-asn1.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  native-asn1:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    name: First-party ASN1 / installed C11+C++17 (${{ matrix.os }})
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify every root source module owns a CMake target
+        shell: bash
+        run: python3 tools/check_module_layout.py
+      - name: Preserve every qigao/crypto PR43 source and negative regression
+        shell: bash
+        run: |
+          python3 tools/check_crypto_module_ownership.py
+          python3 tools/check_crypto_pr43_handoff.py
+          python3 -m unittest discover -s tests -p 'test_crypto_pr43_handoff.py' -v
+      - name: Compile SaltsCore local ASN1 without an external Crypto SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="$RUNNER_TEMP/saltscore-native-asn1"
+          if command -v cygpath >/dev/null; then
+            prefix="$(cygpath -m "$prefix")"
+          fi
+          cmake -S . -B build-asn1 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF \
+            -DSALTSCORE_BUILD_CNET=OFF \
+            "-DCMAKE_INSTALL_PREFIX=$prefix"
+          cmake --build build-asn1 --config Release --parallel 3
+          cmake --install build-asn1 --config Release
+          cmake -S asn1/tests/installed -B build-asn1-consumer \
+            "-DCMAKE_PREFIX_PATH=$prefix"
+          cmake --build build-asn1-consumer --config Release --parallel 3
+          ctest --test-dir build-asn1-consumer -C Release \
+            --output-on-failure --no-tests=error
+      - name: Run standalone ASN1 C11 and C++17 module tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S asn1 -B build-asn1-native \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build build-asn1-native --config Release --parallel 3
+          ctest --test-dir build-asn1-native -C Release \
+            --output-on-failure --no-tests=error

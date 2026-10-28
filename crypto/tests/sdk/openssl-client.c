@@ -1,10 +1,12 @@
-/* Independent OpenSSL 3 peer test of the *installed* public Crypto C11 API.
- * There is no GmSSL header, GmSSL static link, or OpenSSL library link.
+/* Native C11 test consumer of installed Salts::Crypto static TLS.
+ * The Python stdlib ssl module supplies an external TLS server.
+ * No OpenSSL C API, GmSSL header or separate TLS implementation is linked.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <crypto/tls.h>
 #include <crypto/tls_ext.h>
 #include <crypto/tls_peer.h>
+#include <crypto/tls_auth.h>
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -116,11 +118,25 @@ static int save_test_key(const char *path, const uint8_t secret[32])
     return rc;
 }
 
+static void trace_python_mtls_phase(const char *stage, int active)
+{
+#ifdef CRYPTO_TLS_PYTHON_MTLS_TRACE
+    if (active) {
+        fprintf(stderr, "CRYPTO_TEST_PYTHON_MTLS_PHASE=%s\n", stage);
+        fflush(stderr);
+    }
+#else
+    (void)stage;
+    (void)active;
+#endif
+}
+
 int main(int argc,char **argv)
 {
     crypto_tls_provider *provider=NULL;
     crypto_tls_session *session=NULL;
     crypto_tls_session_options options;
+    crypto_tls_auth_options_v1_3 auth;
     crypto_tls_io io;
     static const char *alpn_names[] = {"http/1.1", "h2"};
     crypto_tls_session_info_v1_1 info;
@@ -135,12 +151,24 @@ int main(int argc,char **argv)
     crypto_tls_result status=CRYPTO_TLS_INVALID_ARGUMENT;
     transport t={-1,0,0};
     int port,protocol,want_success,success=0,step,rc=1;
+    int client_identity;
+    int python_mtls;
+    int receive_phase_logged = 0;
     int64_t deadline;
     static const uint8_t request[]="GET / HTTP/1.0\r\nHost: localhost\r\n\r\n";
     uint8_t response[8192];
     size_t total=0,sent=0;
     int sending=1;
-    if(argc!=8 && argc!=9 && argc!=10){fprintf(stderr,"usage: sdk-openssl-client 12|13 port ca-file hostname good|reject sha256-hex leaf-der [private-exporter-no-context [private-exporter-empty-context]]\n");return 2;}
+    if(argc!=8 && argc!=9 && argc!=10 && argc!=11 && argc!=12){
+        fprintf(stderr,"usage: sdk-tls-client 12|13 port ca-file hostname good|reject sha256-hex leaf-der [--mtls [client-cert client-key]]\n");
+        return 2;
+    }
+    python_mtls = (argc == 9 || argc == 11)
+        && strcmp(argv[8], "--mtls") == 0;
+    if(argc == 11 && !python_mtls) return 2;
+    client_identity = argc == 12 || (python_mtls && argc == 11);
+    if(client_identity && (!(argc == 11 ? argv[9][0] : argv[10][0])
+        || !(argc == 11 ? argv[10][0] : argv[11][0])))return 2;
     if(strcmp(argv[1],"12")==0)protocol=CRYPTO_TLS_1_2;
     else if(strcmp(argv[1],"13")==0)protocol=CRYPTO_TLS_1_3;
     else return 2;
@@ -150,7 +178,7 @@ int main(int argc,char **argv)
        ||(!want_success&&strcmp(argv[5],"reject")!=0))return 2;
     signal(SIGPIPE,SIG_IGN);
     t.fd=connected_socket(port);
-    if(t.fd<0){perror("OpenSSL peer connect");return 3;}
+    if(t.fd<0){perror("Python TLS peer connect");return 3;}
 
     memset(&options,0,sizeof(options));
     options.struct_size=sizeof(options);
@@ -164,11 +192,22 @@ int main(int argc,char **argv)
     io.user=&t;
     io.write=socket_write;
     io.read=socket_read;
+    memset(&auth,0,sizeof(auth));
+    auth.struct_size=sizeof(auth);
+    if(client_identity){
+        auth.client_auth=CRYPTO_TLS_CLIENT_AUTH_NONE;
+        auth.client_certificate_file=argv[python_mtls ? 9 : 10];
+        auth.client_private_key_file=argv[python_mtls ? 10 : 11];
+    }
     if(crypto_tls_provider_create(CRYPTO_TLS_ABI_VERSION,&provider)!=CRYPTO_TLS_OK
-       || crypto_tls_session_create(provider,&options,&io,&session)!=CRYPTO_TLS_OK
+       || (client_identity
+           ? crypto_tls_session_create_auth_v1_3(
+               provider,&options,&auth,&io,&session)
+           : crypto_tls_session_create(provider,&options,&io,&session))!=CRYPTO_TLS_OK
        || crypto_tls_extension_abi_version()!=CRYPTO_TLS_EXTENSION_ABI_VERSION
        || crypto_tls_session_set_alpn_v1_1(session,alpn_names,2)!=CRYPTO_TLS_OK)
         goto done;
+    trace_python_mtls_phase("created", python_mtls);
     deadline=monotonic_ms()+MAX_RUN_MS;
     for(step=0;step<20000 && monotonic_ms()<deadline;step++){
         status=crypto_tls_session_handshake(session);
@@ -186,9 +225,25 @@ int main(int argc,char **argv)
         goto done;
     }
     if(!success){
-        fprintf(stderr,"valid OpenSSL peer handshake failed: %d\n",(int)status);
+        /* One rejected authenticated association is terminal. Calling
+         * handshake a second time must return the IDENTICAL error without
+         * any further borrowed socket callback or a covert retry.
+         */
+        if (python_mtls && client_identity &&
+            (status == CRYPTO_TLS_BACKEND_ERROR || status == CRYPTO_TLS_CLOSED)) {
+            unsigned short before_writes = t.writes, before_reads = t.reads;
+            if (crypto_tls_session_handshake(session) != status ||
+                before_writes != t.writes || before_reads != t.reads) {
+                fprintf(stderr,
+                    "CRYPTO_TEST_PYTHON_MTLS_TERMINAL=0\n");
+                goto done;
+            }
+            fprintf(stderr, "CRYPTO_TEST_PYTHON_MTLS_TERMINAL=1\n");
+        }
+        fprintf(stderr,"valid Python TLS peer handshake failed: %d\n",(int)status);
         goto done;
     }
+    trace_python_mtls_phase("handshake-complete", python_mtls);
 
     memset(&info,0,sizeof(info));
     info.struct_size=sizeof(info);
@@ -196,10 +251,11 @@ int main(int argc,char **argv)
         || info.protocol!=(uint32_t)protocol || info.cipher_suite==0u
         || !info.cipher_name[0] || info.alpn_size!=2u
         || strcmp(info.alpn,"h2")!=0) {
-        fprintf(stderr,"OpenSSL ALPN/protocol inspection rejected or missing\n");
+        fprintf(stderr,"TLS ALPN/protocol inspection rejected or missing\n");
         goto done;
     }
 
+    trace_python_mtls_phase("server-info", python_mtls);
     if (crypto_tls_peer_abi_version() != CRYPTO_TLS_PEER_ABI_VERSION
         || crypto_tls_session_peer_sha256_v1_2(session,sha) != CRYPTO_TLS_OK)
         goto done;
@@ -229,23 +285,26 @@ int main(int argc,char **argv)
     if (!der_len || der_len > chain_len ||
         memcmp(chain,der,der_len) != 0)
         goto done;
-    if (crypto_tls_session_export_v1_2(
-            session, "EXPORTER-Channel-Binding", NULL, 0u, 1u,
-            keymat, sizeof(keymat)) != CRYPTO_TLS_OK)
-        goto done;
-    for (j = 0u; j < sizeof(keymat); ++j)
-        if (keymat[j] != 0u) break;
-    if (j == sizeof(keymat)) goto done;
-
-    /* The optional reference test derives the NO-CONTEXT form used by
-     * OpenSSL SSL_export_keying_material(...,use_context=0). Never confuse
-     * it with the TLS 1.2 CNet context-present-empty channel binding.
+    trace_python_mtls_phase("peer-verified", python_mtls);
+    /* Python stdlib ssl has no keying-material exporter interface.
+     * Do not assert exporter parity or publish derived bytes in this
+     * mTLS test. A different qualified gate tests exporter key parity.
      */
-    if(argc >= 9 && crypto_tls_session_export_v1_2(
-        session, "EXPORTER-Channel-Binding", NULL, 0u, 0u,
-        reference_secret, sizeof(reference_secret)) != CRYPTO_TLS_OK)
-        goto done;
+    if (!python_mtls) {
+        if (crypto_tls_session_export_v1_2(
+                session, "EXPORTER-Channel-Binding", NULL, 0u, 1u,
+                keymat, sizeof(keymat)) != CRYPTO_TLS_OK)
+            goto done;
+        for (j = 0u; j < sizeof(keymat); ++j)
+            if (keymat[j] != 0u) break;
+        if (j == sizeof(keymat)) goto done;
+        if(argc >= 9 && crypto_tls_session_export_v1_2(
+            session, "EXPORTER-Channel-Binding", NULL, 0u, 0u,
+            reference_secret, sizeof(reference_secret)) != CRYPTO_TLS_OK)
+            goto done;
+    }
 
+    trace_python_mtls_phase("application-data", python_mtls);
     deadline=monotonic_ms()+MAX_RUN_MS;
     while(monotonic_ms()<deadline){
         if(sending){
@@ -253,17 +312,25 @@ int main(int argc,char **argv)
             if(status==CRYPTO_TLS_OK){
                 if(sent!=sizeof(request)-1)goto done;
                 sending=0;
+                trace_python_mtls_phase("request-sent", python_mtls);
             }else if(status!=CRYPTO_TLS_AGAIN)goto done;
         }
         if(!sending && total<sizeof(response)-1){
             size_t n=0;
+            if (!receive_phase_logged) {
+                trace_python_mtls_phase("receive-start", python_mtls);
+                receive_phase_logged = 1;
+            }
             status=crypto_tls_session_receive(session,
                 response+total,sizeof(response)-1-total,&n);
             if(status==CRYPTO_TLS_OK){
                 if(!n||n>sizeof(response)-1-total)goto done;
                 total+=n;
                 response[total]=0;
-                if(strstr((char *)response,"HTTP/1.0 200")){rc=0;break;}
+                if(strstr((char *)response,"HTTP/1.0 200")){
+                    trace_python_mtls_phase("http-complete", python_mtls);
+                    rc=0;break;
+                }
             }else if(status!=CRYPTO_TLS_AGAIN)goto done;
         }
         short_pause();
@@ -272,10 +339,10 @@ done:
     /* Publish test secret only if the entire authenticated TLS/HTTP check
      * succeeded. Never print or upload any exporter-derived key material.
      */
-    if (rc == 0 && argc >= 9 &&
+    if (rc == 0 && !python_mtls && argc >= 9 &&
         save_test_key(argv[8], reference_secret) != 0)
         rc = 1;
-    if (rc == 0 && argc == 10 &&
+    if (rc == 0 && !python_mtls && argc == 10 &&
         save_test_key(argv[9], keymat) != 0) {
         (void)unlink(argv[8]);
         rc = 1;
@@ -284,11 +351,14 @@ done:
     if(leaf) (void)fclose(leaf);
     /* Never print or upload exporter keying material or session secrets. */
     memset(keymat,0,sizeof(keymat));
+    trace_python_mtls_phase("destroy-start", python_mtls);
     if(session && crypto_tls_session_destroy(&session)!=CRYPTO_TLS_OK)rc=1;
+    trace_python_mtls_phase("session-destroyed", python_mtls);
     if(provider && crypto_tls_provider_destroy(&provider)!=CRYPTO_TLS_OK)rc=1;
+    trace_python_mtls_phase("provider-destroyed", python_mtls);
     if(t.fd>=0)close(t.fd);
-    if(rc)fprintf(stderr,"facade OpenSSL %d %s failed handshake=%d status=%d records=%zu writes=%u reads=%u\n",
+    if(rc)fprintf(stderr,"facade Python TLS %d %s failed handshake=%d status=%d records=%zu writes=%u reads=%u\n",
         protocol,argv[5],success,(int)status,total,t.writes,t.reads);
-    else printf("Crypto installed C11 facade/OpenSSL 3 %d %s: PASS\n",protocol,argv[5]);
+    else printf("Crypto installed C11 facade/Python TLS %d %s: PASS\n",protocol,argv[5]);
     return rc;
 }
