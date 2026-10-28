@@ -90,6 +90,8 @@ native invalid-range contract rather than reintroducing old silent truncation.
 
 | `utils/include/cmeta_bytes.h`, `utils/src/cmeta_bytes.c` | `core/include/cmeta_bytes.h`, `core/src/cmeta_bytes.c` | Original hard-bounded owning byte accumulator, nine functions, original eight-case TinyTest and installed C11/C++17 tests, CI pending |
 
+| `utils/include/cmeta_simd_scan.h`, `utils/src/cmeta_simd_scan.c` | `core/include/cmeta_simd_scan.h`, `core/src/cmeta_simd_scan.c` | Seven original binary-safe bounded scan functions, source behavior tests and installed SDK; C11 scalar backend, SIMD throughput parity pending |
+
 ## Still missing: full original utils functionality
 
 **Not fully accepted, do not mark migration complete or release:**
@@ -100,7 +102,7 @@ native invalid-range contract rather than reintroducing old silent truncation.
   `bucket_priority_queue_mpmc`,
   `re`, `enum_utils`.
 - mmap/UUID/zstd/SIMD/error: original `cmeta_mmap`,
-  `cmeta_zstd`, `cmeta_simd_scan`, `cmeta_error`.
+  `cmeta_zstd`, `cmeta_error`.
 - Requires a per-symbol difference audit, **not name matching**:
   `base64_utils`, `cmeta_buffer`, `cmeta_bytes`, `cmeta_fs*`,
   `cmeta_process`, `cmeta_thread`, `platform`, crypto ownership,

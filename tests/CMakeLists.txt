@@ -491,3 +491,10 @@ if(TARGET Salts::TinyTest)
   add_test(NAME saltscore.original_bytes_accumulator_contract
     COMMAND saltscore_original_bytes_accumulator)
 endif()
+
+# Original seven-function bounded byte scan contract. This is the canonical
+# portable C11 implementation; SIMD throughput parity is tracked separately.
+add_executable(saltscore_simd_scan_contract test_simd_scan_contract.c)
+target_compile_features(saltscore_simd_scan_contract PRIVATE c_std_11)
+target_link_libraries(saltscore_simd_scan_contract PRIVATE Salts::Core)
+add_test(NAME saltscore.original_simd_scan_contract COMMAND saltscore_simd_scan_contract)

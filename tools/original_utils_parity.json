@@ -327,6 +327,21 @@
         "cmeta_bytes_available",
         "cmeta_bytes_capacity"
       ]
+    },
+    {
+      "module": "simd_scan",
+      "owner": "core",
+      "header": "core/include/cmeta_simd_scan.h",
+      "source": "core/src/cmeta_simd_scan.c",
+      "functions": [
+        "cmeta_scan_char",
+        "cmeta_scan_to_char",
+        "cmeta_scan_to_any2",
+        "cmeta_scan_to_any3",
+        "cmeta_scan_skip_sp_tab",
+        "cmeta_scan_skip_sp_tab_cr_lf",
+        "cmeta_scan_mem"
+      ]
     }
   ],
   "stage_a_support_files": [
@@ -356,7 +371,8 @@
     "tests/test_tlog_header_collision.c",
     "tests/test_cmeta_uuid.c",
     "tests/test_cmeta_uuid_cpp.cpp",
-    "tests/test_cmeta_bytes.c"
+    "tests/test_cmeta_bytes.c",
+    "tests/test_simd_scan_contract.c"
   ],
   "pending_groups": {
     "logging_formatter": [],
@@ -372,7 +388,6 @@
     "data_io": [
       "cmeta_mmap",
       "cmeta_zstd",
-      "cmeta_simd_scan",
       "cmeta_error"
     ],
     "pending_differential": [

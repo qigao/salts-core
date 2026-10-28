@@ -12,8 +12,8 @@
     "head": "a25bb35b33fb3cc6edeff5340f3b2075575b31c1",
     "source_manifest": "tools/original_utils_parity.json",
     "status_counts": {
-      "unmapped_or_unverified_implementation": 110,
-      "stage_a_declared_impl_present_unverified_behavior": 211,
+      "unmapped_or_unverified_implementation": 103,
+      "stage_a_declared_impl_present_unverified_behavior": 218,
       "crypto_repo_function_parity_required": 37,
       "fs_rename_behavior_parity_required": 56,
       "mdns_implementation_owner_required": 7,
@@ -1073,31 +1073,31 @@
       "functions": [
         {
           "name": "cmeta_scan_char",
-          "review_status": "unmapped_or_unverified_implementation"
+          "review_status": "stage_a_declared_impl_present_unverified_behavior"
         },
         {
           "name": "cmeta_scan_to_char",
-          "review_status": "unmapped_or_unverified_implementation"
+          "review_status": "stage_a_declared_impl_present_unverified_behavior"
         },
         {
           "name": "cmeta_scan_to_any2",
-          "review_status": "unmapped_or_unverified_implementation"
+          "review_status": "stage_a_declared_impl_present_unverified_behavior"
         },
         {
           "name": "cmeta_scan_to_any3",
-          "review_status": "unmapped_or_unverified_implementation"
+          "review_status": "stage_a_declared_impl_present_unverified_behavior"
         },
         {
           "name": "cmeta_scan_skip_sp_tab",
-          "review_status": "unmapped_or_unverified_implementation"
+          "review_status": "stage_a_declared_impl_present_unverified_behavior"
         },
         {
           "name": "cmeta_scan_skip_sp_tab_cr_lf",
-          "review_status": "unmapped_or_unverified_implementation"
+          "review_status": "stage_a_declared_impl_present_unverified_behavior"
         },
         {
           "name": "cmeta_scan_mem",
-          "review_status": "unmapped_or_unverified_implementation"
+          "review_status": "stage_a_declared_impl_present_unverified_behavior"
         }
       ],
       "declarations": 7,
