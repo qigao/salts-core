@@ -5,6 +5,7 @@
  */
 #include "cnet_tls.h"
 #include <crypto/sha256.h>
+#include <crypto/sha224.h>
 #include <salts/error_codes.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -120,6 +121,33 @@ int cnet_crypto_rfc5929_regression(void) {
   REQUIRE(cnet_tls_server_end_point_binding_from_certificate(
       modified, rsa_size, out, sizeof(out), &length) == SALTS_ENOTSUP);
   REQUIRE(length == 0u && out[0] == 0u);
+
+  /* Two offline RSA SHA224 AlgorithmIdentifier OIDs are synthetically
+   * rewritten from the real 856-byte RSA cert. This altered signature
+   * is intentionally NOT authenticated and must never be a TLS peer.
+   * Python hashlib.sha224 on the full modified DER is the independent oracle.
+   */
+  {
+    static const uint8_t expected_sha224[28] = {
+      0xd4u,0x94u,0x45u,0xc0u,0xc5u,0x7du,0xaeu,0x85u,
+      0x16u,0xc9u,0x4eu,0xe5u,0xf8u,0x32u,0x7au,0xc2u,
+      0x02u,0x52u,0xf8u,0xbeu,0xb0u,0x19u,0xbcu,0x54u,
+      0x2bu,0x24u,0x36u,0xc8u
+    };
+    memcpy(modified,rsa,rsa_size);
+    REQUIRE(rewrite_rsa_oid(modified,rsa_size,0x0eu));
+    memset(out,0xa5,sizeof(out)); length=0u;
+    REQUIRE(cnet_tls_server_end_point_binding_from_certificate(
+        modified,rsa_size,out,sizeof(out),&length)==SALTS_OK);
+    REQUIRE(length==sizeof(expected_sha224));
+    REQUIRE(memcmp(out,expected_sha224,sizeof(expected_sha224))==0);
+    memset(out,0xa5,sizeof(out)); length=0u;
+    REQUIRE(cnet_tls_server_end_point_binding_from_certificate(
+        modified,rsa_size,out,8u,&length)==SALTS_EMSGSIZE);
+    REQUIRE(length==sizeof(expected_sha224));
+    for(size_t i=0u;i<8u;++i) REQUIRE(out[i]==0u);
+    REQUIRE(out[8]==0xa5u);
+  }
 
   /* RFC5929 section 4.1 requires SHA256 for SHA1-signed certificates. */
   memcpy(modified, rsa, rsa_size);
