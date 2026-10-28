@@ -76,7 +76,7 @@ if(SALTSCORE_CNET_OWNER_SOURCE_TESTS)
 endif()
 option(SALTSCORE_BUILD_SCTP "Build standalone C11 SCTP Wire and Session" OFF)
 if(SALTSCORE_BUILD_SCTP)
-  add_subdirectory(cnet/sctp)
+  add_subdirectory(sctp)
 endif()
 
 # Package config/version and export assembly are global concerns.

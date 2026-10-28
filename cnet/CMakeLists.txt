@@ -124,7 +124,7 @@ target_include_directories(saltscore_cnet
   PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/wsparser"
-    "${CMAKE_CURRENT_SOURCE_DIR}/native-io/src"
+    "${PROJECT_SOURCE_DIR}/native-io/src"
     "${PROJECT_SOURCE_DIR}/vendor/cnet/monocypher"
     "${PROJECT_SOURCE_DIR}/vendor/cnet/reed")
 target_link_libraries(saltscore_cnet
