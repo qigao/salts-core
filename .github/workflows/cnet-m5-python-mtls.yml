@@ -166,7 +166,10 @@ jobs:
             readelf -d "$host" > "$RUNNER_TEMP/cnet-m6-host-imports.txt"
           else
             otool -L "$owner" > "$RUNNER_TEMP/cnet-m6-owner-imports.txt"
-            otool -L "$host" > "$RUNNER_TEMP/cnet-m6-host-imports.txt"
+            # otool -L first prints the executable path as a heading.
+            # That is NOT a dependency and contains "saltscore_cnet_m6".
+            # Keep only actual linked dylib entries, without omitting any.
+            otool -L "$host" | sed '1d' > "$RUNNER_TEMP/cnet-m6-host-imports.txt"
           fi
           if grep -Eiq 'libgmssl|libsalts_crypto|libsaltscore_cnet[.](so|dylib)|libcrypto_provider|libcrypto_tls' \
             "$RUNNER_TEMP/cnet-m6-owner-imports.txt"; then
