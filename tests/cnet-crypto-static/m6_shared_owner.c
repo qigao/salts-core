@@ -34,9 +34,13 @@ static uint32_t owner_leases;
 static uint32_t owner_active_calls;
 static uint64_t owner_epoch;
 /* Test-only native admission barrier, never used by production CNet. */
-static atomic_uint m6_gate_armed = ATOMIC_VAR_INIT(0u);
-static atomic_uint m6_gate_open = ATOMIC_VAR_INIT(0u);
-static atomic_uint m6_gate_admitted = ATOMIC_VAR_INIT(0u);
+/* C11 static-storage atomics are zero-initialized by the runtime.
+ * Do not use MSVC's experimental ATOMIC_VAR_INIT macro here: its expansion
+ * is not a constant initializer (C2099) under /experimental:c11atomics.
+ */
+static atomic_uint m6_gate_armed;
+static atomic_uint m6_gate_open;
+static atomic_uint m6_gate_admitted;
 /* The TLS acceptance function is PRIVATE to the same shared candidate.
  * It is the original M5 two-client, real NativeIO test, but borrows this
  * one Provider instead of constructing and destroying a second Provider.
