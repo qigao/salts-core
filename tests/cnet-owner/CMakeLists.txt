@@ -72,3 +72,16 @@ endif()
 add_test(NAME saltscore.cnet_owner_original
   COMMAND saltscore_cnet_owner_original_test)
 set_tests_properties(saltscore.cnet_owner_original PROPERTIES TIMEOUT 180)
+
+# Issue #64 (Windows IOCP only): exactly the original named numeric
+# 127.0.0.1 DNS/RESOLVE -> NativeIO TCP connect -> OPEN case. TinyTest
+# --filter is an actual case selector, not a replacement/mocked resolver.
+# The Windows CI runs this independently 32 times and stops at FIRST RED.
+# Never retry a failing network connection inside CNet itself.
+if(WIN32)
+  add_test(NAME saltscore.cnet_owner_original_numeric_host
+    COMMAND saltscore_cnet_owner_original_test
+      --filter "owns the resolve to TCP connect state transition")
+  set_tests_properties(saltscore.cnet_owner_original_numeric_host
+    PROPERTIES TIMEOUT 15)
+endif()
