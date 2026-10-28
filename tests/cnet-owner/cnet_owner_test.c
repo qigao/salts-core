@@ -620,6 +620,140 @@ cleanup:
   check_equal(cnet_session_table_destroy(&sessions), SALTS_OK);
 }
 
+#if defined(_WIN32)
+/*
+ * Issue #64: deterministic real ConnectEx refusal. Keep an exclusive
+ * TCP port BOUND but NOT LISTENING while the Owner connects. Unlike
+ * closing a listener, this avoids releasing its ephemeral port to a
+ * different process between fixture creation and client admission.
+ *
+ * Both the direct sockaddr and numeric-host resolver paths must report
+ * one native connect refusal, retire the physical request and endpoint,
+ * and publish exactly one failed terminal. No retry/fallback/mock IOCP.
+ */
+static void cnet_owner_test_refused_connect_win32(bool via_resolver) {
+  cnet_session_table sessions = {0};
+  cnet_command_queue commands = {0};
+  cnet_event_queue events = {0};
+  cnet_owner owner = {0};
+  const cnet_command_queue_config command_config = {
+      4u, sizeof(cnet_owner_connect_payload)};
+  const cnet_event_queue_config event_config = {4u, 1u, 64u};
+  const cnet_owner_config config = {
+      .backend_kind = NATIVE_IO_BACKEND_IOCP,
+      .connection_capacity = 1u,
+      .request_capacity = 2u,
+      .completion_batch_capacity = 2u,
+      .receive_buffer_bytes = 64u,
+      .receive_buffer_count = 1u,
+      .write_capacity = 4u,
+      .max_write_bytes = 128u,
+      .sessions = &sessions,
+      .commands = &commands,
+      .events = &events};
+  cnet_owner_test_socket reserved = CNET_OWNER_TEST_INVALID_SOCKET;
+  struct sockaddr_in bound = {0};
+  int bound_length = (int)sizeof(bound);
+  int exclusive = 1;
+  int listening = -1;
+  int listening_length = (int)sizeof(listening);
+  cnet_session_handle session = {0};
+  cnet_owner_connect_payload payload = {0};
+  cnet_command command = {0};
+  cnet_event_view event = {0};
+  cnet_session_terminal terminal = {0};
+  native_io_backend_stats stats = {0};
+  native_io_coroutine_stats coroutines =
+      NATIVE_IO_COROUTINE_STATS_V1_INITIALIZER;
+  int published_status = SALTS_OK;
+
+  check_equal(cnet_session_table_init(&sessions, 1u), SALTS_OK);
+  check_equal(cnet_command_queue_init(&commands, &command_config), SALTS_OK);
+  check_equal(cnet_event_queue_init(&events, &event_config), SALTS_OK);
+  check_equal(cnet_owner_init(&owner, &config), SALTS_OK);
+  reserved = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  check_true(reserved != INVALID_SOCKET);
+  check_equal(setsockopt(reserved, SOL_SOCKET, SO_EXCLUSIVEADDRUSE,
+                         (const char *)&exclusive, (int)sizeof(exclusive)), 0);
+  bound.sin_family = AF_INET;
+  bound.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  check_equal(bind(reserved, (const struct sockaddr *)&bound,
+                   (int)sizeof(bound)), 0);
+  check_equal(getsockname(reserved, (struct sockaddr *)&bound,
+                          &bound_length), 0);
+  check_equal(bound.sin_family, AF_INET);
+  check_equal(bound.sin_addr.s_addr, htonl(INADDR_LOOPBACK));
+  check_true(ntohs(bound.sin_port) != 0u);
+  check_equal(getsockopt(reserved, SOL_SOCKET, SO_ACCEPTCONN,
+                         (char *)&listening, &listening_length), 0);
+  check_equal(listening, 0);
+
+  check_equal(cnet_session_table_reserve(&sessions, &session), SALTS_OK);
+  payload.scheme = CNET_URI_TCP;
+  if (via_resolver) {
+    memcpy(payload.host, "127.0.0.1", sizeof("127.0.0.1"));
+    payload.port = ntohs(bound.sin_port);
+  } else {
+    memcpy(payload.address, &bound, sizeof(bound));
+    payload.address_length = sizeof(bound);
+  }
+  command = (cnet_command){
+      CNET_COMMAND_CONNECT, session, &payload, sizeof(payload), 0u};
+  check_equal(cnet_command_queue_publish(&commands, &command), SALTS_OK);
+  check_equal(cnet_owner_test_drive_to_state(
+                  &owner, &sessions, session, CNET_SESSION_TERMINAL), SALTS_OK);
+  check_equal(cnet_event_queue_take(&events, &event), SALTS_OK);
+  check_equal(event.kind, CNET_EVENT_STATE);
+  check_equal(event.state, CNET_EVENT_STATE_FAILED);
+  check_equal(event.stage, CNET_SESSION_STAGE_CONNECT);
+  published_status = event.status;
+  /* Win32 returns ERROR_CONNECTION_REFUSED (1225) from ConnectEx
+   * completions, or WSAECONNREFUSED (10061) from a socket API. */
+  check_true(published_status == -1225 ||
+             published_status == -(int)WSAECONNREFUSED);
+  check_equal(cnet_event_queue_release(&events, &event), SALTS_OK);
+  check_equal(cnet_event_queue_take(&events, &event), SALTS_ETIMEDOUT);
+  check_equal(cnet_session_table_take_terminal(&sessions, session, &terminal),
+              SALTS_OK);
+  check_equal(terminal.kind, CNET_SESSION_TERMINAL_FAILED);
+  check_equal(terminal.stage, CNET_SESSION_STAGE_CONNECT);
+  check_equal(terminal.status, published_status);
+  check_equal(cnet_session_table_take_terminal(&sessions, session, &terminal),
+              SALTS_EALREADY);
+  check_true(cnet_owner_test_backend_stats(&owner, &stats, &coroutines));
+  check_equal(stats.active_requests, 0u);
+  check_equal(stats.endpoint_count, 0u);
+  check_equal(stats.submitted, stats.completed);
+  check_equal(stats.cancelled, UINT64_C(0));
+  check_equal(stats.native_submit_errors + stats.failed, UINT64_C(1));
+  check_equal(coroutines.active, 0u);
+  check_equal(coroutines.retained_frames, 0u);
+  fprintf(stderr,
+          "CNET_ISSUE64_CONTROLLED_REFUSAL path=%s port=%u status=%d"
+          " submitted=%llu completed=%llu native_submit_errors=%llu"
+          " failed=%llu active_requests=%zu endpoints=%zu\n",
+          via_resolver ? "numeric-host" : "direct-sockaddr",
+          (unsigned)ntohs(bound.sin_port), published_status,
+          (unsigned long long)stats.submitted,
+          (unsigned long long)stats.completed,
+          (unsigned long long)stats.native_submit_errors,
+          (unsigned long long)stats.failed,
+          stats.active_requests, stats.endpoint_count);
+
+  check_equal(cnet_session_table_recycle(&sessions, session), SALTS_OK);
+  check_equal(cnet_owner_release_session(&owner, session), SALTS_OK);
+  check_equal(cnet_owner_drive(&owner, 0u), SALTS_OK);
+  check_equal(cnet_command_queue_close(&commands), SALTS_OK);
+  check_equal(cnet_owner_close(&owner), SALTS_OK);
+  check_equal(cnet_owner_destroy(&owner), SALTS_OK);
+  check_equal(cnet_event_queue_close(&events), SALTS_OK);
+  check_equal(cnet_event_queue_destroy(&events), SALTS_OK);
+  check_equal(cnet_command_queue_destroy(&commands), SALTS_OK);
+  check_equal(cnet_session_table_destroy(&sessions), SALTS_OK);
+  cnet_owner_test_close_socket(reserved);
+}
+#endif
+
 #if defined(CNET_INTERNAL_TESTING)
 static void cnet_owner_test_expired_partial_send(native_io_backend_kind backend_kind) {
   enum { PAYLOAD_BYTES = 8, WRITE_TIMEOUT_MS = 10 };
@@ -1820,6 +1954,15 @@ spec("CNet owner shard") {
       cnet_owner_test_tcp(backends[index], true, CNET_OWNER_TEST_NO_TIMEOUT);
     check_equal(cnet_module_shutdown(), SALTS_OK);
   }
+
+#if defined(_WIN32)
+  it("rejects bound non-listening IPv4 ports through real IOCP and retires every request") {
+    check_equal(cnet_module_init(), SALTS_OK);
+    cnet_owner_test_refused_connect_win32(false);
+    cnet_owner_test_refused_connect_win32(true);
+    check_equal(cnet_module_shutdown(), SALTS_OK);
+  }
+#endif
 
 #if defined(CNET_INTERNAL_TESTING) && defined(CNET_INTERNAL_PROFILING)
   it("resubmits retained vector partial writes through the same logical request") {
