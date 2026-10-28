@@ -49,6 +49,20 @@ class CryptoRetirementSourceTests(unittest.TestCase):
         self.assertTrue(any("Missing migrated original file" in msg
                             for msg in code.check(ROOT, data)))
 
+    def test_active_cmake_contains_original_sources_and_new_profile(self):
+        active = (ROOT / "crypto/CMakeLists.txt").read_text(encoding="utf-8")
+        self.assertEqual(code.check_live_cmake(active), [])
+        for name in code.STAGE1_LIVE_CMAKE_REQUIRED:
+            self.assertTrue(code.check_live_cmake(active.replace(name, "", 1)),
+                            "must reject removed production owner: " + name)
+
+    def test_second_engine_is_never_hidden_by_historical_donor(self):
+        active = (ROOT / "crypto/CMakeLists.txt").read_text(encoding="utf-8")
+        self.assertTrue(code.check_live_cmake(
+            active + "\\ntarget_sources(salts_crypto PRIVATE src/crypto_tls_native.c)\\n"))
+        self.assertTrue(code.check_live_cmake(
+            active + "\\nadd_library(salts_crypto STATIC src/crypto_tls_native.c)\\n"))
+
     def test_missing_donor_asset_is_rejected(self):
         data = copy.deepcopy(self.source)
         data["files"].pop()
