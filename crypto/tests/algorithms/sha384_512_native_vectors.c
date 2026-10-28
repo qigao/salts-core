@@ -89,7 +89,8 @@ int main(int argc,char **argv) {
     static const char *million512=
         "e718483d0ce769644e2e42c7bc15b4638e1f98b13b2044285632a803afa973"
         "ebde0ff244877ea60a4cb0432ce577c31beb009c5c2c49aa2e4eadb217ad8cc09b";
-    uint8_t d384[48],d512[64],untouched[64],million[1000000];
+    uint8_t d384[48],d512[64],untouched[64];
+    static uint8_t million[1000000]; /* avoid Windows 1 MiB stack overflow */
     salts_crypto_sha384_ctx_t a={0};
     salts_crypto_sha512_ctx_t b={0};
     if (argc==3 && strcmp(argv[1],"--oracle")==0) {
