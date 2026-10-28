@@ -7,6 +7,7 @@
 #include "m6_shared_owner.h"
 #include <cmeta_buffer.h>
 #include <salts/thread.h>
+#include <salts/clock.h>
 #include <salts/error_codes.h>
 
 #include <stdint.h>
@@ -38,6 +39,7 @@ typedef int (*acquire_fn)(cnet_m6_lease **, const void **, uint64_t *);
 typedef int (*release_fn)(cnet_m6_lease **);
 typedef int (*snapshot_fn)(const void **, uint32_t *, uint32_t *, uint64_t *);
 typedef int (*smoke_fn)(cnet_m6_lease *);
+typedef int (*native_gate_fn)(uint32_t, uint32_t *);
 typedef int (*mtls_fn)(cnet_m6_lease *, uint32_t, const char *,
                        const char *, const char *, const char *,
                        const char *, int);
@@ -50,6 +52,7 @@ typedef struct m6_plugin {
     snapshot_fn snapshot;
     smoke_fn smoke;
     mtls_fn mtls;
+    native_gate_fn gate;
     pool_fn pool;
     thread_fn thread;
 } m6_plugin;
@@ -65,10 +68,11 @@ static int open_plugin(m6_plugin *p, const char *path)
     p->snapshot = (snapshot_fn)load_symbol(p->module, "m6_plugin_snapshot");
     p->smoke = (smoke_fn)load_symbol(p->module, "m6_plugin_native_smoke");
     p->mtls = (mtls_fn)load_symbol(p->module, "m6_plugin_real_mtls");
+    p->gate = (native_gate_fn)load_symbol(p->module, "m6_plugin_native_admission_gate");
     p->pool = (pool_fn)load_symbol(p->module, "m6_plugin_core_pool");
     p->thread = (thread_fn)load_symbol(p->module, "m6_plugin_thread_identity");
     if (!p->acquire || !p->release || !p->snapshot || !p->smoke ||
-        !p->mtls || !p->pool || !p->thread) {
+        !p->mtls || !p->gate || !p->pool || !p->thread) {
         close_library(p->module);
         memset(p, 0, sizeof(*p));
         return -3;
@@ -144,6 +148,9 @@ static int run_mtls_concurrent(int argc, char **argv)
     const void *owner_a = NULL, *owner_b = NULL, *owner_snap = NULL;
     uint64_t epoch_a = 0u, epoch_b = 0u, epoch_snap = 0u;
     uint32_t claims = UINT32_MAX, sessions = UINT32_MAX;
+    uint32_t admitted = 0u;
+    uint64_t admission_deadline;
+    int gate_armed = 0;
     cmeta_thread_t threads[2] = {0};
     m6_mtls_worker workers[2] = {{0}};
     size_t started = 0u, i;
@@ -165,6 +172,11 @@ static int run_mtls_concurrent(int argc, char **argv)
     ASSERT(a.snapshot(&owner_snap, &claims, &sessions, &epoch_snap) == SALTS_OK);
     ASSERT(owner_snap == owner_a && claims == 2u && sessions == 0u &&
            epoch_snap == epoch_a);
+    /* Arm one private gate in the sole shared CNet DLL: both original
+     * CNet/NativeIO connect commands must be admitted before retirement.
+     */
+    ASSERT(a.gate(1u, &admitted) == SALTS_OK && admitted == 0u);
+    gate_armed = 1;
 
     for (i = 0u; i != 2u; ++i) {
         workers[i].call = i == 0u ? a.mtls : b.mtls;
@@ -181,6 +193,27 @@ static int run_mtls_concurrent(int argc, char **argv)
                                    &workers[i]) == 0);
         ++started;
     }
+
+    /* Both native TCP/TLS connect commands have been admitted, but
+     * the real Owner pump is held by a test-only barrier. Try releasing
+     * each ACTIVE lease through the OTHER independently loaded plugin.
+     * No release can free an active CNet callback/operation lease.
+     */
+    admission_deadline = cmeta_monotonic_ms() + UINT64_C(5000);
+    for (;;) {
+        ASSERT(b.gate(0u, &admitted) == SALTS_OK);
+        if (admitted == 2u) break;
+        ASSERT(admitted < 2u && cmeta_monotonic_ms() < admission_deadline);
+        cmeta_thread_yield();
+    }
+    ASSERT(b.release(&left) == SALTS_EBUSY && left != NULL);
+    ASSERT(a.release(&right) == SALTS_EBUSY && right != NULL);
+    ASSERT(a.snapshot(&owner_snap, &claims, &sessions, &epoch_snap)
+           == SALTS_OK);
+    ASSERT(owner_snap == owner_a && claims == 2u &&
+           sessions == 0u && epoch_snap == epoch_a);
+    ASSERT(a.gate(2u, &admitted) == SALTS_OK && admitted == 2u);
+    gate_armed = 0;
 
     /* Join before releasing Provider leases or unloading either module.
      * Both CNet workers must have completed genuine TLS terminal delivery.
@@ -205,6 +238,11 @@ static int run_mtls_concurrent(int argc, char **argv)
            "independent plugins PASS\\n", accepted ? "accepted" : "rejected");
     return 0;
 cleanup:
+    /* An ASSERT failure must open the private admission gate BEFORE
+     * joining or unloading the two independent plugin worker threads.
+     */
+    if (gate_armed && a.module && a.gate)
+        (void)a.gate(2u, &admitted);
     /* No unload or last Provider destroy while NativeIO has entrants. */
     for (i = 0u; i < started; ++i) (void)cmeta_thread_join(&threads[i]);
     if (left) {
