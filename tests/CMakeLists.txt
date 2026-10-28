@@ -318,3 +318,24 @@ set_tests_properties(saltscore.clock_atomic_owner PROPERTIES TIMEOUT 30)
 if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
   add_subdirectory(cnet-crypto-static)
 endif()
+
+# Restore original tstr/vstr/memory-pool behavior, not just public headers.
+add_executable(saltscore_original_string_parity_test test_original_string_parity.c)
+target_compile_features(saltscore_original_string_parity_test PRIVATE c_std_11)
+set_target_properties(saltscore_original_string_parity_test PROPERTIES
+  C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+target_link_libraries(saltscore_original_string_parity_test PRIVATE Salts::Core)
+add_test(NAME saltscore.original_utils_string_parity
+  COMMAND saltscore_original_string_parity_test)
+set_tests_properties(saltscore.original_utils_string_parity PROPERTIES TIMEOUT 20)
+
+# Literal copy of the original TinyTest tstr v2 contract from Salts utils.
+# Optional TinyTest profile runs source-parity expectations; never a stub.
+if(TARGET Salts::TinyTest)
+  add_executable(saltscore_original_tstr_v2_contract test_tstr_v2_contract.c)
+  target_compile_features(saltscore_original_tstr_v2_contract PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_tstr_v2_contract PRIVATE
+    Salts::Core Salts::TinyTest)
+  add_test(NAME saltscore.original_tstr_v2_contract
+    COMMAND saltscore_original_tstr_v2_contract)
+endif()

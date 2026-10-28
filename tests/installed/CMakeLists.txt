@@ -160,3 +160,15 @@ foreach(_lang IN ITEMS c cpp)
   target_link_libraries(c11_threads_installed_${_lang} PRIVATE Salts::Platform)
   add_test(NAME sdk.c11_threads_${_lang} COMMAND c11_threads_installed_${_lang})
 endforeach()
+
+# Module-local original tstr/vstr/memory-pool installed contract: consumers
+# must link the one existing Salts::Core DSO, not any build-tree SDS archive.
+add_executable(original_utils_string_consumer_c original_utils_string_consumer.c)
+target_compile_features(original_utils_string_consumer_c PRIVATE c_std_11)
+target_link_libraries(original_utils_string_consumer_c PRIVATE Salts::Core)
+add_test(NAME sdk.original_utils_string_c11 COMMAND original_utils_string_consumer_c)
+
+add_executable(original_utils_string_consumer_cpp original_utils_string_consumer.cpp)
+target_compile_features(original_utils_string_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(original_utils_string_consumer_cpp PRIVATE Salts::Core)
+add_test(NAME sdk.original_utils_string_cpp17 COMMAND original_utils_string_consumer_cpp)

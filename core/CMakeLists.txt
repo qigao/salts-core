@@ -20,7 +20,16 @@ endif()
 # No third-party Base64 DSO, vcpkg port or alternate codec is required.
 target_sources(saltscore_core PRIVATE
   src/cmeta_buffer.c src/ring_buffer.c src/base64_utils.c
-  src/runtime_abi.c src/utf8.c)
+  src/runtime_abi.c src/utf8.c
+  # Original utils/Core ownership restored; no CMeta provider or second core.
+  src/vstr.c src/tstr.c src/memory_pool.c src/sds/sds.c)
+# SDS is original private C string storage, not an exported provider target.
+target_include_directories(saltscore_core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/sds")
+if(APPLE)
+  target_compile_definitions(saltscore_core PRIVATE _DARWIN_C_SOURCE=1)
+elseif(UNIX)
+  target_compile_definitions(saltscore_core PRIVATE _DEFAULT_SOURCE=1 _POSIX_C_SOURCE=200809L)
+endif()
 target_link_libraries(saltscore_core PUBLIC Salts::Platform)
 
 if(WIN32)
@@ -36,4 +45,9 @@ install(DIRECTORY include/salts_core
 install(FILES
   include/base64_utils.h include/vstr.h include/cmeta_api.h
   include/cmeta_buffer.h include/ring_buffer.h
+  include/tstr.h include/str.h include/memory_pool.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+# Original upstream SDS BSD license is mandatory for this private source.
+install(FILES src/sds/LICENSE
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/sds)
