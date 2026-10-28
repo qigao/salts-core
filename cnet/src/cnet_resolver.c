@@ -39,6 +39,9 @@ typedef struct cnet_resolver_slot {
   uint32_t generation;
   uintptr_t user_data;
   int socket_type;
+  /* Connection caller's authoritative host-order port. c-ares is only
+   * responsible for resolving the address, never selecting the port. */
+  uint16_t requested_port;
   bool cancelled;
   bool dropped;
   bool expired;
@@ -110,6 +113,42 @@ static int cnet_resolver_map_status(int status) {
   }
 }
 
+/*
+ * CNet owns its requested transport port. c-ares may deliver a sockaddr
+ * whose sin_port/sin6_port is in host byte order (Windows numeric-host first
+ * RED: requested 0xC605 / 50693; received 0x05C6 / 1478). Never carry
+ * a provider's service-port bytes through to ConnectEx or TLS transport.
+ *
+ * Patch only the well-defined family-specific field with htons(port).
+ * Byte copy avoids misaligned sockaddr aliases in the result byte array.
+ * This is one canonical endpoint, not a retry or alternate DNS provider.
+ */
+static int cnet_resolver_apply_requested_port(void *address, size_t address_length,
+                                               int family, uint16_t port) {
+  size_t offset;
+  const uint16_t network_port = htons(port);
+  if (address == NULL || port == 0u) return SALTS_EINVAL;
+  if (family == AF_INET) {
+    if (address_length < sizeof(struct sockaddr_in)) return SALTS_EINVAL;
+    offset = offsetof(struct sockaddr_in, sin_port);
+  } else if (family == AF_INET6) {
+    if (address_length < sizeof(struct sockaddr_in6)) return SALTS_EINVAL;
+    offset = offsetof(struct sockaddr_in6, sin6_port);
+  } else {
+    return SALTS_EAI_FAMILY;
+  }
+  memcpy((unsigned char *)address + offset, &network_port, sizeof(network_port));
+  return SALTS_OK;
+}
+
+#if defined(CNET_INTERNAL_TESTING)
+/* Test binary only, absent from the installed CNet ABI. */
+int cnet_resolver_test_apply_requested_port(void *address, size_t address_length,
+                                            int family, uint16_t port) {
+  return cnet_resolver_apply_requested_port(address, address_length, family, port);
+}
+#endif
+
 static cnet_resolver_slot *cnet_resolver_find_slot(cnet_resolver_impl *impl,
                                                    cnet_resolver_query query) {
   cnet_resolver_slot *slot;
@@ -156,9 +195,12 @@ static void cnet_resolver_callback(void *argument, int status, int timeouts,
 
   if (status == ARES_SUCCESS) {
     for (node = addresses != NULL ? addresses->nodes : NULL; node != NULL; node = node->ai_next) {
-      if ((node->ai_family == AF_INET || node->ai_family == AF_INET6) &&
-          node->ai_socktype == slot->socket_type && node->ai_addr != NULL &&
-          node->ai_addrlen <= CNET_RESOLVER_ADDRESS_CAPACITY)
+      if (node->ai_socktype == slot->socket_type && node->ai_addr != NULL &&
+          node->ai_addrlen <= CNET_RESOLVER_ADDRESS_CAPACITY &&
+          ((node->ai_family == AF_INET &&
+            node->ai_addrlen >= sizeof(struct sockaddr_in)) ||
+           (node->ai_family == AF_INET6 &&
+            node->ai_addrlen >= sizeof(struct sockaddr_in6))))
         break;
     }
     if (node == NULL) status = ARES_ENODATA;
@@ -174,8 +216,18 @@ static void cnet_resolver_callback(void *argument, int status, int timeouts,
     slot->result.timeouts = timeouts;
     slot->result.status = slot->expired ? SALTS_EAI_AGAIN : slot->cancelled ? SALTS_EAI_CANCELED : cnet_resolver_map_status(status);
     if (slot->result.status == SALTS_OK && node != NULL) {
+      const int port_status;
       slot->result.address_length = (size_t)node->ai_addrlen;
       memcpy(slot->result.address, node->ai_addr, slot->result.address_length);
+      /* The query's original port is authoritative, irrespective of the
+       * platform/provider's intermittent service-byte-order behavior. */
+      port_status = cnet_resolver_apply_requested_port(
+          slot->result.address, slot->result.address_length,
+          node->ai_family, slot->requested_port);
+      if (port_status != SALTS_OK) {
+        slot->result.status = port_status;
+        slot->result.address_length = 0u;
+      }
     }
     if (impl->lookup_identity && slot->result.status == SALTS_OK) {
       for (node = addresses ? addresses->nodes : NULL; node; node = node->ai_next) {
@@ -391,6 +443,7 @@ int cnet_resolver_submit(cnet_resolver *resolver, const char *host, uint16_t por
   slot->state = CNET_RESOLVER_SLOT_ACTIVE;
   slot->user_data = user_data;
   slot->socket_type = socket_type;
+  slot->requested_port = port;
   slot->cancelled = false;
   slot->dropped = slot->expired = false; slot->address_count = slot->address_index = 0;
   slot->deadline = cmeta_monotonic_ms() + impl->lookup_timeout;
