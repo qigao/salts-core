@@ -324,6 +324,14 @@ static int run_protocol(crypto_tls_provider *borrowed_provider,
     mem_buffer_t *send_backing = NULL;
     char uri[128], version[32], cipher[128], fingerprint[80];
     char selected_alpn[256] = {0};
+    unsigned char server_endpoint[CNET_TLS_SERVER_END_POINT_MAX_BYTES] = {0};
+    size_t server_endpoint_bytes = 0u;
+    static const uint8_t expected_rsa_sha256_endpoint[32] = {
+        0x84u,0x12u,0xcbu,0xa2u,0xb9u,0xacu,0x94u,0xa9u,
+        0x36u,0x2fu,0xb6u,0xb5u,0x8du,0x77u,0x4cu,0xd8u,
+        0x72u,0x7bu,0x8du,0x67u,0x0bu,0xb9u,0xceu,0xc2u,
+        0x1eu,0xa8u,0x4fu,0xf5u,0x9bu,0xb7u,0x95u,0x1au
+    };
     unsigned char client_binding[CNET_TLS_CHANNEL_BINDING_BYTES] = {0};
     unsigned char server_binding[CNET_TLS_CHANNEL_BINDING_BYTES] = {0};
     uint16_t port = 0u;
@@ -475,6 +483,27 @@ static int run_protocol(crypto_tls_provider *borrowed_provider,
     CHECK(cnet_tls_peer_certificate_sha256(
         &dialer, dialed, fingerprint) == SALTS_OK);
     CHECK(strlen(fingerprint) == 64u);
+    /* Test the PUBLIC, generation-checked CNet connection path, not merely
+     * an offline DER helper. The only identity/hash authority is the
+     * authenticated single Salts::Crypto session. */
+    CHECK(cnet_tls_server_end_point_binding(
+        &dialer, dialed, server_endpoint, sizeof(server_endpoint),
+        &server_endpoint_bytes) == SALTS_OK);
+    CHECK(server_endpoint_bytes == 28u || server_endpoint_bytes == 32u ||
+          server_endpoint_bytes == 48u || server_endpoint_bytes == 64u);
+    if (mtls == NULL) {
+        CHECK(server_endpoint_bytes == sizeof(expected_rsa_sha256_endpoint));
+        CHECK(memcmp(server_endpoint, expected_rsa_sha256_endpoint,
+                     sizeof(expected_rsa_sha256_endpoint)) == 0);
+    }
+    {
+        const size_t expected_width = server_endpoint_bytes;
+        server_endpoint_bytes = 0u;
+        CHECK(cnet_tls_server_end_point_binding(
+            &dialer, dialed, server_endpoint, 8u,
+            &server_endpoint_bytes) == SALTS_EMSGSIZE);
+        CHECK(server_endpoint_bytes == expected_width);
+    }
     CHECK(cnet_tls_export_channel_binding(
           &dialer, dialed, client_binding) == SALTS_OK);
     CHECK(cnet_tls_export_channel_binding(
