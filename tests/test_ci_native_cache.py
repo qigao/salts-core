@@ -40,11 +40,25 @@ class NativeCacheContractTests(unittest.TestCase):
         source = (ROOT / ".github/workflows/cnet-sanitizers.yml").read_text()
         for altered in (
             source.replace("mode: read", "mode: readwrite", 1),
+            source.replace("mode: read", "mode: write", 1),
             source.replace(policy.CACHE_SHA, "master", 1),
             source + "\n          VCPKG_BINARY_SOURCES=clear;files,cache,readwrite\n",
             source + "\n          mono-complete\n",
         ):
             self.assertTrue(policy.validate_workflow("cnet-sanitizers.yml", altered))
+
+    def test_extraneous_action_or_cache_mode_is_rejected(self):
+        original = (ROOT / ".github/workflows/cnet-provider.yml").read_text()
+        for changed in (
+            original.replace("setup-re2c-tools@" + policy.CACHE_SHA,
+                             "setup-re2c-tools@untrusted-sha", 1),
+            original.replace("setup-vcpkg-curl-cache@" + policy.CACHE_SHA,
+                             "setup-vcpkg-curl-cache@untrusted-sha", 1),
+            original + "\n      - uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@bad\n",
+            original + "\n      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@bad\n",
+            original + "\n          mode: readwrite\n",
+        ):
+            self.assertTrue(policy.validate_workflow("cnet-provider.yml", changed))
 
     def test_windows_generator_requires_ccache(self):
         source = (ROOT / ".github/workflows/core-contract.yml").read_text()

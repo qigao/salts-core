@@ -60,15 +60,18 @@ def validate_workflow(name: str, source: str) -> list[str]:
         errors.append(f"{name}: wrong/missing re2c cache package")
     if source.count("setup-vcpkg-curl-cache@" + CACHE_SHA) != expected_vcpkg:
         errors.append(f"{name}: wrong/missing vcpkg curl-only binary cache")
-    if source.count("mode: read") != expected_vcpkg:
+    # Exact values, not substring matching: "mode: readwrite" is NOT read-only.
+    modes = re.findall(r"(?m)^ +mode: *([A-Za-z-]+) *(?:#.*)?$", source)
+    if modes != ["read"] * expected_vcpkg:
         errors.append(f"{name}: unqualified binary cache write/fallback")
     if expected_re2c and not re.search(
             r"(?m)^  packages: read\s*$", source):
         errors.append(f"{name}: missing GitHub Packages read permission")
-    if (expected_re2c or expected_vcpkg) and (
-        "setup-re2c-tools@master" in source
-        or "setup-vcpkg-curl-cache@master" in source):
-        errors.append(f"{name}: mutable/unverified package action")
+    re2c_pins = re.findall(r"setup-re2c-tools@([A-Za-z0-9_.-]+)", source)
+    vcpkg_pins = re.findall(r"setup-vcpkg-curl-cache@([A-Za-z0-9_.-]+)", source)
+    if (re2c_pins != [CACHE_SHA] * expected_re2c
+            or vcpkg_pins != [CACHE_SHA] * expected_vcpkg):
+        errors.append(f"{name}: mutable/unverified/duplicate package action")
     if "Visual Studio 18 2026" in source:
         errors.append(f"{name}: VS generator bypasses CMake ccache launcher")
     if re.search(r"(?m)^\s*.*(?:apt-get install|brew install).*\bre2c\b", source):
