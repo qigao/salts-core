@@ -31,6 +31,8 @@ jobs:
           python3 tools/check_ci_ctest_regex.py .github/workflows/cnet-sanitizers.yml
           python3 tools/check_ci_ctest_regex.py .github/workflows/readiness-reference-sanitizers.yml
           python3 tools/check_ci_fifo_policy.py
+          python3 tools/audit_dual_source_migration.py
+          python3 -m unittest discover -s tests -p 'test_dual_source_migration.py' -v
           python3 -m unittest discover -s tests -p 'test_ci_fifo_policy.py' -v
           python3 tools/check_dependency_boundaries.py
           python3 tools/check_module_layout.py

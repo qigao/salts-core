@@ -20,6 +20,18 @@ add_subdirectory(core)
 add_subdirectory(concurrency)
 add_subdirectory(coroutine)
 add_subdirectory(native-io)
+# Standalone ASN1 codec is provider-neutral and has its own immutable ABI.
+# It stays a separate Salts::ASN1 module, never an alias to Crypto or CMeta.
+add_subdirectory(asn1)
+
+# Assemble the sole static Salts::Crypto only with an explicitly provided
+# installed GmSSL source-qualified prefix. No implicit third-party install,
+# hidden TLS provider or fallback in the minimal Core profile.
+# The original Crypto module performs its own strict prefix/archive checks.
+if(DEFINED CRYPTO_GMSSL_ROOT)
+  add_subdirectory(crypto)
+endif()
+
 
 option(SALTSCORE_BUILD_URI "Build standalone re2c-generated URI parser" OFF)
 if(SALTSCORE_BUILD_URI)
