@@ -116,9 +116,25 @@ No runtime allocation, mutable global state or shared-library lifecycle is
 introduced by static linking. Each descriptor remains a value rather than
 a process-wide address identity.
 
+GNU builds compile the private SIMD module with `-fwrapv` in every build
+configuration. SIMDe 0.8.2 implements some integer abs/neg/multiply fallbacks
+using signed compiler vectors; the minimum signed lane must keep its low bits
+for `abs` and `neg`, and modular multiplication must wrap. Without an explicit
+arithmetic contract, GCC UBSan reports signed overflow for these paths on a
+baseline x86 build. GCC documents `-fwrapv` as defining two's-complement
+addition/subtraction/multiplication semantics in its
+[code-generation options](https://gcc.gnu.org/onlinedocs/gcc-13.3.0/gcc/Code-Gen-Options.html).
+The option is private to this module and does not alter the original numerical
+source, the pinned provider, the minimum CPU ISA or consumer compilation.
+ASan, UBSan, leak detection and fail-on-report settings remain enabled;
+this is the same arithmetic contract in production and instrumented builds.
+
 With `BUILD_TESTING=ON`, `saltscore.simd_native_boundaries` checks real
 standalone calls, descriptor borrowing/copying, in-place arithmetic,
-unaligned buffers, failure output preservation and null boundaries. Enabling
+unaligned buffers, failure output preservation and null boundaries. It also
+checks signed-minimum abs/neg and modular add/subtract/multiply at 8/16/32/64
+bits against an independent unsigned oracle, including rejection and output
+preservation for unsupported 8-bit multiplication. Enabling
 `SALTSCORE_BUILD_TINYTEST=ON` also registers:
 
 - `saltscore.simd_original_c11`: the original 25 case names; 24 numeric test

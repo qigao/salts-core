@@ -9,6 +9,83 @@
     return 1; \
 } } while (0)
 
+static void store_lane(unsigned char *bytes, unsigned bits, uint64_t value) {
+    switch (bits) {
+        case 8u: { uint8_t v = (uint8_t)value; memcpy(bytes, &v, sizeof(v)); break; }
+        case 16u: { uint16_t v = (uint16_t)value; memcpy(bytes, &v, sizeof(v)); break; }
+        case 32u: { uint32_t v = (uint32_t)value; memcpy(bytes, &v, sizeof(v)); break; }
+        default: memcpy(bytes, &value, sizeof(value)); break;
+    }
+}
+
+static uint64_t load_lane(const unsigned char *bytes, unsigned bits) {
+    switch (bits) {
+        case 8u: { uint8_t v; memcpy(&v, bytes, sizeof(v)); return v; }
+        case 16u: { uint16_t v; memcpy(&v, bytes, sizeof(v)); return v; }
+        case 32u: { uint32_t v; memcpy(&v, bytes, sizeof(v)); return v; }
+        default: { uint64_t v; memcpy(&v, bytes, sizeof(v)); return v; }
+    }
+}
+
+/* Modular integer instructions preserve low bits, including abs/neg of MIN.
+ * This oracle uses only defined unsigned arithmetic, independently of SIMDe. */
+static int check_integer_wrap_boundaries(void) {
+    const salts_simd_desc *const shapes[] = {
+        &salts_simd_i8x16, &salts_simd_i16x8,
+        &salts_simd_i32x4, &salts_simd_i64x2
+    };
+    const cmeta_simd_binary_op binary_ops[] = {
+        SALTS_SIMD_BINARY_ADD, SALTS_SIMD_BINARY_SUB, SALTS_SIMD_BINARY_MUL
+    };
+    size_t s, pattern, lane, op;
+    for (s = 0u; s < sizeof(shapes) / sizeof(shapes[0]); ++s) {
+        const salts_simd_desc *shape = shapes[s];
+        const unsigned bits = shape->lane_bits;
+        const unsigned width = bits / 8u;
+        const uint64_t sign = UINT64_C(1) << (bits - 1u);
+        const uint64_t mask = bits == 64u ? UINT64_MAX : (UINT64_C(1) << bits) - 1u;
+        const uint64_t lhs[] = {sign, mask, sign - 1u, 0u, 1u};
+        const uint64_t rhs[] = {mask, 1u, 2u, sign, 3u};
+        for (pattern = 0u; pattern < sizeof(lhs) / sizeof(lhs[0]); ++pattern) {
+            cmeta_v128 left = {{0}}, right = {{0}}, out = {{0}}, sentinel = {{0}};
+            for (lane = 0u; lane < shape->lane_count; ++lane) {
+                const size_t i = (lane + pattern) % (sizeof(lhs) / sizeof(lhs[0]));
+                store_lane(left.bytes + lane * width, bits, lhs[i]);
+                store_lane(right.bytes + lane * width, bits, rhs[i]);
+            }
+            CHECK(cmeta_simd_unary(shape, SALTS_SIMD_UNARY_ABS, &out, &left));
+            for (lane = 0u; lane < shape->lane_count; ++lane) {
+                const uint64_t a = load_lane(left.bytes + lane * width, bits);
+                const uint64_t expected = (a & sign) ? (UINT64_C(0) - a) & mask : a;
+                CHECK(load_lane(out.bytes + lane * width, bits) == expected);
+            }
+            CHECK(cmeta_simd_unary(shape, SALTS_SIMD_UNARY_NEG, &out, &left));
+            for (lane = 0u; lane < shape->lane_count; ++lane) {
+                const uint64_t a = load_lane(left.bytes + lane * width, bits);
+                CHECK(load_lane(out.bytes + lane * width, bits) == ((UINT64_C(0) - a) & mask));
+            }
+            for (op = 0u; op < sizeof(binary_ops) / sizeof(binary_ops[0]); ++op) {
+                if (bits == 8u && binary_ops[op] == SALTS_SIMD_BINARY_MUL) {
+                    memset(sentinel.bytes, 0x69, sizeof(sentinel.bytes));
+                    out = sentinel;
+                    CHECK(!cmeta_simd_binary(shape, binary_ops[op], &out, &left, &right));
+                    CHECK(memcmp(&out, &sentinel, sizeof(out)) == 0);
+                    continue;
+                }
+                CHECK(cmeta_simd_binary(shape, binary_ops[op], &out, &left, &right));
+                for (lane = 0u; lane < shape->lane_count; ++lane) {
+                    const uint64_t a = load_lane(left.bytes + lane * width, bits);
+                    const uint64_t b = load_lane(right.bytes + lane * width, bits);
+                    const uint64_t expected = binary_ops[op] == SALTS_SIMD_BINARY_ADD ? a + b :
+                        binary_ops[op] == SALTS_SIMD_BINARY_SUB ? a - b : a * b;
+                    CHECK(load_lane(out.bytes + lane * width, bits) == (expected & mask));
+                }
+            }
+        }
+    }
+    return 0;
+}
+
 int main(void) {
     const salts_simd_desc *const shapes[] = {
         &salts_simd_i8x16, &salts_simd_u8x16,
@@ -33,6 +110,7 @@ int main(void) {
 
     CHECK(sizeof(cmeta_v128) == 16u);
     CHECK(_Alignof(cmeta_v128) >= 16u);
+    CHECK(check_integer_wrap_boundaries() == 0);
     for (i = 0u; i < sizeof(shapes) / sizeof(shapes[0]); ++i) {
         CHECK(salts_simd_desc_valid(shapes[i]));
         CHECK((size_t)shapes[i]->lane_bits * shapes[i]->lane_count == 128u);

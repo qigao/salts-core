@@ -13,6 +13,12 @@ target_include_directories(saltscore_simd PUBLIC
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_include_directories(saltscore_simd SYSTEM PRIVATE "${SIMDE_INCLUDE_DIRS}")
 
+# SIMDe 0.8.2's GNU vector fallback uses signed abs/neg/multiply expressions
+# for modular integer instructions. Define their two's-complement wrapping
+# semantics in every GNU build, including sanitizer builds, without raising
+# the minimum ISA or exporting compiler flags to consumers.
+target_compile_options(saltscore_simd PRIVATE $<$<C_COMPILER_ID:GNU>:-fwrapv>)
+
 # SIMDe's portable nearest operations use nearbyint/nearbyintf. For the static
 # target, CMake preserves this private dependency as LINK_ONLY for consumers.
 if(NOT WIN32)
