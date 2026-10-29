@@ -5,6 +5,7 @@ on:
     branches:
       - master
     paths:
+      - ".github/actions/setup-ccache/**"
       - "uri/src/**"
       - "uri/parser/**"
       - "uri/CMakeLists.txt"
@@ -16,6 +17,7 @@ on:
       - ".github/workflows/uri-contract.yml"
   pull_request:
     paths:
+      - ".github/actions/setup-ccache/**"
       - "uri/src/**"
       - "uri/parser/**"
       - "uri/CMakeLists.txt"
@@ -28,6 +30,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: saltscore-fifo-workflows
@@ -43,11 +46,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install host code generator
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y re2c
-          re2c --version
+      - name: Restore SHA256-pinned compiler ccache
+        id: ccache
+        uses: ./.github/actions/setup-ccache
+        with:
+          profile: saltscore-${{ github.job }}-${{ strategy.job-index }}
+          source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Restore pinned re2c from qigao/vcpkg-cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@7bb5b556a001bc82d2922a04a718e986a7f47f54
+        with:
+          token: ${{ github.token }}
       - name: Configure, build and test generated URI parser
         shell: bash
         run: |
@@ -65,3 +73,8 @@ jobs:
           cmake -S tests/installed -B build-uri-consumer -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/uri-sdk"
           cmake --build build-uri-consumer --config Release --parallel 2
           ctest --test-dir build-uri-consumer -C Release --output-on-failure
+      - name: ccache compilation statistics
+        if: ${{ always() && steps.ccache.outcome == 'success' }}
+        shell: bash
+        run: ccache --show-stats
+

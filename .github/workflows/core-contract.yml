@@ -25,12 +25,23 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Enable MSVC for Ninja + ccache
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+      - name: Restore SHA256-pinned compiler ccache
+        id: ccache
+        uses: ./.github/actions/setup-ccache
+        with:
+          profile: saltscore-${{ github.job }}-${{ strategy.job-index }}
+          source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Prove no legacy Salts/CMeta/CFlow/CSTL dependency
         shell: bash
         run: |
           python3 tools/check_ci_ctest_regex.py .github/workflows/cnet-sanitizers.yml
           python3 tools/check_ci_ctest_regex.py .github/workflows/readiness-reference-sanitizers.yml
           python3 tools/check_ci_fifo_policy.py
+          python3 tools/check_ci_native_cache.py
+          python3 -m unittest discover -s tests -p 'test_ci_native_cache.py' -v
           python3 -m unittest discover -s tests -p 'test_ci_fifo_policy.py' -v
           python3 tools/check_dependency_boundaries.py
           python3 tools/check_module_layout.py
@@ -79,3 +90,8 @@ jobs:
           set -euo pipefail
           python3 tools/test_abi_minor_compat.py \
             --version-file "$RUNNER_TEMP/saltscore-sdk/lib/cmake/SaltsCore/SaltsCoreConfigVersion.cmake"
+      - name: ccache compilation statistics
+        if: ${{ always() && steps.ccache.outcome == 'success' }}
+        shell: bash
+        run: ccache --show-stats
+

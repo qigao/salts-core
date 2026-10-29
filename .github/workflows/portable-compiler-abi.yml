@@ -19,6 +19,12 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - name: Restore SHA256-pinned compiler ccache
+        id: ccache
+        uses: ./.github/actions/setup-ccache
+        with:
+          profile: saltscore-${{ github.job }}-${{ strategy.job-index }}
+          source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Pin llvm-mingw and TinyCC by SHA256
         shell: pwsh
         run: |
@@ -50,7 +56,7 @@ jobs:
           New-Item -ItemType Directory -Force build-portable | Out-Null
           $dll = 'build-portable/salts_portable.dll'
           $exe = 'build-portable/tcc_portable.exe'
-          & $clang.FullName '-std=c11' '-O2' '-Werror=unknown-attributes' '-shared' '-DSALTS_CORE_PLATFORM_BUILD=1' '-D_WIN32_WINNT=0x0601' '-Iplatform/include' '-Icore/include' 'platform/src/portable_atomic.c' 'platform/src/portable_thread_win32.c' 'platform/src/portable_tss_win32.c' 'platform/src/portable_once.c' 'platform/src/c11_threads.c' 'platform/src/clock.c' '-o' $dll
+          & ccache $clang.FullName '-std=c11' '-O2' '-Werror=unknown-attributes' '-shared' '-DSALTS_CORE_PLATFORM_BUILD=1' '-D_WIN32_WINNT=0x0601' '-Iplatform/include' '-Icore/include' 'platform/src/portable_atomic.c' 'platform/src/portable_thread_win32.c' 'platform/src/portable_tss_win32.c' 'platform/src/portable_once.c' 'platform/src/c11_threads.c' 'platform/src/clock.c' '-o' $dll
           if ($LASTEXITCODE -ne 0) { throw 'Portable Platform provider failed to compile/link with llvm-mingw' }
           & $tcc.FullName '-std=c11' '-Iplatform/include' '-Icore/include' 'tests/portable_tcc_windows_client.c' '-o' $exe
           if ($LASTEXITCODE -ne 0) { throw 'TinyCC portable consumer compile failed' }
@@ -134,6 +140,10 @@ jobs:
             build-portable/tcc_c11_threads_arm64.exe
             build-portable/arm64-manifest.json
           if-no-files-found: error
+      - name: ccache compilation statistics
+        if: ${{ always() && steps.ccache.outcome == 'success' }}
+        shell: bash
+        run: ccache --show-stats
 
   win-arm64-native-tinycc:
     concurrency:
@@ -192,10 +202,17 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - name: Restore SHA256-pinned compiler ccache
+        id: ccache
+        uses: ./.github/actions/setup-ccache
+        with:
+          profile: saltscore-${{ github.job }}-${{ strategy.job-index }}
+          source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Build immutable native TinyCC source
         shell: bash
         run: |
           set -euo pipefail
+          export CC='ccache gcc'
           git clone https://github.com/TinyCC/tinycc.git tools/tcc-src
           git -C tools/tcc-src checkout --detach e23dabed154a8495f3ac1ff3cc9d04fa1c207893
           cd tools/tcc-src
@@ -243,6 +260,10 @@ jobs:
             -o build-portable/tcc_installed_c11
           export LD_LIBRARY_PATH="$PWD/portable-installed/lib:$(printenv LD_LIBRARY_PATH || true)"
           for i in 1 2 3 4 5; do ./build-portable/tcc_installed_c11; done
+      - name: ccache compilation statistics
+        if: ${{ always() && steps.ccache.outcome == 'success' }}
+        shell: bash
+        run: ccache --show-stats
 
   macos-native-tinycc:
     concurrency:
@@ -258,10 +279,17 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Restore SHA256-pinned compiler ccache
+        id: ccache
+        uses: ./.github/actions/setup-ccache
+        with:
+          profile: saltscore-${{ github.job }}-${{ strategy.job-index }}
+          source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Build pinned native Darwin TinyCC
         shell: bash
         run: |
           set -euo pipefail
+          export CC='ccache clang'
           git clone https://github.com/TinyCC/tinycc.git tools/tcc-src
           git -C tools/tcc-src checkout --detach e23dabed154a8495f3ac1ff3cc9d04fa1c207893
           cd tools/tcc-src
@@ -273,7 +301,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build-portable
-          clang -std=c11 -O2 -fPIC -pthread -dynamiclib \
+          ccache clang -std=c11 -O2 -fPIC -pthread -dynamiclib \
             -DSALTS_CORE_PLATFORM_BUILD=1 -Iplatform/include -Icore/include \
             platform/src/portable_atomic.c platform/src/portable_thread_posix.c \
             platform/src/portable_tss_posix.c platform/src/portable_once.c \
@@ -289,7 +317,10 @@ jobs:
               -o "build-portable/$fixture"
             for i in 1 2 3 4 5; do "./build-portable/$fixture"; done
           done
-
+      - name: ccache compilation statistics
+        if: ${{ always() && steps.ccache.outcome == 'success' }}
+        shell: bash
+        run: ccache --show-stats
 
   portable-thread-sanitizers:
     concurrency:
@@ -309,6 +340,12 @@ jobs:
             flags: -fsanitize=address,undefined
     steps:
       - uses: actions/checkout@v4
+      - name: Restore SHA256-pinned compiler ccache
+        id: ccache
+        uses: ./.github/actions/setup-ccache
+        with:
+          profile: saltscore-${{ github.job }}-${{ strategy.job-index }}
+          source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Instrument actual portable TSS / timed tests
         shell: bash
         run: |
@@ -322,6 +359,8 @@ jobs:
             --parallel 2
           ctest --test-dir build-sanitize --output-on-failure \
             --repeat until-fail:10 -R '^saltscore\.(portable_(timing|tss|timed_mutex)|c11_threads_facade)$'
-
-
+      - name: ccache compilation statistics
+        if: ${{ always() && steps.ccache.outcome == 'success' }}
+        shell: bash
+        run: ccache --show-stats
 

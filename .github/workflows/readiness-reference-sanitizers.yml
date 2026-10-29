@@ -3,6 +3,7 @@ name: Original Readiness Source Sanitizer Parity
 on:
   pull_request:
     paths:
+      - ".github/actions/setup-ccache/**"
       - ".github/workflows/readiness-reference-sanitizers.yml"
       - "tests/readiness-reference/**"
       - "platform/src/readiness*"
@@ -38,6 +39,12 @@ jobs:
     name: Original Readiness ${{ matrix.kind }}
     steps:
       - uses: actions/checkout@v4
+      - name: Restore SHA256-pinned compiler ccache
+        id: ccache
+        uses: ./.github/actions/setup-ccache
+        with:
+          profile: saltscore-${{ github.job }}-${{ strategy.job-index }}
+          source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/checkout@v4
         with:
           repository: qigao/salts
@@ -91,3 +98,8 @@ jobs:
           name: original-readiness-${{ matrix.kind }}-source-log
           path: build-readiness-tests-${{ matrix.kind }}/Testing/Temporary/LastTest.log
           if-no-files-found: ignore
+      - name: ccache compilation statistics
+        if: ${{ always() && steps.ccache.outcome == 'success' }}
+        shell: bash
+        run: ccache --show-stats
+

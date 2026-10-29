@@ -3,6 +3,7 @@ name: Exact original Salts Readiness tests on installed Core
 on:
   pull_request:
     paths:
+      - ".github/actions/setup-ccache/**"
       - ".github/workflows/readiness-reference-conformance.yml"
       - "tests/readiness-reference/**"
       - "platform/src/readiness*"
@@ -43,6 +44,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - name: Enable MSVC for Ninja + ccache
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+      - name: Restore SHA256-pinned compiler ccache
+        id: ccache
+        uses: ./.github/actions/setup-ccache
+        with:
+          profile: saltscore-${{ github.job }}-${{ strategy.job-index }}
+          source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Checkout pinned original Salts test sources
         uses: actions/checkout@v4
         with:
@@ -57,7 +67,7 @@ jobs:
           test "$(git -C salts-readiness-reference rev-parse HEAD)" = \
             df4c697d2f1facb6b54a3568520dd743c628aa81
           if [[ "$RUNNER_OS" == Windows ]]; then
-            generator=(-G 'Visual Studio 18 2026' -A x64)
+            generator=(-G Ninja)
           else
             generator=(-G Ninja)
           fi
@@ -74,7 +84,7 @@ jobs:
           set -euo pipefail
           prefix="$RUNNER_TEMP/saltscore-readiness-sdk"
           if [[ "$RUNNER_OS" == Windows ]]; then
-            generator=(-G 'Visual Studio 18 2026' -A x64)
+            generator=(-G Ninja)
             export PATH="$(cygpath -u "$prefix")/bin:$PATH"
           elif [[ "$RUNNER_OS" == macOS ]]; then
             generator=(-G Ninja)
@@ -97,3 +107,8 @@ jobs:
           name: original-readiness-${{ matrix.os }}-epoll-${{ matrix.epoll }}
           path: build-readiness-contract/Testing/Temporary/LastTest.log
           if-no-files-found: ignore
+      - name: ccache compilation statistics
+        if: ${{ always() && steps.ccache.outcome == 'success' }}
+        shell: bash
+        run: ccache --show-stats
+
