@@ -99,7 +99,11 @@ def git_blob(data: bytes) -> str:
 def verify_origin(root: Path, key: str) -> tuple[dict, Counter]:
     cfg = ORIGINS[key]
     path = root / cfg["file"]
-    raw = path.read_bytes()
+    # Windows git checkout may convert JSON's LF to CRLF by worktree rules.
+    # Compare the canonical *Git object* bytes, not host-specific text EOL.
+    # Only this exact CRLF->LF transform is accepted; all data/schema/owner
+    # checks and the immutable Git Blob hash remain fail closed.
+    raw = path.read_bytes().replace(b"\r\n", b"\n")
     if git_blob(raw) != cfg["blob"]:
         raise ValueError(f"{key}: frozen 1,554/1,421 source manifest was modified")
     data = json.loads(raw)

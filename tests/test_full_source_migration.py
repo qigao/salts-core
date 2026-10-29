@@ -54,6 +54,23 @@ class ExactMigrationSourceTests(unittest.TestCase):
                                     "upstream-retained-verify-ownership"
                                     for r in shared))
 
+    def test_windows_crlf_worktree_preserves_exact_git_blob_identity(self):
+        for key in ("salts", "salts-utils"):
+            with self.subTest(repo=key), tempfile.TemporaryDirectory() as temp:
+                source = ROOT / proof.ORIGINS[key]["file"]
+                dest = Path(temp) / proof.ORIGINS[key]["file"]
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                canonical = source.read_bytes().replace(b"\r\n", b"\n")
+                dest.write_bytes(canonical.replace(b"\n", b"\r\n"))
+                data, _ = proof.verify_origin(Path(temp), key)
+                self.assertEqual(len(data["files"]), proof.ORIGINS[key]["count"])
+
+                # A truly different source byte cannot be normalized away:
+                # a second CR inserted before LF remains visible in Git SHA.
+                dest.write_bytes(canonical.replace(b"\n", b"\r\r\n"))
+                with self.assertRaisesRegex(ValueError, "modified"):
+                    proof.verify_origin(Path(temp), key)
+
     def test_required_critical_native_symbols_and_source_blobs_exist(self):
         for (repo, path), sha in proof.CRITICAL_SHA.items():
             with self.subTest(repo=repo, path=path):
