@@ -72,9 +72,11 @@ runs:
         PYTHONDONTWRITEBYTECODE: '1'
       run: python crypto/tools/check_local_native_source.py
     - name: Restore exact re2c 4.6 and Unicode 17 host data
-      uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@2e214ae44a3e3244eded5db6361194576356fc9e
+      uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@4864033d4e4bc70d182df6a33695582ec6fcc968
       with:
         token: ${{ inputs.token }}
+        version: '4.6.5'
+        sha256: 'dfdcf77dfd36e60500532a3fcc8a1bd32dc2232edeb63e053267a712bc4489ed'
     - name: Require exact base and module binary packages
       id: dependencies
       if: inputs.dependency-mode == 'binary'

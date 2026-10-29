@@ -159,6 +159,30 @@ with that commit. Follow-up source or audit changes require their own CI;
 neither these results nor local checks are relabeled as trusted release
 receipts for a different commit.
 
+## Exact re2c host package
+
+The shared CI prerequisite now uses the canonical curl-only action at
+`qigao/vcpkg-cache@4864033d4e4bc70d182df6a33695582ec6fcc968`, with explicit
+`Qigao.Re2c.Binary` version `4.6.5` and package SHA-256
+`dfdcf77dfd36e60500532a3fcc8a1bd32dc2232edeb63e053267a712bc4489ed`.
+The action verifies the archive digest, package identity and complete host
+payload before extraction or execution. It does not select the latest version,
+substitute a system tool or export a successful environment after a failure.
+
+The original `4.6.4` Linux x64 package required `GLIBCXX_3.4.32`, which stopped
+the existing Ubuntu 22.04 TinyCC and sanitizer jobs before their full Core
+build steps. Pinning the old action commit had not pinned its NuGet package.
+The upstream repair keeps re2c 4.6 and the same Unicode 17 data, while building
+Linux x64 with GCC 11 on Ubuntu 22.04. Its actual maximum requirements are
+`GLIBC_2.34`, `GLIBCXX_3.4.29` and `CXXABI_1.3.8`.
+
+[Publication run 40852170873](https://github.com/qigao/vcpkg-cache/actions/runs/40852170873)
+verified the same package on real Ubuntu 22.04 and 24.04, including Unicode
+source generation, C11 compilation and execution, then published those exact
+bytes. Core retains its original runners, source/binary dependency selection,
+test commands and separate strict cache ABI pin. Package qualification does
+not replace fresh Core CI or the final migration evidence gates.
+
 ## Remaining release gates
 
 This repair does not mark the original 2,975 files or 610 explicitly public
