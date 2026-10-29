@@ -202,12 +202,74 @@ def verify_restored_mmap(root: Path) -> None:
         raise ValueError("installed C11/C++17 mmap client absent")
 
 
+PUBLIC_FUNCTION_INDEX = "tools/migration/original-public-functions.json"
+PUBLIC_FUNCTION_GIT_BLOB = "19db69a508c6049afcfe6922e19448f5f9c5d875"
+
+def verify_public_functions(root: Path, originals: dict[str, dict]) -> int:
+    """Require 610 exact original function names, header owners and blobs.
+
+    These are explicit header exports in the first 54 high-risk native
+    headers. The remaining macro/inline/API domains are separately unqualified.
+    Every entry remains a debt until source + installed + behavior tests pass.
+    """
+    raw = (root / PUBLIC_FUNCTION_INDEX).read_bytes().replace(b"\r\n", b"\n")
+    if git_blob(raw) != PUBLIC_FUNCTION_GIT_BLOB:
+        raise ValueError("original 54-header/610-function provenance was modified")
+    data = json.loads(raw)
+    if (data.get("schema") != 1 or data.get("header_count") != 54 or
+            data.get("exported_occurrences") != 610 or
+            len(data.get("headers", [])) != 54):
+        raise ValueError("original public function inventory was truncated")
+    sources = {
+        "qigao/salts": "salts",
+        "qigao/salts-utils": "salts-utils",
+    }
+    lookup = {
+        key: {p["path"]: p["git_blob"] for p in value["files"]}
+        for key, value in originals.items()
+    }
+    headers = set()
+    per_source: Counter = Counter()
+    per_symbol = {key: set() for key in ORIGINS}
+    unparsed = 0
+    for header in data["headers"]:
+        repo = header["source_repo"]
+        key = sources.get(repo)
+        path = header["path"]
+        blob = header["git_blob"]
+        if (key is None or (repo, path) in headers or
+                lookup[key].get(path) != blob or
+                header["source_commit"] != ORIGINS[key]["commit"]):
+            raise ValueError("unmapped or forged original public API header: " + path)
+        headers.add((repo, path))
+        declarations = header["explicit_functions"]
+        if len(set(declarations)) != len(declarations):
+            raise ValueError("duplicated original public API in header " + path)
+        for name in declarations:
+            if not re.fullmatch(r"[A-Za-z_]\w*", name):
+                raise ValueError("invalid original public API symbol " + name)
+            if name in per_symbol[key]:
+                raise ValueError("unmapped duplicated native public function: " + name)
+            per_symbol[key].add(name)
+        if header.get("status") != "requires-real-implementation-and-behavior-test":
+            raise ValueError("original public function falsely qualified: " + path)
+        per_source[key] += len(declarations)
+        unparsed += len(header.get("unparsed_declarations", []))
+    if (per_source != Counter({"salts": 476, "salts-utils": 134})
+            or unparsed != 9
+            or not set(MMAP_EXPORTS).issubset(per_symbol["salts"])):
+        raise ValueError("missing original mmap/serial/capture/playback/FS public API")
+    return sum(per_source.values())
+
+
 def audit(root: Path = ROOT, require_complete: bool = False) -> dict:
     output = {}
+    originals = {}
     core_debt = 0
     review_debt = 0
     for key in ORIGINS:
         data, rows = verify_origin(root, key)
+        originals[key] = data
         outstanding = sum(count for (owner, status), count in rows.items()
                           if owner != "salts-upstream-or-build-support"
                           and owner != "salts-utils-upstream-or-build-support"
@@ -223,11 +285,13 @@ def audit(root: Path = ROOT, require_complete: bool = False) -> dict:
                        "unaccounted_or_changed": outstanding,
                        "present_but_behavior_unqualified": unqualified}
     verify_restored_mmap(root)
-    if require_complete and (core_debt or review_debt):
+    exported_debt = verify_public_functions(root, originals)
+    if require_complete and (core_debt or review_debt or exported_debt):
         raise ValueError(
             f"FINAL MIGRATION BLOCKED: {core_debt} missing/changed original "
-            f"native files and {review_debt} present-but-unqualified file cases; "
-            "function/API/tests/installed-runtime evidence must be approved")
+            f"native files, {review_debt} present-but-unqualified file cases "
+            f"and {exported_debt} original public functions without approved "
+            "source/installed-runtime behavior evidence")
     return output
 
 
@@ -244,7 +308,8 @@ def main() -> int:
         print(f"{name}: frozen={counts['frozen_total']}, "
               f"unaccounted_or_changed={counts['unaccounted_or_changed']}, "
               f"present_but_behavior_unqualified={counts['present_but_behavior_unqualified']}")
-    print("PASS: all 2,975 pinned original Git blobs accounted for by owner; "
+    print("PASS: all 2,975 pinned original Git blobs and 610 explicit original " 
+          "public functions accounted for by owner; "
           "native mmap 18/18 sources, exported symbols and tests registered; "
           "this is NOT final functional equivalence")
     return 0

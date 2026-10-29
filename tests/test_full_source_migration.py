@@ -106,6 +106,39 @@ class ExactMigrationSourceTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "implementation missing"):
                 proof.verify_restored_mmap(root)
 
+    def test_54_original_headers_and_610_functions_are_pinned(self):
+        source = {key: proof.verify_origin(ROOT, key)[0] for key in proof.ORIGINS}
+        self.assertEqual(proof.verify_public_functions(ROOT, source), 610)
+
+        index = ROOT / proof.PUBLIC_FUNCTION_INDEX
+        self.assertEqual(proof.git_blob(index.read_bytes().replace(b"\r\n", b"\n")),
+                         proof.PUBLIC_FUNCTION_GIT_BLOB)
+
+    def test_public_api_ledger_rejects_deleted_or_renamed_function(self):
+        source = {key: proof.verify_origin(ROOT, key)[0] for key in proof.ORIGINS}
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            target = root / proof.PUBLIC_FUNCTION_INDEX
+            target.parent.mkdir(parents=True, exist_ok=True)
+            original = (ROOT / proof.PUBLIC_FUNCTION_INDEX).read_bytes()
+            changed = original.replace(b"cmeta_mmap_group_open",
+                                       b"cmeta_mmap_group_lost", 1)
+            self.assertNotEqual(original, changed)
+            target.write_bytes(changed)
+            with self.assertRaisesRegex(ValueError, "provenance was modified"):
+                proof.verify_public_functions(root, source)
+
+    def test_windows_crlf_public_api_index_preserves_git_blob(self):
+        source = {key: proof.verify_origin(ROOT, key)[0] for key in proof.ORIGINS}
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            target = root / proof.PUBLIC_FUNCTION_INDEX
+            target.parent.mkdir(parents=True, exist_ok=True)
+            data = (ROOT / proof.PUBLIC_FUNCTION_INDEX).read_bytes()
+            normalized = data.replace(b"\r\n", b"\n")
+            target.write_bytes(normalized.replace(b"\n", b"\r\n"))
+            self.assertEqual(proof.verify_public_functions(root, source), 610)
+
     def test_final_gate_stays_red_until_all_originals_qualified(self):
         report = proof.audit(ROOT)
         self.assertEqual(report["salts"]["frozen_total"], 1554)

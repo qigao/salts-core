@@ -18,6 +18,16 @@ The complete per-file path, byte count, original Git Blob SHA, owner assignment 
 
 **Presence is not API parity.** A changed file with the same name requires explicit semantic review. A byte-identical source file still requires CMake build ownership, public header, installed C11/C++17 consumer tests, lifecycle/error semantics, sanitizer and relevant platform evidence. No missing cases are silently waived. The future `--require-complete` gate remains intentionally **RED** until **all 924 native candidate/split cases** have real acceptance evidence.
 
+## Separate public-function/source ABI ledger
+
+The new `tools/migration/original-public-functions.json` additionally freezes **54 original headers** and **610 distinct explicitly declared public functions**:
+
+- Salts `utils/include/` + `simd/include/`: **36 headers, 476 functions**.
+- Salts-utils native Capture/Playback/Serial and CFlow FS/Process/USB headers: **18 headers, 134 functions**, including 30 declared Serial APIs, 26 Capture main-header APIs, 17 Playback APIs, and real CFlow USB/FS native functions.
+- Nine nonfunction CMeta metadata declarations (`extern const` data/type descriptors) in `utils/include/cmeta_cmeta_data.h` remain explicitly **unparsed / awaiting upper-layer ownership review**. Macros and inline APIs still require separate manual inventory.
+- Each API points to its original header Git Blob and source commit, with `requires-real-implementation-and-behavior-test` status. A matching function name/header alone **does not** close implementation, linkage, lifetime, failure, or testing obligations.
+- This ledger is immutable Git Blob `19db69a508c6049afcfe6922e19448f5f9c5d875`; the same `tools/check_full_source_migration.py` checks all 54 original header/source associations and 610 names, catches silent function deletion/renaming, and keeps `--require-complete` **RED** while the function-level claims remain unqualified. The full `CNet/Platform/NativeIO` public API inventory is additional scope and is not falsely represented by these 610 initial functions.
+
 ## Layer ownership contract
 
 - `salts-core`: plain C11 Core, mmap, strings, logging, memory pools, regex, byte scanners; native Platform, Concurrency, NativeIO, SCTP/CNet, Crypto, ASN1, FS, Process, Capture, Playback, Serial, low-level FS watch and native USB transport. Preserve original public behavior, independent lifetime and error paths.
