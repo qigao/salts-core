@@ -260,3 +260,16 @@ add_executable(original_mmap_consumer_cpp original_mmap_consumer.cpp)
 target_compile_features(original_mmap_consumer_cpp PRIVATE cxx_std_17)
 target_link_libraries(original_mmap_consumer_cpp PRIVATE Salts::Core)
 add_test(NAME sdk.original_native_mmap_cpp17 COMMAND original_mmap_consumer_cpp)
+
+
+# Original ten-function bounded regex C11 SDK API, compiled by Salts::Core.
+# This imports the installed library; no second regex parser or private source.
+add_executable(re_consumer_c re_consumer.c)
+target_compile_features(re_consumer_c PRIVATE c_std_11)
+target_link_libraries(re_consumer_c PRIVATE Salts::Core)
+add_test(NAME sdk.original_re_c11 COMMAND re_consumer_c)
+
+add_executable(re_consumer_cpp re_consumer.cpp)
+target_compile_features(re_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(re_consumer_cpp PRIVATE Salts::Core)
+add_test(NAME sdk.original_re_cpp17 COMMAND re_consumer_cpp)

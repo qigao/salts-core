@@ -527,3 +527,38 @@ add_test(NAME saltscore.all_original_source_negative
           -p "test_full_source_migration.py" -v)
 set_tests_properties(saltscore.all_original_source_negative
   PROPERTIES TIMEOUT 45)
+
+
+# qigao/salts original utils native byte regex, 10 owned public C11 functions.
+# Always-on compiled source/runtime; TinyTest retains all 25 donor test cases.
+add_executable(saltscore_original_re_smoke test_re_smoke.c)
+target_compile_features(saltscore_original_re_smoke PRIVATE c_std_11)
+set_target_properties(saltscore_original_re_smoke PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+target_link_libraries(saltscore_original_re_smoke PRIVATE Salts::Core)
+add_test(NAME saltscore.original_re_smoke COMMAND saltscore_original_re_smoke)
+set_tests_properties(saltscore.original_re_smoke PROPERTIES TIMEOUT 25)
+
+if(TARGET Salts::TinyTest)
+  add_executable(saltscore_original_re_contract test_re.c)
+  target_compile_features(saltscore_original_re_contract PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_re_contract PRIVATE
+    Salts::Core Salts::TinyTest)
+  # The first-byte scan is PRIVATE. Only the original tests may inspect it.
+  target_include_directories(saltscore_original_re_contract PRIVATE
+    "${PROJECT_SOURCE_DIR}/core/src")
+  add_test(NAME saltscore.original_re_25_case_contract
+    COMMAND saltscore_original_re_contract)
+  set_tests_properties(saltscore.original_re_25_case_contract
+    PROPERTIES TIMEOUT 60)
+endif()
+
+
+# Fail closed if any original 25 regex tests, ten public functions,
+# private SSE2/NEON scanner or installed C11/C++17 acceptance vanishes.
+add_test(NAME saltscore.original_re_source_provenance
+  COMMAND "${Python3_EXECUTABLE}" -m unittest discover
+          -s "${PROJECT_SOURCE_DIR}/tests"
+          -p "test_original_re_provenance.py" -v)
+set_tests_properties(saltscore.original_re_source_provenance
+  PROPERTIES TIMEOUT 45)
