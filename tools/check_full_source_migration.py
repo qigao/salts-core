@@ -142,8 +142,13 @@ def verify_origin(root: Path, key: str) -> tuple[dict, Counter]:
                       "changed-at-expected-path-needs-api-and-behavior-review"):
             if not isinstance(target, str) or not target or ".." in target.split("/"):
                 raise ValueError(f"{key}: source link missing real destination path: {p}")
-        elif target is not None:
-            raise ValueError(f"{key}: unaccounted source claims a destination: {p}")
+        elif target is not None and not owner.endswith("upstream-or-build-support"):
+            # An upstream-retained file may have an identical Git blob in
+            # Core for completely unrelated/shared build infrastructure.
+            # That does NOT qualify the upstream function for migration.
+            # Native candidates still must never claim a target while
+            # classified as unaccounted.
+            raise ValueError(f"{key}: unaccounted native source claims a destination: {p}")
         if p in critical and sha != critical[p]:
             raise ValueError(f"{key}: original critical algorithm or public ABI altered: {p}")
         owners[owner] += 1

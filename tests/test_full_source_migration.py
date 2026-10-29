@@ -40,6 +40,20 @@ class ExactMigrationSourceTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "modified"):
                     proof.verify_origin(Path(temp), key)
 
+    def test_shared_upstream_build_files_are_not_migrated_functions(self):
+        # A repeated CMake/helper Git blob is a provenance coincidence,
+        # never an excuse to mark an upper-layer function as Core-qualified.
+        for key in ("salts", "salts-utils"):
+            with self.subTest(repo=key):
+                manifest, _ = proof.verify_origin(ROOT, key)
+                shared = [r for r in manifest["files"]
+                          if r["owner"].endswith("upstream-or-build-support")
+                          and "target_path" in r]
+                self.assertGreater(len(shared), 0)
+                self.assertTrue(all(r["status"] ==
+                                    "upstream-retained-verify-ownership"
+                                    for r in shared))
+
     def test_required_critical_native_symbols_and_source_blobs_exist(self):
         for (repo, path), sha in proof.CRITICAL_SHA.items():
             with self.subTest(repo=repo, path=path):
