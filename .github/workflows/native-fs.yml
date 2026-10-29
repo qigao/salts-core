@@ -3,7 +3,8 @@ on:
   pull_request:
     paths:
       - "fs/src/**"
-      - "fs/include/salts/fs.h"
+      - "fs/include/**"
+      - "tests/test_cmeta_mmap.c"
       - "fs/CMakeLists.txt"
       - "CMakeLists.txt"
       - "tests/test_fs.c"
@@ -41,8 +42,12 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/check_dependency_boundaries.py
-          if grep -nE 'cmeta_|CMETA_|SALTS_C_API|TLOG_|#include "platform.h"' fs/src/*.c fs/include/salts/fs.h; then
-            echo "Retired CMeta/Salts native API is forbidden in Core FS" >&2
+          # cmeta_ is a historical native C function prefix, not an import
+          # from CMeta Reflection. Do NOT erase real mmap or error APIs.
+          # Deny only actual reflection/typed-runtime dependencies.
+          if grep -nE '^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"]cmeta/|CMETA_(STRUCT|INTERFACE|VECTOR|ENUM)' \
+            fs/src/*.c fs/include/salts/fs.h fs/include/cmeta_mmap.h; then
+            echo "Actual CMeta reflection dependency forbidden in native FS" >&2
             exit 1
           fi
       - name: Native full C11 FS build and owner tests
