@@ -17,7 +17,7 @@ _Static_assert(offsetof(salts_simd_v128, bytes) == 0u, "bytes start at zero");
     return 1; \
 } } while (0)
 
-/* Typed volatile references force all 32 DLL/import-library symbols to link,
+/* Typed volatile references force all 32 public archive symbols to link,
  * including APIs that this small runtime consumer does not otherwise call. */
 #define SIMD_EXECUTION_APIS(X) \
     X(cmeta_simd_v128_load, void, (cmeta_v128 *, const void *)) \
@@ -84,7 +84,7 @@ static int check_exported_descriptors(void) {
         {&salts_simd_b64x2, SALTS_SIMD_LANE_BOOL, 64u, true}
     };
     size_t i;
-    _Static_assert(sizeof(shapes) / sizeof(shapes[0]) == 14u, "all DLL data exports");
+    _Static_assert(sizeof(shapes) / sizeof(shapes[0]) == 14u, "all public descriptor objects");
     for (i = 0u; i < sizeof(shapes) / sizeof(shapes[0]); ++i) {
         CHECK(salts_simd_desc_valid(shapes[i].desc));
         CHECK(shapes[i].desc->lane_kind == shapes[i].kind);

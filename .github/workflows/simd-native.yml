@@ -1,4 +1,4 @@
-name: SaltsCore independent SIMD source and installed ABI
+name: SaltsCore static SIMD source and installed ABI
 
 on:
   pull_request:
@@ -119,6 +119,25 @@ jobs:
               --no-tests=error --timeout 120 -R "^saltscore[.]${case}$"
           done
           cmake --install build-simd --config Release
+      - name: Require the static SIMD archive and reject a SIMD runtime library
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          prefix = Path(os.environ["RUNNER_TEMP"]) / "simd-sdk"
+          artifacts = sorted(
+              path for path in prefix.rglob("*")
+              if path.is_file() and path.name.lower().startswith(
+                  ("saltscore_simd", "libsaltscore_simd")))
+          expected = ("saltscore_simd.lib" if os.environ["RUNNER_OS"] == "Windows"
+                      else "libsaltscore_simd.a")
+          if len(artifacts) != 1 or artifacts[0].name != expected:
+              raise SystemExit(f"Expected only {expected}; found {artifacts}")
+          print(f"Static SIMD archive: {artifacts[0]}")
+          PY
       - name: Build and execute independent installed C11 and C++17 consumers
         shell: bash
         env:
@@ -127,11 +146,6 @@ jobs:
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: |
           set -euo pipefail
-          case "$RUNNER_OS" in
-            Windows) export PATH="$(cygpath -u "$RUNNER_TEMP")/simd-sdk/bin:$PATH" ;;
-            macOS) export DYLD_LIBRARY_PATH="$RUNNER_TEMP/simd-sdk/lib:${DYLD_LIBRARY_PATH:-}" ;;
-            Linux) export LD_LIBRARY_PATH="$RUNNER_TEMP/simd-sdk/lib:${LD_LIBRARY_PATH:-}" ;;
-          esac
           args=()
           if [[ "$SIMD_SANITIZE" == true ]]; then
             flags='-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1'

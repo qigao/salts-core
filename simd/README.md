@@ -29,8 +29,8 @@ reflection validity. Its future adapter must validate those semantics and
 reference the native SIMD descriptor; Core must not call back into CMeta.
 CMeta/TurboWasm joint integration, descriptor mapping and runtime acceptance
 are separate, still-unqualified work. This standalone migration does not
-claim compatibility with the old reflected generic-call ABI or permit two
-SIMD providers to be linked into one process.
+claim compatibility with the old reflected generic-call ABI. Downstream
+components must use this implementation and explicit descriptor mapping.
 
 The frozen **2,975-file / 610-function** inventory remains unchanged and
 incomplete. Its original SIMD header entry did not enumerate the 32 plain C
@@ -47,9 +47,12 @@ The public descriptor constants cover ten numeric shapes and four masks:
 - `salts_simd_b8x16`, `b16x8`, `b32x4`, `b64x2` (same prefix).
 
 Descriptors are immutable values. Callers may copy a descriptor; execution
-does not require a particular descriptor address. Lane kind values keep the
-original signed/unsigned/floating/mask ordering. SIMDe/compiler vector types
-are private and must not appear in application storage or installed headers.
+does not require a particular descriptor address. Static linking can place
+descriptor constants in multiple binaries or DSOs, so their addresses have
+no cross-DSO identity guarantee. Compare descriptor fields instead. Lane kind
+values keep the original signed/unsigned/floating/mask ordering. SIMDe/compiler
+vector types are private and must not appear in application storage or installed
+headers.
 
 ```c
 #include <salts/simd.h>
@@ -101,9 +104,17 @@ least 32, while swizzle writes zero for indices at least 16.
 
 Enable `SALTSCORE_BUILD_SIMD=ON` with the repository's `simd` vcpkg feature.
 SIMDe is required at configure time and used privately; there is no alternate
-provider when it is missing. SIMD is a shared library with explicit function
-and descriptor-data import/export declarations, including Windows DLL data.
-The installed target is only `Salts::SIMD`.
+provider when it is missing. `Salts::SIMD` is always a static library,
+independent of `BUILD_SHARED_LIBS`, and installs an archive plus its public
+headers. Function and `extern const` declarations use ordinary C linkage;
+the headers keep `extern "C"` for C++ without DLL import/export macros.
+
+The archive is position-independent so an upper-layer DSO can link it.
+Non-Windows consumers receive the required `libm` dependency through CMake's
+static `LINK_ONLY` interface; private SIMDe include paths do not propagate.
+No runtime allocation, mutable global state or shared-library lifecycle is
+introduced by static linking. Each descriptor remains a value rather than
+a process-wide address identity.
 
 With `BUILD_TESTING=ON`, `saltscore.simd_native_boundaries` checks real
 standalone calls, descriptor borrowing/copying, in-place arithmetic,

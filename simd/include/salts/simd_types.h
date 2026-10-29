@@ -5,20 +5,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* SIMD is one shared-library owner. Data imports need the same explicit
- * producer/consumer annotation as functions on Windows. */
-#if defined(_WIN32)
-# if defined(SALTS_SIMD_BUILD)
-#  define SALTS_SIMD_API __declspec(dllexport)
-# else
-#  define SALTS_SIMD_API __declspec(dllimport)
-# endif
-#elif defined(__GNUC__) || defined(__clang__)
-# define SALTS_SIMD_API __attribute__((visibility("default")))
-#else
-# define SALTS_SIMD_API
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -48,7 +34,8 @@ typedef struct salts_simd_v128 {
 #endif
 } salts_simd_v128;
 
-/* Pure execution metadata. This deliberately has no CMeta type pointer and
+/* Pure execution metadata with value semantics; descriptor addresses have no
+ * cross-DSO identity contract. This deliberately has no CMeta type pointer and
  * is not ABI-compatible with the old reflected cmeta_vector_desc. Reflection
  * adapters must validate their type separately, then pass a native descriptor.
  * Do not cast an old descriptor or copy its object representation here. */
@@ -59,26 +46,26 @@ typedef struct salts_simd_desc {
     bool is_mask;
 } salts_simd_desc;
 
-SALTS_SIMD_API extern const salts_simd_desc salts_simd_i8x16;
-SALTS_SIMD_API extern const salts_simd_desc salts_simd_u8x16;
-SALTS_SIMD_API extern const salts_simd_desc salts_simd_i16x8;
-SALTS_SIMD_API extern const salts_simd_desc salts_simd_u16x8;
-SALTS_SIMD_API extern const salts_simd_desc salts_simd_i32x4;
-SALTS_SIMD_API extern const salts_simd_desc salts_simd_u32x4;
-SALTS_SIMD_API extern const salts_simd_desc salts_simd_i64x2;
-SALTS_SIMD_API extern const salts_simd_desc salts_simd_u64x2;
-SALTS_SIMD_API extern const salts_simd_desc salts_simd_f32x4;
-SALTS_SIMD_API extern const salts_simd_desc salts_simd_f64x2;
-SALTS_SIMD_API extern const salts_simd_desc salts_simd_b8x16;
-SALTS_SIMD_API extern const salts_simd_desc salts_simd_b16x8;
-SALTS_SIMD_API extern const salts_simd_desc salts_simd_b32x4;
-SALTS_SIMD_API extern const salts_simd_desc salts_simd_b64x2;
+extern const salts_simd_desc salts_simd_i8x16;
+extern const salts_simd_desc salts_simd_u8x16;
+extern const salts_simd_desc salts_simd_i16x8;
+extern const salts_simd_desc salts_simd_u16x8;
+extern const salts_simd_desc salts_simd_i32x4;
+extern const salts_simd_desc salts_simd_u32x4;
+extern const salts_simd_desc salts_simd_i64x2;
+extern const salts_simd_desc salts_simd_u64x2;
+extern const salts_simd_desc salts_simd_f32x4;
+extern const salts_simd_desc salts_simd_f64x2;
+extern const salts_simd_desc salts_simd_b8x16;
+extern const salts_simd_desc salts_simd_b16x8;
+extern const salts_simd_desc salts_simd_b32x4;
+extern const salts_simd_desc salts_simd_b64x2;
 
 /* Retains the original numeric structural checks: nonzero lane dimensions
  * totaling 128 bits and BOOL/mask agreement. Per-operation support is checked
  * by the execution function. This does not validate a reflection type, infer
  * lane width from lane_kind, or make an unsupported operation available. */
-SALTS_SIMD_API bool salts_simd_desc_valid(const salts_simd_desc *desc);
+bool salts_simd_desc_valid(const salts_simd_desc *desc);
 
 #ifdef __cplusplus
 }

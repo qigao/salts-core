@@ -21,6 +21,7 @@ ORIGINAL_FILES = "tools/migration/original-salts-files.json"
 ORIGINAL_FILES_BLOB = "05bc04582efc1e000b35f76288ee3b35fbe45e06"
 ORIGINAL_API = "tools/migration/original-public-functions.json"
 ORIGINAL_API_BLOB = "19db69a508c6049afcfe6922e19448f5f9c5d875"
+PUBLIC_HEADERS = ("simd/include/salts/simd.h", "simd/include/salts/simd_types.h")
 C_TOKENS = re.compile(
     r'//[^\n]*|/\*[\s\S]*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'')
 
@@ -74,7 +75,6 @@ def function_blocks(text: str) -> dict[str, str]:
 
 def public_declarations(text: str) -> list[dict[str, str]]:
     text = restore_original_identifiers(mask_c(text, literals=False))
-    text = re.sub(r"\bSALTS_SIMD_API\b", "", text)
     return [{"name": m[1], "declaration_tokens": " ".join(
                 re.findall(r"[A-Za-z_]\w*|\d+|[^\s]", m[0]))}
             for m in re.finditer(
@@ -117,6 +117,12 @@ def verify_module(root: Path = ROOT) -> None:
         if not (root / path).is_file():
             raise ValueError("original SIMD destination missing: " + path)
 
+    for path in PUBLIC_HEADERS:
+        header = tracked_bytes(root / path).decode("utf-8")
+        if re.search(r"\b(?:SALTS_C_API|SALTS_SIMD_API|SALTS_SIMD_BUILD|"
+                     r"dllimport|dllexport)\b", mask_c(header)):
+            raise ValueError("static SIMD public header reintroduced export markers: " + path)
+
     source = restore_original_identifiers(
         tracked_bytes(root / "simd/src/simd.c").decode("utf-8"))
     if git_blob(source.encode("utf-8")) != original["simd/src/simd.c"]:
@@ -149,8 +155,8 @@ def isolated_copy():
     inventory = verify_original_inventory()
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
-        for relative in [INVENTORY, ORIGINAL_FILES, ORIGINAL_API] + [
-                row["path"] for row in inventory["files"]]:
+        for relative in [INVENTORY, ORIGINAL_FILES, ORIGINAL_API,
+                         PUBLIC_HEADERS[1]] + [row["path"] for row in inventory["files"]]:
             destination = root / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / relative, destination)
@@ -185,7 +191,7 @@ class OriginalSIMDProvenanceTests(unittest.TestCase):
                 path = root / "simd/include/salts/simd.h"
                 header = path.read_text(encoding="utf-8")
                 declaration = re.search(
-                    r"(?:SALTS_SIMD_API\s+)?bool\s+cmeta_simd_extract_lane"
+                    r"bool\s+cmeta_simd_extract_lane"
                     r"\s*\([^;{}]*\)\s*;", header)
                 self.assertIsNotNone(declaration)
                 old = declaration[0]
@@ -195,6 +201,20 @@ class OriginalSIMDProvenanceTests(unittest.TestCase):
                 self.assertNotEqual(old, replacement)
                 path.write_text(header.replace(old, replacement, 1), encoding="utf-8")
                 with self.assertRaisesRegex(ValueError, "public declaration missing or changed"):
+                    verify_module(root)
+
+        # Even empty compatibility macros must not hide a return to a DLL ABI.
+        for relative, declaration in (
+                (PUBLIC_HEADERS[0], "#define SALTS_C_API\n"),
+                (PUBLIC_HEADERS[0], "#define SALTS_SIMD_API\n"),
+                (PUBLIC_HEADERS[1], "__declspec(dllimport) extern int old_owner;\n"),
+                (PUBLIC_HEADERS[1], "__declspec(dllexport) extern int old_owner;\n"),
+                (PUBLIC_HEADERS[1], "#define SALTS_SIMD_BUILD 1\n")):
+            with self.subTest(header=relative, marker=declaration), isolated_copy() as root:
+                path = root / relative
+                path.write_text(path.read_text(encoding="utf-8") + declaration,
+                                encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "reintroduced export markers"):
                     verify_module(root)
 
     def test_truncated_or_modified_algorithm_is_rejected(self):

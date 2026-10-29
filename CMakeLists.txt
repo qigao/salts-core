@@ -51,7 +51,7 @@ endif()
 
 option(SALTSCORE_BUILD_CSERDE "Build standalone C11 CSerde owner" OFF)
 option(SALTSCORE_BUILD_TINYTEST "Build standalone C11 TinyTest owner" OFF)
-option(SALTSCORE_BUILD_SIMD "Build the independent C11 SIMD execution owner" OFF)
+option(SALTSCORE_BUILD_SIMD "Build the independent static C11 SIMD execution module" OFF)
 # TinyTest-enabled source conformance includes the original C++17 fmt tests.
 # Enable C++ at package root *before* either tests/ or sibling native-modules/
 # is configured; a sibling-only enable_language(CXX) has no visibility here.

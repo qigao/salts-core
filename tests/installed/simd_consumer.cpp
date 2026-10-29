@@ -22,7 +22,7 @@ static_assert(offsetof(salts_simd_v128, bytes) == 0u, "bytes start at zero");
 } } while (false)
 
 /* All signatures are checked independently of the producer. Volatile pointer
- * reads also require every C-linkage entry to exist in the installed library. */
+ * reads also require every C-linkage entry to exist in the installed archive. */
 #define SIMD_EXECUTION_APIS(X) \
     X(cmeta_simd_v128_load, void, (cmeta_v128 *, const void *)) \
     X(cmeta_simd_v128_store, void, (void *, const cmeta_v128 *)) \
@@ -87,7 +87,7 @@ static int check_exported_descriptors() {
         {&salts_simd_b32x4, SALTS_SIMD_LANE_BOOL, 32u, true},
         {&salts_simd_b64x2, SALTS_SIMD_LANE_BOOL, 64u, true}
     };
-    static_assert(sizeof(shapes) / sizeof(shapes[0]) == 14u, "all DLL data exports");
+    static_assert(sizeof(shapes) / sizeof(shapes[0]) == 14u, "all public descriptor objects");
     for (const auto &shape : shapes) {
         CHECK(salts_simd_desc_valid(shape.desc));
         CHECK(shape.desc->lane_kind == shape.kind);
