@@ -70,6 +70,13 @@ jobs:
         if: runner.os == 'Windows'
         with:
           arch: x64
+      - name: Keep Apple archive dates stable across build and install
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          # CMake invokes ranlib again when installing the static archive.
+          # Set this before the first build and retain the strict raw SHA gate.
+          printf '%s\n' 'ZERO_AR_DATE=1' >> "$GITHUB_ENV"
       - name: Verified compiler output cache
         uses: qigao/stun/.github/actions/setup-ccache@6498e9710609820da7d99a938627cc44f17f00ed
         with:
