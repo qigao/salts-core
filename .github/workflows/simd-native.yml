@@ -89,13 +89,13 @@ jobs:
           SIMD_SANITIZE: ${{ matrix.sanitize }}
         run: |
           set -euo pipefail
-          args=()
+          args=(-DCMAKE_BUILD_TYPE=Release)
           if [[ "$SIMD_SANITIZE" == true ]]; then
             flags='-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1'
             args+=("-DCMAKE_C_FLAGS=$flags" "-DCMAKE_CXX_FLAGS=$flags")
           fi
           cmake -S . -B build-simd -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DBUILD_TESTING=ON \
             -DSALTSCORE_BUILD_SIMD=ON -DSALTSCORE_BUILD_TINYTEST=ON \
             "-DCMAKE_TOOLCHAIN_FILE=$SIMD_TOOLCHAIN" \
             -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} \
@@ -146,13 +146,13 @@ jobs:
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: |
           set -euo pipefail
-          args=()
+          args=(-DCMAKE_BUILD_TYPE=Release)
           if [[ "$SIMD_SANITIZE" == true ]]; then
             flags='-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1'
             args+=("-DCMAKE_C_FLAGS=$flags" "-DCMAKE_CXX_FLAGS=$flags")
           fi
           cmake -S tests/installed -B build-simd-installed -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release -DSALTSCORE_REQUIRE_SIMD=ON \
+            -DSALTSCORE_REQUIRE_SIMD=ON \
             "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/simd-sdk" \
             -DCMAKE_POLICY_DEFAULT_CMP0141=NEW \
             -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded "${args[@]}"
