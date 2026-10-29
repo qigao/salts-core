@@ -86,9 +86,17 @@ cmake --build build-cnet --parallel
 ctest --test-dir build-cnet --output-on-failure
 ```
 
-The active workflows share `.github/actions/setup-core-native`, which restores
-the exact non-crypto dependencies and re2c host tool and checks the local
-Crypto source bytes. `.github/workflows/cnet-provider.yml` retains real
+The active workflows share `.github/actions/setup-core-native`, which checks
+local Crypto source bytes and restores the exact re2c host tool. Every caller
+explicitly selects its dependency contract: original source-build jobs use
+the fixed vcpkg scripts and manifest to compile dependencies; original SDK,
+SIMD, USB, Playback, Zstd and non-iOS Capture cache rows require every exact
+binary package. Capture's original iOS row uses source mode for the newly
+required Core base dependencies; its virtual-audio TSan job remains binary.
+The separate SDK candidate iOS row remains strictly binary as well.
+A cache failure never selects the source path. Source-build success
+does not satisfy the separate SDK binary-package qualification gate.
+`.github/workflows/cnet-provider.yml` retains real
 Linux/macOS/Windows transport, TLS, installed SDK, relocation and owner checks.
 The separate `SALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION` option enables the
 additional M2/M5/M6 qualification graph; it defaults to `OFF` and does not

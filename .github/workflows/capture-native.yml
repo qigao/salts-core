@@ -74,8 +74,10 @@ jobs:
         id: dependencies
         # Capture iOS uses system frameworks; the default Core graph still
         # requires its real c-ares, KCP and SIMDe base dependencies.
+        # Preserve c910's row boundary: only iOS lacked a strict binary restore.
         uses: ./.github/actions/setup-core-native
         with:
+          dependency-mode: ${{ matrix.cross == 'ios' && 'source' || 'binary' }}
           token: ${{ github.token }}
           triplet: ${{ matrix.triplet }}
           host-triplet: ${{ matrix.host }}
@@ -249,6 +251,7 @@ jobs:
         id: dependencies
         uses: ./.github/actions/setup-core-native
         with:
+          dependency-mode: binary
           token: ${{ github.token }}
           triplet: x64-linux
           host-triplet: x64-linux

@@ -48,6 +48,9 @@ provenance and is not an acceptable use of the staging command.
 requests. It also has a separate, strictly guarded publication path for a push
 of the exact `v0.1.000` tag. All active Core producer workflows restore the
 same required base dependency graph and compile the local Crypto source.
+The SDK candidate rows explicitly retain strict `binary` dependency mode:
+every package must be available at its exact locked identity. Source-built
+qualification in other original Core jobs cannot replace these receipts.
 
 | RID | Runner / target | Required candidate evidence |
 | --- | --- | --- |
@@ -87,7 +90,8 @@ vcpkg/curl action and the repository's pinned registries. Linux Capture uses
 the actual PipeWire/X11 system SDKs, and libusb requires the udev development
 package. The exact re2c host tool and Unicode 17 data remain mandatory. Cache
 availability never substitutes for a build or platform gate. Missing exact
-binary packages remain failures, with no provider/version fallback. Android API 26
+binary packages remain failures; these rows cannot switch to the separately
+selected source-build mode or another provider/version. Android API 26
 preserves the original Capture MediaProjection requirement.
 
 The native backend check inspects the actual compile database. In particular,

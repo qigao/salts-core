@@ -55,6 +55,7 @@ jobs:
       - name: Restore exact Core dependencies and re2c host tools
         uses: ./.github/actions/setup-core-native
         with:
+          dependency-mode: source
           token: ${{ github.token }}
       - name: Build original source under sole SaltsCore targets, test and install
         shell: bash

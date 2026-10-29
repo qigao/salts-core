@@ -95,8 +95,14 @@ source and reviewed patches, and `crypto/tools/check_local_native_source.py`
 checks the raw Git blob bytes without newline normalization.
 
 The Linux/macOS/Windows workflow `.github/workflows/cnet-provider.yml` uses
-`.github/actions/setup-core-native` for the exact non-crypto dependency cache
-and re2c host prerequisite, and compiles the default production graph. It
+`.github/actions/setup-core-native` in explicit `source` mode, retaining the
+original fixed vcpkg scripts revision
+`04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4` and the manifest's exact baseline
+and registry. The producer's normal manifest install compiles dependencies
+from source; the fixed re2c host prerequisite is unchanged. This selection
+is independent of the strict `binary` mode used by SDK/module cache gates:
+it is never a response to a binary-package failure. The workflow compiles
+the default production graph. It
 then runs the retained real transport/TLS tests and installs a real CNet DSO
 plus C11/C++17 CNet consumers and relocation/owner checks. It must be **observed
 and fully successful**, with exact-head package/link evidence, before CNet can

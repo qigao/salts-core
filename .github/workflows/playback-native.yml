@@ -77,6 +77,7 @@ jobs:
         id: cache
         uses: ./.github/actions/setup-core-native
         with:
+          dependency-mode: binary
           token: ${{ github.token }}
           triplet: ${{ matrix.triplet }}
           host-triplet: ${{ matrix.triplet }}

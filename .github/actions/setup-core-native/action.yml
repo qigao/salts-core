@@ -1,8 +1,11 @@
 name: Exact Core native prerequisites
-description: Restore the host re2c generator and canonical non-crypto dependencies for the default local Core graph.
+description: Prepare exact host tools and explicitly selected source or binary dependency qualification.
 inputs:
   token:
     description: Read-only GitHub Packages token.
+    required: true
+  dependency-mode:
+    description: source builds the pinned manifest dependencies; binary requires every exact cached package and never falls back.
     required: true
   triplet:
     description: Target triplet; defaults to the native runner architecture.
@@ -18,8 +21,8 @@ inputs:
     default: ''
 outputs:
   toolchain_file:
-    description: Canonical CMake toolchain for the exact restored dependency graph.
-    value: ${{ steps.dependencies.outputs.toolchain_file }}
+    description: Canonical CMake toolchain for the explicitly selected dependency mode.
+    value: ${{ steps.toolchain.outputs.toolchain_file }}
   triplet:
     description: Resolved target triplet.
     value: ${{ steps.coordinates.outputs.triplet }}
@@ -33,16 +36,28 @@ runs:
       id: coordinates
       shell: bash
       env:
+        CORE_DEPENDENCY_MODE: ${{ inputs.dependency-mode }}
         CORE_REQUESTED_TRIPLET: ${{ inputs.triplet }}
         CORE_REQUESTED_HOST: ${{ inputs.host-triplet }}
       run: |
         set -euo pipefail
+        case "$CORE_DEPENDENCY_MODE" in
+          source|binary) ;;
+          *) echo "Unknown Core dependency mode: $CORE_DEPENDENCY_MODE" >&2; exit 1 ;;
+        esac
         case "$RUNNER_OS/$RUNNER_ARCH" in
           Linux/X64) native=x64-linux ;;
           Linux/ARM64) native=arm64-linux ;;
           macOS/X64) native=x64-osx ;;
           macOS/ARM64) native=arm64-osx ;;
-          Windows/X64) native=qigao-x64-windows-v145 ;;
+          Windows/X64)
+            if [ "$CORE_DEPENDENCY_MODE" = binary ]; then
+              native=qigao-x64-windows-v145
+            else
+              # Original source-built CNet uses the standard triplet from
+              # these exact scripts; cache jobs retain their custom ABI triplet.
+              native=x64-windows
+            fi ;;
           *) echo "Unsupported Core dependency host: $RUNNER_OS/$RUNNER_ARCH" >&2; exit 1 ;;
         esac
         triplet="${CORE_REQUESTED_TRIPLET:-$native}"
@@ -60,8 +75,9 @@ runs:
       uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@2e214ae44a3e3244eded5db6361194576356fc9e
       with:
         token: ${{ inputs.token }}
-    - name: Restore exact base and module dependency packages
+    - name: Require exact base and module binary packages
       id: dependencies
+      if: inputs.dependency-mode == 'binary'
       uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@7bb5b556a001bc82d2922a04a718e986a7f47f54
       env:
         VCPKG_BINARY_CACHE: ${{ env.VCPKG_BINARY_CACHE || format('{0}/core-native-vcpkg-cache', runner.temp) }}
@@ -71,11 +87,67 @@ runs:
         host-triplet: ${{ steps.coordinates.outputs.host_triplet }}
         manifest-root: ${{ inputs.manifest-root }}
         features: ${{ inputs.features }}
-    - name: Expose the canonical producer toolchain
+    - name: Prepare original fixed vcpkg scripts for source dependency builds
+      id: source_dependencies
+      if: inputs.dependency-mode == 'source'
       shell: bash
       env:
-        CORE_RESTORED_TOOLCHAIN: ${{ steps.dependencies.outputs.toolchain_file }}
+        CORE_MANIFEST_ROOT: ${{ inputs.manifest-root }}
       run: |
         set -euo pipefail
-        test -n "$CORE_RESTORED_TOOLCHAIN"
-        echo "CORE_CI_TOOLCHAIN=$CORE_RESTORED_TOOLCHAIN" >> "$GITHUB_ENV"
+        scripts=04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
+        baseline=b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+        declared=$(python -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["builtin-baseline"])' "$CORE_MANIFEST_ROOT/vcpkg.json")
+        test "$declared" = "$baseline"
+        dependency_root="$RUNNER_TEMP/saltscore-source-vcpkg"
+        if command -v cygpath >/dev/null; then
+          dependency_root="$(cygpath -m "$dependency_root")"
+        fi
+        test ! -e "$dependency_root"
+        mkdir -p "$dependency_root"
+        git -C "$dependency_root" init -q
+        git -C "$dependency_root" remote add origin https://github.com/microsoft/vcpkg.git
+        git -C "$dependency_root" fetch --no-tags origin "$scripts"
+        git -C "$dependency_root" checkout --detach FETCH_HEAD
+        git -C "$dependency_root" fetch --no-tags origin "$baseline"
+        test "$(git -C "$dependency_root" rev-parse HEAD)" = "$scripts"
+        git -C "$dependency_root" cat-file -e "$baseline:versions/baseline.json"
+        test -f "$dependency_root/scripts/buildsystems/vcpkg.cmake"
+        echo "VCPKG_ROOT=$dependency_root" >> "$GITHUB_ENV"
+        # This branch is selected before any restore attempt. The producer's
+        # normal manifest install builds the pinned dependencies from source.
+        echo "VCPKG_BINARY_SOURCES=clear" >> "$GITHUB_ENV"
+        echo "toolchain_file=$dependency_root/scripts/buildsystems/vcpkg.cmake" >> "$GITHUB_OUTPUT"
+    - name: Bootstrap the fixed source dependency tool on POSIX
+      if: inputs.dependency-mode == 'source' && runner.os != 'Windows'
+      shell: bash
+      run: |
+        set -euo pipefail
+        "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+        "$VCPKG_ROOT/vcpkg" version
+    - name: Bootstrap the fixed source dependency tool on Windows
+      if: inputs.dependency-mode == 'source' && runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        & (Join-Path $env:VCPKG_ROOT 'bootstrap-vcpkg.bat') -disableMetrics
+        if ($LASTEXITCODE -ne 0) { throw 'Pinned source vcpkg bootstrap failed' }
+        & (Join-Path $env:VCPKG_ROOT 'vcpkg.exe') version
+        if ($LASTEXITCODE -ne 0) { throw 'Pinned source vcpkg tool unavailable' }
+    - name: Expose the canonical producer toolchain
+      id: toolchain
+      shell: bash
+      env:
+        CORE_DEPENDENCY_MODE: ${{ inputs.dependency-mode }}
+        CORE_BINARY_TOOLCHAIN: ${{ steps.dependencies.outputs.toolchain_file }}
+        CORE_SOURCE_TOOLCHAIN: ${{ steps.source_dependencies.outputs.toolchain_file }}
+      run: |
+        set -euo pipefail
+        if [ "$CORE_DEPENDENCY_MODE" = binary ]; then
+          toolchain="$CORE_BINARY_TOOLCHAIN"
+        else
+          toolchain="$CORE_SOURCE_TOOLCHAIN"
+        fi
+        test -n "$toolchain"
+        echo "CORE_CI_TOOLCHAIN=$toolchain" >> "$GITHUB_ENV"
+        echo "toolchain_file=$toolchain" >> "$GITHUB_OUTPUT"

@@ -91,6 +91,7 @@ jobs:
           # Binary caches must not become candidate source-fingerprint inputs.
           VCPKG_BINARY_CACHE: ${{ runner.temp }}/simd-vcpkg-binary-cache
         with:
+          dependency-mode: binary
           token: ${{ github.token }}
           triplet: ${{ matrix.triplet }}
           host-triplet: ${{ matrix.triplet }}

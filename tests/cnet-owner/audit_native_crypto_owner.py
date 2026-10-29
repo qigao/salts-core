@@ -57,22 +57,90 @@ def normalized(name, system):
     return name.split("@@", 1)[0]
 
 
+def coff_archive_definitions(output):
+    """Count definitions using each COFF member's section-selection records.
+
+    DUMPBIN /SYMBOLS marks both strong functions and mergeable CRT inline/data
+    definitions External. The section's STATIC auxiliary record distinguishes
+    them; its SECT index is local to one archive member, never the whole archive.
+    See Microsoft's PE format, "COMDAT Sections (Object Only)", and /SYMBOLS:
+    https://learn.microsoft.com/en-us/windows/win32/debug/pe-format
+    https://learn.microsoft.com/en-us/cpp/build/reference/symbols
+    """
+    result = Counter()
+    sections = {}
+    symbols = []
+    pending_section = None
+    # ANY, SAME_SIZE, EXACT_MATCH and LARGEST permit linker coalescing. Ordinary
+    # sections and NODUPLICATES (including /Gy functions) remain strong. Treat
+    # associative sections conservatively as strong: their eligibility depends
+    # on another section and cannot be inferred from this selection alone.
+    coalescible = {2, 3, 4, 6}
+
+    def finish_member():
+        for name, section in symbols:
+            selection = sections.get(section, 0)
+            # Required native/facade entries must exist in exactly one physical
+            # member even if a compiler puts them in a mergeable COMDAT section.
+            if name in ARCHIVE_SYMBOLS or selection not in coalescible:
+                result[name] += 1
+        sections.clear()
+        symbols.clear()
+
+    for line in output.splitlines():
+        if re.match(r"^\s*(?:COFF SYMBOL TABLE|Archive member name at\b|"
+                    r"Dump of file\b|String Table Size\b)", line):
+            finish_member()
+            pending_section = None
+            continue
+        match = re.match(
+            r"^\s*[0-9A-Fa-f]+\s+[0-9A-Fa-f]+\s+"
+            r"(SECT[0-9A-Fa-f]+|UNDEF|ABS|DEBUG)\s+.*?\b"
+            r"(Static|External|WeakExternal)\s*\|\s*(\S+)", line)
+        if match:
+            section, storage, name = match.groups()
+            pending_section = None
+            if section.startswith("SECT"):
+                section = section.upper()
+                if storage == "Static":
+                    pending_section = section
+                elif storage == "External":
+                    symbols.append((name, section))
+            continue
+        if line.lstrip().startswith("Section length"):
+            require(pending_section is not None,
+                    "COFF section auxiliary record has no section symbol")
+            selection = 0
+            if re.search(r"\bselection\b", line, re.I):
+                match = re.search(r"\bselection\s+(\d+)\b", line, re.I)
+                require(match is not None, "unrecognized COFF COMDAT selection")
+                selection = int(match[1])
+                require(selection in range(7), "unknown COFF COMDAT selection: " + str(selection))
+            require(pending_section not in sections or sections[pending_section] == selection,
+                    "conflicting COFF section-selection records")
+            sections[pending_section] = selection
+            pending_section = None
+            continue
+        require(not ("External" in line and re.search(r"\bSECT[0-9A-Fa-f]+\b", line)),
+                "unrecognized COFF defined-symbol record")
+        # Other symbol kinds (for example Filename) cannot lend their auxiliary
+        # metadata to a preceding STATIC section record.
+        if re.match(r"^\s*[0-9A-Fa-f]+\s+[0-9A-Fa-f]+\s+", line):
+            pending_section = None
+    finish_member()
+    return result
+
+
 def archive_definitions(output, system):
     """Count strong definitions, retaining duplicate members in the archive."""
+    if system == "Windows":
+        return coff_archive_definitions(output)
     result = Counter()
     for line in output.splitlines():
-        if system == "Windows":
-            if ("External" not in line or "WeakExternal" in line
-                    or not re.search(r"\bSECT[0-9A-F]+\b", line) or "|" not in line):
-                continue
-            name = line.split("|", 1)[1].strip().split()[0]
-        else:
-            fields = line.split()
-            if len(fields) < 3 or fields[-2] not in ("T", "D", "B", "R", "S", "G", "C"):
-                continue
-            name = normalized(fields[-1], system)
-        # Compiler-generated COFF COMDAT constants/refptrs are not native C
-        # definitions. Their coalescing is unrelated to duplicate TLS objects.
+        fields = line.split()
+        if len(fields) < 3 or fields[-2] not in ("T", "D", "B", "R", "S", "G", "C"):
+            continue
+        name = normalized(fields[-1], system)
         if name.startswith((".", "__", "$")):
             continue
         result[name] += 1

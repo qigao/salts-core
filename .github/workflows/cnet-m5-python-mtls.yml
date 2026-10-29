@@ -80,6 +80,7 @@ jobs:
       - name: Restore exact prerequisites for the default local Crypto and CNet graph
         uses: ./.github/actions/setup-core-native
         with:
+          dependency-mode: source
           token: ${{ github.token }}
       - name: Build and audit source-local ASN1/Crypto static modules
         shell: bash
@@ -243,6 +244,7 @@ jobs:
       - name: Restore exact prerequisites for the default local Crypto and CNet graph
         uses: ./.github/actions/setup-core-native
         with:
+          dependency-mode: source
           token: ${{ github.token }}
       - name: Build and audit local ASN1/Crypto static modules (MSVC x64)
         shell: pwsh

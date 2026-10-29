@@ -83,14 +83,22 @@ cmake --install build --prefix /path/to/sdk
 The active CI workflows share the pinned non-crypto prerequisite setup. All
 23 workflows retain their existing 35 jobs and runner/matrix strategy,
 native tests, sanitizer repetitions, installed/relocated consumers and
-runtime ownership audits. Workflow syntax checking is not platform runtime
-qualification. Windows/macOS require real current-commit CI results.
+runtime ownership audits. Each call must explicitly select its dependency
+mode; an omitted or unknown mode fails before setup. Original source-build
+jobs compile the locked manifest with the original fixed vcpkg scripts
+`04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4`. Original binary-cache rows continue
+to require every exact package, without a source fallback. Expanding the
+28 helper calls gives 86 matrix rows: 31 binary and 55 source, matching the
+previous `c9103694` cache-step conditions row by row. Capture's standalone
+iOS row uses source mode; the full SDK candidate iOS row remains binary.
+Workflow syntax checking is not platform runtime qualification.
 
 ## Local verification
 
 | Check | Observed result |
 |---|---|
 | Default Linux Core build with neither retired input | Complete build and install succeeded |
+| Repaired CI source mode, using its fixed vcpkg scripts and actual root manifest | All eight dependency packages built from source; default Core build/install and 61/61 CTest checks PASS |
 | Default SDK installed C11/C++17 consumers | 47/47 PASS |
 | Full Linux Core source graph, including existing optional modules and M5/M6 | 164/164 PASS |
 | Full SDK installed consumers | 53/53 PASS |
@@ -102,6 +110,7 @@ qualification. Windows/macOS require real current-commit CI results.
 | Installed TLS 1.2/1.3, auth, independent Python mTLS, cancellation and CipherBIO | 6/6 PASS |
 | Original native #14 contract programs linked to local Crypto | 29/29 default contracts PASS; extra optional modes remain separately recorded as 33/35 PASS |
 | Real production CNet archive/link-map/dynamic-import ownership | PASS; 12 audited native TLS entry points come from the local Crypto archive; both original plugins and loader contain no second Crypto archive |
+| COFF owner-audit classification and negative obligations | Nine unit tests PASS; Linux real archive/map/import and two-plugin regression checks PASS; actual Windows result requires new CI |
 | Native source derivation and compiled-profile admission | 166 inputs reproduced; five negative/positive admission tests PASS |
 | Crypto PR43 handoff | 18/18 obligations preserved; eight negative/positive tests PASS |
 | Core Python unit modules and negative source/owner gates | 119/119 PASS; the separate Zstd binary CLI is exercised by full CTest |
@@ -112,11 +121,43 @@ The Linux installed consumers use an explicit SDK library search path.
 Full-module consumers also use the verified existing non-crypto dependency
 prefixes. These checks do not claim clean-machine runtime closure or trusted
 release receipts. The Android check is cross compilation and linkage only.
+The source-mode check first exposed missing host `pkg-config` and a missing
+re2c `PATH` entry in the local minimal environment. Both failed configure
+logs were retained. Providing the existing host tools completed the check;
+no package version, implementation or manifest was changed to make it pass.
 
 The historical PR43 CMake input is preserved in
 `crypto/tests/migration/CMakeLists.original.txt`. Its change to local assembly
 has an independently reviewed diff. Historical workflow/input snapshots and
 all original source inventories retain their original bytes.
+
+## Remote CI integration follow-up
+
+The first remote runs of `dfbe182f` identified two mistakes in the new CI
+integration. The unified prerequisite helper had imposed binary-cache
+admission on jobs that previously built dependencies from source or did not
+need those dependencies. For example, URI stopped before Core compilation
+because all eight exact packages were absent. The explicit source/binary
+selection above restores the original admission boundaries; it does not
+reinterpret a cache miss as success.
+
+Windows compiled and linked the default local implementation, but the new
+physical-owner audit treated every COFF `External` symbol in a section as a
+strong definition. This incorrectly counted coalescible CRT inline functions
+and string constants as duplicate implementations. The standalone, SCTP,
+native-module and CNet provider jobs respectively passed 59/60, 75/76,
+113/114 and 94/95 tests; each failed only that audit. These are failed runs,
+not accepted Windows qualification. The audit repair reads each archive
+member's section-selection metadata, keeps all required native/facade symbols
+under exact-once checks, and retains the production link-map and dynamic
+dependency checks. It does not allow symbols by their CRT or string names.
+
+On the same `dfbe182f` implementation, the Linux and macOS production CNet jobs,
+Linux ASan/UBSan and TSan jobs, and all three Linux/macOS/Windows original
+Owner/mTLS jobs completed successfully. Those results remain associated
+with that commit. Follow-up source or audit changes require their own CI;
+neither these results nor local checks are relabeled as trusted release
+receipts for a different commit.
 
 ## Remaining release gates
 

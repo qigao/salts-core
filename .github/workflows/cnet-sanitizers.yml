@@ -75,6 +75,7 @@ jobs:
       - name: Restore exact prerequisites for the default local Crypto and CNet graph
         uses: ./.github/actions/setup-core-native
         with:
+          dependency-mode: source
           token: ${{ github.token }}
       - name: Configure and build instrumented local Crypto and CNet
         shell: bash

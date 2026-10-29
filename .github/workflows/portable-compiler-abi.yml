@@ -223,6 +223,7 @@ jobs:
       - name: Restore exact prerequisites for the default local Crypto and CNet graph
         uses: ./.github/actions/setup-core-native
         with:
+          dependency-mode: source
           token: ${{ github.token }}
       - name: Require real installed Salts::Platform SDK from native TinyCC
         shell: bash
@@ -307,6 +308,7 @@ jobs:
       - name: Restore exact prerequisites for the default local Crypto and CNet graph
         uses: ./.github/actions/setup-core-native
         with:
+          dependency-mode: source
           token: ${{ github.token }}
       - name: Instrument actual portable TSS / timed tests
         shell: bash

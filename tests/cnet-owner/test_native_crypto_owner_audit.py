@@ -5,6 +5,17 @@ import unittest
 import audit_native_crypto_owner as audit
 
 
+def coff_member(names, selection=None, member="unit.obj"):
+    """DUMPBIN /SYMBOLS section-auxiliary format from Microsoft's reference."""
+    auxiliary = "    Section length 40, #relocs 1, #linenums 0, checksum 459FF65F"
+    if selection is not None:
+        auxiliary += f", selection {selection}"
+    return (f"Archive member name at 100: {member}\nCOFF SYMBOL TABLE\n"
+            "000 00000000 SECT1 notype Static | .text$mn\n" + auxiliary + "\n" +
+            "\n".join(f"{index + 2:03X} 00000000 SECT1 notype () External | {name}"
+                      for index, name in enumerate(names)) + "\nString Table Size = 0x10 bytes\n")
+
+
 class NativeCryptoOwnerAudit(unittest.TestCase):
     def test_archive_keeps_duplicate_strong_members(self):
         for system, text in (
@@ -24,6 +35,71 @@ class NativeCryptoOwnerAudit(unittest.TestCase):
         table["tls_init"] = 2
         with self.assertRaisesRegex(ValueError, "duplicated"):
             audit.validate_archive(table)
+
+    def test_coff_mergeable_crt_and_strings_are_classified_by_section(self):
+        # Include unfamiliar names as well as the actual Windows failure names:
+        # this must follow section metadata, never a CRT/string-name allowlist.
+        names = ("_vfprintf_l", "fprintf", "vsnprintf", "snprintf", "ctime", "time",
+                 "_Atomic_load32", "??_C@_03ICHNJLJF@key@", "unlisted_inline")
+        for selection in (2, 3, 4, 6):
+            with self.subTest(selection=selection):
+                text = coff_member(audit.ARCHIVE_SYMBOLS)
+                text += coff_member(names, selection, "first.obj")
+                text += coff_member(names, selection, "second.obj")
+                table = audit.archive_definitions(text, "Windows")
+                self.assertEqual(table, Counter({name: 1 for name in audit.ARCHIVE_SYMBOLS}))
+                audit.validate_archive(table)
+
+    def test_coff_required_entries_remain_physical_in_every_comdat_kind(self):
+        for selection in (1, 2, 3, 4, 5, 6):
+            with self.subTest(selection=selection):
+                text = coff_member(audit.ARCHIVE_SYMBOLS, selection)
+                table = audit.archive_definitions(text, "Windows")
+                self.assertEqual(table, Counter({name: 1 for name in audit.ARCHIVE_SYMBOLS}))
+                audit.validate_archive(table)
+                for name in ("tls_init", "crypto_tls_session_handshake", "salts_crypto_ed448_sign"):
+                    duplicated = text + coff_member((name,), selection, "duplicate.obj")
+                    with self.subTest(symbol=name), self.assertRaisesRegex(ValueError, "duplicated"):
+                        audit.validate_archive(audit.archive_definitions(duplicated, "Windows"))
+
+    def test_coff_noduplicates_and_ordinary_sections_stay_strong(self):
+        for selection in (None, 0, 1, 5):
+            # Associative COMDATs are deliberately conservative: no inference
+            # that their associated section will discard the duplicate.
+            for name in ("tls_init", "native_unlisted", "fprintf", "__not_a_name_exemption"):
+                with self.subTest(selection=selection, symbol=name):
+                    text = coff_member((name,), selection, "first.obj")
+                    text += coff_member((name,), selection, "second.obj")
+                    table = audit.archive_definitions(text, "Windows")
+                    self.assertEqual(table[name], 2)
+                    table.update({symbol: 1 for symbol in audit.ARCHIVE_SYMBOLS if symbol != name})
+                    with self.assertRaises(ValueError):
+                        audit.validate_archive(table)
+
+    def test_coff_section_numbers_are_local_to_each_member(self):
+        text = coff_member(("inline_helper",), 2, "first.obj")
+        text += coff_member(("native_unlisted",), None, "second.obj")
+        text += coff_member(("native_unlisted",), None, "third.obj")
+        for remove in ("COFF SYMBOL TABLE\n", "String Table Size = 0x10 bytes\n"):
+            with self.subTest(removed_boundary=remove):
+                table = audit.archive_definitions(text.replace(remove, ""), "Windows")
+                self.assertNotIn("inline_helper", table)
+                self.assertEqual(table["native_unlisted"], 2)
+
+    def test_coff_unknown_or_malformed_metadata_fails_closed(self):
+        for selection in (7, 99, "unrecognized"):
+            with self.subTest(selection=selection), self.assertRaisesRegex(ValueError, "selection"):
+                audit.archive_definitions(coff_member(("fprintf",), selection), "Windows")
+        for text in (
+            "Section length 40, selection 2\n",
+            "001 00000000 SECT1 notype External without-symbol-delimiter\n",
+            "000 00000000 SECT1 notype Static | .text\n"
+            "    Section length 40, selection 1\n"
+            "002 00000000 SECT1 notype Static | .text\n"
+            "    Section length 40, selection 2\n",
+        ):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                audit.archive_definitions(text, "Windows")
 
     def test_real_member_required_in_all_link_map_formats(self):
         for system in ("Linux", "Darwin", "Windows"):
