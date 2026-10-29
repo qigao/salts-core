@@ -342,6 +342,23 @@
         "cmeta_scan_skip_sp_tab_cr_lf",
         "cmeta_scan_mem"
       ]
+    },
+    {
+      "module": "re",
+      "header": "core/include/re.h",
+      "source": "core/src/re.c",
+      "functions": [
+        "re_limits_default",
+        "re_validate_n",
+        "re_compile_n",
+        "re_destroy",
+        "re_matchn",
+        "re_match_n",
+        "re_status_string",
+        "re_compile",
+        "re_matchp",
+        "re_match"
+      ]
     }
   ],
   "stage_a_support_files": [
@@ -372,14 +389,14 @@
     "tests/test_cmeta_uuid.c",
     "tests/test_cmeta_uuid_cpp.cpp",
     "tests/test_cmeta_bytes.c",
-    "tests/test_simd_scan_contract.c"
+    "tests/test_simd_scan_contract.c",
+    "core/src/re_scan.h"
   ],
   "pending_groups": {
     "logging_formatter": [],
     "algorithms": [
       "ac_automaton",
       "levenshtein_automaton",
-      "re",
       "enum_utils"
     ],
     "queues": [
