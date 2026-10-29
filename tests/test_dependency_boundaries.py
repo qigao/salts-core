@@ -79,10 +79,57 @@ class DependencyGateTest(unittest.TestCase):
                               "set(_forbidden"), encoding="utf-8")
             self.assertEqual(len(module.check_repository(root)), 2)
 
-    def test_retired_asn1_target_is_forbidden(self):
-        self.assertEqual(
-            len(self.check_text("target_link_libraries(app PRIVATE Salts::ASN1)\n",
-                                ".cmake")), 1)
+    def test_canonical_asn1_is_allowed_but_retired_aliases_rejected(self):
+        self.assertEqual(self.check_text(
+            "target_link_libraries(app PRIVATE Salts::ASN1)\n",
+            ".cmake"), [])
+        self.assertEqual(len(self.check_text(
+            "target_link_libraries(app PRIVATE Crypto::ASN1)\n",
+            ".cmake")), 1)
+        self.assertEqual(len(self.check_text(
+            "target_link_libraries(app PRIVATE SaltsCore::ASN1)\n",
+            ".cmake")), 1)
+
+    def test_historical_test_guards_must_be_exact_and_fatal(self):
+        for relative, blocks in module.TEST_ONLY_NEGATIVE_ASSERTIONS.items():
+            with self.subTest(path=str(relative)), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                guard = "\n".join("\n".join(block) for block in blocks) + "\n"
+                path.write_text(guard, encoding="utf-8")
+                self.assertEqual(module.check_repository(root), [])
+
+                path.write_text(guard +
+                    "target_link_libraries(app PRIVATE Crypto::TLS)\n",
+                    encoding="utf-8")
+                self.assertEqual(len(module.check_repository(root)), 1)
+
+                path.write_text(guard.replace(
+                    "message(FATAL_ERROR", "message(STATUS", 1),
+                    encoding="utf-8")
+                self.assertTrue(module.check_repository(root))
+
+                path.unlink()
+                fake = root / "other" / "CMakeLists.txt"
+                fake.parent.mkdir(parents=True, exist_ok=True)
+                fake.write_text(guard, encoding="utf-8")
+                self.assertTrue(module.check_repository(root))
+
+    def test_source_comments_do_not_define_dependency(self):
+        self.assertEqual(self.check_text(
+            "/* Crypto::TLS is prohibited in native source */\n"
+            " * Salts::TLS must not be linked here.\n"
+            "// Crypto::ASN1 is a historical alias\n"
+        ), [])
+        self.assertEqual(len(self.check_text(
+            "target_link_libraries(app PRIVATE Crypto::TLS)\n",
+            ".cmake")), 1)
+
+    def test_current_module_tree_preserves_strict_boundaries(self):
+        # All previously failing CNet/URI/FS/SCTP/SDK workers share this
+        # policy. Keep a full-repo positive admission, not a test-folder skip.
+        self.assertEqual(module.check_repository(SCRIPT.parent.parent), [])
 
     def test_alternate_namespaces_rejected(self):
         content = ("target_link_libraries(a PRIVATE SaltsCore::Platform)\n"
