@@ -174,14 +174,43 @@ python cmake/ci/core_sdk.py extract \
 python -m unittest discover -s packaging/tests -p 'test_*.py' -v
 ```
 
-The manifest includes each payload file's digest and size, target kinds, and
-actual imported library paths. Internal SONAME symlinks are copied as regular
-files with the same bytes, preserving loader filenames while making the ZIP
-portable. External or directory symlinks, path traversal, case collisions,
-reserved Windows names, duplicate JSON keys, and undeclared payload files are
-rejected. ZIP entries have fixed timestamps for reproducible archives of the
-same staged SDK. This does not claim that native compiler outputs are
-reproducible across machines.
+Manifest **schema 2** includes each entry's kind, digest and size, target kinds,
+and actual imported library paths. A regular file is recorded as `kind=file`.
+A symlink is recorded as `kind=symlink` with its exact relative `target`; its
+size and SHA-256 cover the UTF-8 link text, not the dereferenced library. The ZIP
+entry must also carry the Unix symlink type and that same link text. A regular
+file with equal library bytes cannot satisfy a symlink record. Earlier schema-1
+candidates are historical artifacts, not implicitly reinterpreted as preserving
+link identity.
+
+The original `libname.so -> libname.so.0.1 -> libname.so.0.1.0` chain remains a
+chain through staging, archive creation and extraction. All names resolve to one
+actual file, preserving the existing downstream runtime-owner audit. Before
+creating an extraction directory, the verifier checks the complete link graph
+within each individual SDK root. Absolute/escaping targets, cross-RID links,
+cycles, dangling or directory links, links used as parent directories, conflicting
+entry types, path traversal, case collisions, reserved Windows names, duplicate
+JSON keys and undeclared payload files are rejected. The manifest itself must
+be regular; package metadata outside the SDK roots cannot be symlinks.
+
+Use `core_sdk.py extract` to materialize this contract. It writes validated
+regular files before creating the validated relative links and verifies the
+result. It never substitutes a copy when symlink creation is denied. Native
+Windows DLL SDKs with only regular files remain supported, including ordinary
+DOS ZIP file attributes. Materializing a Unix SDK on a host without symlink
+support or permission fails explicitly; it does not qualify that host or SDK.
+ZIP entries have fixed timestamps for reproducible archives of the same staged
+SDK. Native compiler outputs are not claimed reproducible across machines.
+
+The current `dotnet pack` glob and NuGet restore path are **not yet qualified**
+to retain this Unix link contract. If a packer follows a link or writes it as a
+regular file while retaining the manifest, `verify-archive --nuget` rejects the
+package. No post-pack relabeling, equal-hash owner deduplication, or silent link
+reconstruction changes a mismatched package into accepted evidence. A genuine
+NuGet pack/restore round trip and compatible downstream download clients remain
+publication requirements. Existing clients that reject all archive symlinks
+must be qualified separately before consuming this format; the old Salts 2.3
+restore path has not been converted by this packaging fix.
 
 For a new exact-source build, `cmake/ci/build_core_sdk.py` drives configuration,
 complete configured builds, tests, installation, relocation and consumer

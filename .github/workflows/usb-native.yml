@@ -115,6 +115,11 @@ jobs:
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: |
           set -euo pipefail
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            # Fail before launching an executable if its exact provider DLL
+            # was not deployed into the common native output directory.
+            test -f build-usb/bin/libusb-1.0.dll
+          fi
           for case in original_c11 original_cpp17 original_state lifecycle source_provenance; do
             ctest --test-dir build-usb -C Release --output-on-failure \
               --no-tests=error --timeout 120 -R "^saltscore[.]usb_${case}$"

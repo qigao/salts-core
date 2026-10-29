@@ -28,7 +28,8 @@ target_link_libraries(saltscore_serial_test_impl PRIVATE
   Salts::Core Salts::Platform Salts::Concurrency ${SALTS_SERIAL_PLATFORM_LIBS})
 if(UNIX)
   target_compile_definitions(saltscore_serial_test_impl PRIVATE
-    _DEFAULT_SOURCE=1 _POSIX_C_SOURCE=200809L)
+    _DEFAULT_SOURCE=1 _POSIX_C_SOURCE=200809L
+    $<$<BOOL:${APPLE}>:_DARWIN_C_SOURCE=1>)
 endif()
 
 foreach(_serial_suite IN ITEMS test_salts_serial_mock test_serial_storage)

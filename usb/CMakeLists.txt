@@ -70,6 +70,13 @@ target_link_libraries(saltscore_usb PRIVATE
 if(WIN32)
   set_target_properties(saltscore_usb PROPERTIES
     OUTPUT_NAME "saltscore_usb-${SALTSCORE_NATIVE_SOVERSION}")
+  # The pinned provider disables automatic app-local dependency deployment.
+  # Native executables share this output directory with the USB owner.
+  add_custom_command(TARGET saltscore_usb POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+      "${_saltscore_usb_runtime}" "$<TARGET_FILE_DIR:saltscore_usb>"
+    COMMENT "Stage the selected libusb runtime beside native USB binaries"
+    VERBATIM)
 endif()
 
 install(TARGETS saltscore_usb EXPORT SaltsCoreTargets

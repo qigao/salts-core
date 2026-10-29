@@ -27,8 +27,10 @@ if(MSVC)
   set_target_properties(saltscore_serial PROPERTIES
     OUTPUT_NAME "saltscore_serial-${SALTSCORE_NATIVE_SOVERSION}")
 elseif(UNIX)
+  # Darwin hides the original high-baud termios constants in strict POSIX mode.
   target_compile_definitions(saltscore_serial PRIVATE
-    _DEFAULT_SOURCE=1 _POSIX_C_SOURCE=200809L)
+    _DEFAULT_SOURCE=1 _POSIX_C_SOURCE=200809L
+    $<$<BOOL:${APPLE}>:_DARWIN_C_SOURCE=1>)
 endif()
 
 install(TARGETS saltscore_serial EXPORT SaltsCoreTargets

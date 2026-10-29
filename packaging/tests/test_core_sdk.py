@@ -6,7 +6,9 @@ belong to build_core_sdk.py and the installed consumer suites.
 import copy
 import importlib.util
 import json
+import os
 from pathlib import Path
+import shutil
 import stat
 import tempfile
 from types import SimpleNamespace
@@ -93,6 +95,46 @@ class SDKTests(unittest.TestCase):
         self.assertIsNone(observed["source"])
         self.assertTrue(sdk.release_blockers(observed, self.config))
 
+    def test_soname_chain_retains_one_runtime_owner_through_archive(self):
+        # Real three-name CMake SONAME chain. Equal regular-file bytes are not
+        # one owner: the downstream audit deliberately compares resolve().
+        library = self.prefix / "lib/libsaltscore_core.so.0.1.0"
+        (self.prefix / "lib/Core.so").rename(library)
+        exports = self.prefix / "lib/cmake/SaltsCore/SaltsCoreTargets.cmake"
+        exports.write_text(exports.read_text().replace("lib/Core.so", "lib/libsaltscore_core.so.0.1.0"))
+        (self.prefix / "lib/libsaltscore_core.so.0.1").symlink_to(library.name)
+        (self.prefix / "lib/libsaltscore_core.so").symlink_to("libsaltscore_core.so.0.1")
+        staged = self.stage()
+
+        def assert_one_owner(prefix):
+            names = [prefix / "lib" / name for name in
+                     ("libsaltscore_core.so", "libsaltscore_core.so.0.1", library.name)]
+            self.assertTrue(names[0].is_symlink())
+            self.assertTrue(names[1].is_symlink())
+            self.assertFalse(names[2].is_symlink())
+            self.assertEqual(len({path.resolve(strict=True) for path in names}), 1)
+            self.assertTrue(all(path.samefile(names[2]) for path in names))
+
+        assert_one_owner(staged)
+        archive = self.zip(staged)
+        with zipfile.ZipFile(archive) as package:
+            entry = package.getinfo("sdk/linux-x64/lib/libsaltscore_core.so")
+            self.assertTrue(stat.S_ISLNK(entry.external_attr >> 16))
+            self.assertEqual(package.read(entry), b"libsaltscore_core.so.0.1")
+        extracted = self.root / "extracted"
+        sdk.extract_archive(archive, extracted, self.config)
+        assert_one_owner(extracted / "sdk/linux-x64")
+        manifest = sdk.verify_sdk(extracted / "sdk/linux-x64", self.config)
+        self.assertIn("lib/libsaltscore_core.so.0.1.0", manifest["imported_binaries"])
+        rows = {row["path"]: row for row in manifest["files"]}
+        link = rows["lib/libsaltscore_core.so"]
+        self.assertEqual(manifest["schema"], 2)
+        self.assertEqual(link["kind"], "symlink")
+        self.assertEqual(link["target"], "libsaltscore_core.so.0.1")
+        self.assertEqual(link["sha256"], sdk.digest(b"libsaltscore_core.so.0.1"))
+        self.assertEqual(link["size"], len(b"libsaltscore_core.so.0.1"))
+        self.assertEqual(rows["lib/libsaltscore_core.so.0.1.0"]["kind"], "file")
+
     def test_changed_payload_rejected(self):
         staged = self.stage()
         (staged / "lib/Core.so").write_bytes(b"tampered")
@@ -142,21 +184,185 @@ class SDKTests(unittest.TestCase):
         with zipfile.ZipFile(path) as archive, self.assertRaisesRegex(sdk.SDKError, "symlinks"):
             sdk.archive_entries(archive)
 
-    def test_external_symlink_rejected_but_internal_soname_is_copied(self):
+    def test_external_and_directory_symlinks_rejected_before_staging(self):
         external = self.root / "external"
         external.write_bytes(b"outside")
         link = self.prefix / "lib/link.so"
-        try:
-            link.symlink_to(external)
-        except OSError as error:
-            self.skipTest(f"OS denied symlink creation: {error}")
-        with self.assertRaisesRegex(sdk.SDKError, "escapes"):
+        link.symlink_to(external)
+        with self.assertRaisesRegex(sdk.SDKError, "absolute"):
             self.stage()
+        self.assertFalse((self.root / "staged").exists())
         link.unlink()
-        link.symlink_to("Core.so")
+        link.symlink_to("../lib", target_is_directory=True)
+        with self.assertRaisesRegex(sdk.SDKError, "directory symlinks"):
+            self.stage()
+        self.assertFalse((self.root / "staged").exists())
+
+    def test_internal_relative_parent_link_is_preserved(self):
+        link = self.prefix / "lib/link.so"
+        link.symlink_to("../lib/Core.so")
         staged = self.stage()
-        self.assertFalse((staged / "lib/link.so").is_symlink())
-        self.assertEqual((staged / "lib/link.so").read_bytes(), (staged / "lib/Core.so").read_bytes())
+        self.assertEqual(os.readlink(staged / "lib/link.so"), "../lib/Core.so")
+        self.assertTrue((staged / "lib/link.so").samefile(staged / "lib/Core.so"))
+        extracted = self.root / "extracted"
+        sdk.extract_archive(self.zip(staged), extracted, self.config)
+        prefix = extracted / "sdk/linux-x64"
+        self.assertTrue((prefix / "lib/link.so").samefile(prefix / "lib/Core.so"))
+
+    def test_source_cycles_and_dangling_links_rejected_before_staging(self):
+        first, second = self.prefix / "lib/first.so", self.prefix / "lib/second.so"
+        first.symlink_to(second.name)
+        with self.assertRaisesRegex(sdk.SDKError, "dangling"):
+            self.stage()
+        self.assertFalse((self.root / "staged").exists())
+        second.symlink_to(first.name)
+        with self.assertRaisesRegex(sdk.SDKError, "cyclic"):
+            self.stage()
+        self.assertFalse((self.root / "staged").exists())
+
+    def test_manifest_distinguishes_symlink_from_equal_regular_file_bytes(self):
+        (self.prefix / "lib/link.so").symlink_to("Core.so")
+        staged = self.stage()
+        link = staged / "lib/link.so"
+        data = link.read_bytes()
+        link.unlink()
+        link.write_bytes(data)
+        with self.assertRaisesRegex(sdk.SDKError, "entry kind changed"):
+            sdk.verify_sdk(staged, self.config)
+        # The reverse substitution also fails even with unchanged file bytes.
+        other = self.stage("other")
+        core = other / "lib/Core.so"
+        shutil.copyfile(core, other / "lib/SIMD.a")
+        core.unlink()
+        core.symlink_to("SIMD.a")
+        with self.assertRaisesRegex(sdk.SDKError, "entry kind changed"):
+            sdk.verify_sdk(other, self.config)
+
+    def test_archive_link_graph_rejected_before_any_extraction(self):
+        base = "sdk/linux-x64/lib/"
+        regular = (base + "Core.so", stat.S_IFREG, b"library")
+        variants = {
+            "absolute": ([(base + "link.so", stat.S_IFLNK, b"/etc/passwd")], "absolute"),
+            "escape": ([(base + "link.so", stat.S_IFLNK, b"../../outside")], "escapes"),
+            "cross-rid": ([(base + "link.so", stat.S_IFLNK, b"../../ios-arm64/lib/other"),
+                           ("sdk/ios-arm64/lib/other", stat.S_IFREG, b"other")], "escapes"),
+            "dangling": ([(base + "link.so", stat.S_IFLNK, b"absent")], "dangling"),
+            "cycle": ([(base + "a", stat.S_IFLNK, b"b"),
+                       (base + "b", stat.S_IFLNK, b"a")], "cyclic"),
+            "self-cycle": ([(base + "a", stat.S_IFLNK, b"a")], "cyclic"),
+            "parent-link": ([(base + "a", stat.S_IFLNK, b"Core.so"),
+                             (base + "a/child", stat.S_IFREG, b"child")], "parent directory"),
+            "directory": ([(base + "a", stat.S_IFLNK, b"sub"),
+                           (base + "sub/child", stat.S_IFREG, b"child")], "directory SDK symlink"),
+            "missing-parent": ([(base + "a", stat.S_IFLNK, b"absent/../Core.so")], "missing"),
+            "file-parent": ([(base + "a", stat.S_IFLNK, b"Core.so/../Core.so")], "non-directory"),
+            "backslash": ([(base + "a", stat.S_IFLNK, b"..\\Core.so")], "unsafe"),
+            "drive": ([(base + "a", stat.S_IFLNK, b"C:/Core.so")], "unsafe"),
+            "nul": ([(base + "a", stat.S_IFLNK, b"Core.so\0")], "unsafe"),
+            "non-utf8": ([(base + "a", stat.S_IFLNK, b"\xff")], "UTF-8"),
+            "metadata": ([("SaltsCore.Native.nuspec", stat.S_IFLNK, b"sdk/linux-x64/lib/Core.so")], "canonical SDK root"),
+            "manifest": ([("sdk/linux-x64/" + sdk.MANIFEST, stat.S_IFLNK, b"lib/Core.so")], "manifest must"),
+            "directory-flag": ([(base + "a/", stat.S_IFLNK, b"Core.so")], "conflicting entry type"),
+        }
+        for name, (rows, message) in variants.items():
+            with self.subTest(name=name):
+                path = self.root / (name + ".zip")
+                with zipfile.ZipFile(path, "w") as archive:
+                    for entry_name, kind, content in [regular, *rows]:
+                        entry = zipfile.ZipInfo(entry_name)
+                        entry.create_system = 3
+                        entry.external_attr = (kind | 0o777) << 16
+                        archive.writestr(entry, content)
+                destination = self.root / (name + "-out")
+                with self.assertRaisesRegex(sdk.SDKError, message):
+                    sdk.extract_archive(path, destination, self.config)
+                self.assertFalse(destination.exists())
+
+    def test_zip_entry_kind_and_manifest_target_must_both_match(self):
+        (self.prefix / "lib/link.so").symlink_to("Core.so")
+        staged = self.stage()
+        original = self.zip(staged)
+        for variant in ("flattened", "link-text-as-regular", "different-target"):
+            with self.subTest(variant=variant):
+                changed = self.root / (variant + ".zip")
+                with zipfile.ZipFile(original) as source, zipfile.ZipFile(changed, "w") as target:
+                    for entry in source.infolist():
+                        data = source.read(entry)
+                        if entry.filename == "sdk/linux-x64/lib/link.so":
+                            if variant != "different-target":
+                                entry.external_attr = (stat.S_IFREG | 0o644) << 16
+                                if variant == "flattened":
+                                    data = (staged / "lib/Core.so").read_bytes()
+                            else:
+                                data = b"SIMD.a"
+                        target.writestr(entry, data)
+                destination = self.root / (variant + "-out")
+                with self.assertRaisesRegex(sdk.SDKError, "entry kind changed|target metadata changed"):
+                    sdk.extract_archive(changed, destination, self.config)
+                self.assertFalse(destination.exists())
+
+    def test_nuget_preserves_link_records_or_fails_closed(self):
+        (self.prefix / "lib/link.so").symlink_to("Core.so")
+        archive = self.zip(self.stage(), "linked.nupkg")
+        with zipfile.ZipFile(archive, "a") as package:
+            package.writestr("SaltsCore.Native.nuspec", "<package><metadata><id>SaltsCore.Native</id>"
+                             "<version>0.1.0</version></metadata></package>")
+        sdk.inspect_archive(archive, self.config, nuget=True)
+        sdk.extract_archive(archive, self.root / "nuget-out", self.config, nuget=True)
+        prefix = self.root / "nuget-out/sdk/linux-x64"
+        self.assertTrue((prefix / "lib/link.so").samefile(prefix / "lib/Core.so"))
+        # Model a packer following the SDK symlink while retaining its manifest.
+        flattened = self.root / "flattened.nupkg"
+        with zipfile.ZipFile(archive) as source, zipfile.ZipFile(flattened, "w") as target:
+            for entry in source.infolist():
+                data = source.read(entry)
+                if stat.S_ISLNK(entry.external_attr >> 16):
+                    entry.external_attr = (stat.S_IFREG | 0o644) << 16
+                    data = (prefix / "lib/Core.so").read_bytes()
+                target.writestr(entry, data)
+        with self.assertRaisesRegex(sdk.SDKError, "entry kind changed"):
+            sdk.inspect_archive(flattened, self.config, nuget=True)
+
+    def test_old_untyped_manifest_is_not_reinterpreted(self):
+        staged = self.stage()
+        manifest = sdk.load_json(staged / sdk.MANIFEST)
+        manifest["schema"] = 1
+        sdk.write_json(staged / sdk.MANIFEST, manifest)
+        with self.assertRaisesRegex(sdk.SDKError, "unsupported SDK manifest schema"):
+            sdk.verify_sdk(staged, self.config)
+
+    def test_symlink_permission_failure_does_not_fall_back_to_regular_files(self):
+        (self.prefix / "lib/link.so").symlink_to("Core.so")
+        archive = self.zip(self.stage())
+        destination = self.root / "no-symlink-privilege"
+        with patch.object(Path, "symlink_to", side_effect=OSError("symlink permission denied")):
+            with self.assertRaisesRegex(OSError, "permission denied"):
+                sdk.extract_archive(archive, destination, self.config)
+        self.assertFalse((destination / "sdk/linux-x64/lib/link.so").exists())
+
+    def test_windows_regular_zip_attributes_are_supported_but_ambiguous_links_are_not(self):
+        staged = self.stage()
+        original = self.zip(staged)
+        windows = self.root / "windows-created.zip"
+        with zipfile.ZipFile(original) as source, zipfile.ZipFile(windows, "w") as target:
+            for entry in source.infolist():
+                entry.create_system = 0
+                entry.external_attr = 0x20  # DOS archive bit, no Unix file type.
+                target.writestr(entry, source.read(entry))
+        sdk.extract_archive(windows, self.root / "windows-created", self.config)
+        for name, creator, attributes in (("dos-directory-link", 3, 0x10),
+                                           ("non-unix-link", 0, 0)):
+            with self.subTest(name=name):
+                path = self.root / (name + ".zip")
+                with zipfile.ZipFile(path, "w") as archive:
+                    entry = zipfile.ZipInfo("sdk/linux-x64/lib/link.so")
+                    entry.create_system = creator
+                    entry.external_attr = ((stat.S_IFLNK | 0o777) << 16) | attributes
+                    archive.writestr(entry, "Core.so")
+                destination = self.root / name
+                with self.assertRaisesRegex(sdk.SDKError, "conflicting platform/directory"):
+                    sdk.extract_archive(path, destination, self.config)
+                self.assertFalse(destination.exists())
 
     def test_backend_unsupported_is_never_selected(self):
         build = self.root / "build"

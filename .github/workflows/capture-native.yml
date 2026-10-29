@@ -66,12 +66,36 @@ jobs:
           sudo apt-get install --yes libpipewire-0.3-dev libx11-dev libxext-dev pkg-config
       - name: Canonical cached private miniaudio, libyuv and JPEG dependencies
         id: dependencies
+        # capture's exact iOS feature graph has no private vcpkg packages.
+        # Its original AVFoundation/AVAudioEngine/ReplayKit graph still builds.
+        if: matrix.cross != 'ios'
         uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@7bb5b556a001bc82d2922a04a718e986a7f47f54
         with:
           token: ${{ github.token }}
           triplet: ${{ matrix.triplet }}
           host-triplet: ${{ matrix.host }}
           features: capture
+      - name: Require the effective NDK API floor without rejecting its version sentinel
+        if: matrix.cross == 'android'
+        shell: bash
+        run: |
+          set -euo pipefail
+          toolchain="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
+          cmake -S capture/tests/android_api_guard -B "$RUNNER_TEMP/capture-api26" -G Ninja \
+            "-DCMAKE_TOOLCHAIN_FILE=$toolchain" -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26
+          if cmake -S capture/tests/android_api_guard -B "$RUNNER_TEMP/capture-api21" -G Ninja \
+            "-DCMAKE_TOOLCHAIN_FILE=$toolchain" -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-21 \
+            > "$RUNNER_TEMP/capture-api21.log" 2>&1; then
+            echo 'Android API 21 unexpectedly passed the original API-26 requirement'
+            exit 1
+          fi
+          python - "$RUNNER_TEMP/capture-api21.log" <<'PY'
+          import sys
+          from pathlib import Path
+          log = Path(sys.argv[1]).read_text()
+          if 'The original Capture MediaProjection ABI requires Android API 26' not in log:
+              raise SystemExit('API-21 rejection did not reach the actual Capture API guard')
+          PY
       - name: Build all configured targets and retain all original platform tests
         shell: bash
         env:
@@ -86,6 +110,12 @@ jobs:
           python -m unittest discover -s capture/tests -p test_source_provenance.py -v
           args=(-DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
                 -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded)
+          if [ "$CAPTURE_CROSS" != ios ]; then
+            test -n "$CAPTURE_TOOLCHAIN"
+            args+=("-DCMAKE_TOOLCHAIN_FILE=$CAPTURE_TOOLCHAIN"
+                   -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} -DVCPKG_HOST_TRIPLET=${{ matrix.host }}
+                   -DVCPKG_MANIFEST_FEATURES=capture)
+          fi
           if [ "$CAPTURE_SANITIZE" = true ]; then
             flags='-fsanitize=address,undefined -fno-omit-frame-pointer'
             args+=("-DCMAKE_C_FLAGS=$flags" "-DCMAKE_CXX_FLAGS=$flags"
@@ -103,9 +133,7 @@ jobs:
           fi
           cmake -S . -B "$RUNNER_TEMP/capture-build" -G Ninja "${args[@]}" \
             -DBUILD_TESTING=ON -DSALTSCORE_BUILD_CAPTURE=ON -DSALTSCORE_BUILD_TINYTEST=ON \
-            "-DCMAKE_TOOLCHAIN_FILE=$CAPTURE_TOOLCHAIN" \
-            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} -DVCPKG_HOST_TRIPLET=${{ matrix.host }} \
-            -DVCPKG_MANIFEST_FEATURES=capture -DCMAKE_INSTALL_LIBDIR=lib \
+            -DCMAKE_INSTALL_LIBDIR=lib \
             "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/capture-sdk"
           cmake --build "$RUNNER_TEMP/capture-build" --config Release --parallel 2
           cmake --install "$RUNNER_TEMP/capture-build" --config Release
@@ -153,7 +181,12 @@ jobs:
         run: |
           set -euo pipefail
           args=(-DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_DEFAULT_CMP0141=NEW
-                -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DVCPKG_MANIFEST_MODE=OFF)
+                -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded)
+          if [ "$CAPTURE_CROSS" != ios ]; then
+            test -n "$CAPTURE_TOOLCHAIN"
+            args+=("-DCMAKE_TOOLCHAIN_FILE=$CAPTURE_TOOLCHAIN" -DVCPKG_MANIFEST_MODE=OFF
+                   -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} -DVCPKG_HOST_TRIPLET=${{ matrix.host }})
+          fi
           if [ "$CAPTURE_SANITIZE" = true ]; then
             flags='-fsanitize=address,undefined -fno-omit-frame-pointer'
             args+=("-DCMAKE_C_FLAGS=$flags" "-DCMAKE_CXX_FLAGS=$flags"
@@ -169,9 +202,7 @@ jobs:
                    -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO)
           fi
           cmake -S capture/tests/installed -B "$RUNNER_TEMP/capture-consumer" -G Ninja \
-            "${args[@]}" "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/capture-sdk" \
-            "-DCMAKE_TOOLCHAIN_FILE=$CAPTURE_TOOLCHAIN" \
-            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} -DVCPKG_HOST_TRIPLET=${{ matrix.host }}
+            "${args[@]}" "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/capture-sdk"
           cmake --build "$RUNNER_TEMP/capture-consumer" --config Release --parallel 2
           if [ -z "$CAPTURE_CROSS" ]; then
             export PATH="$RUNNER_TEMP/capture-sdk/bin:$PATH"
@@ -191,6 +222,9 @@ jobs:
             ${{ runner.temp }}/capture-build/Testing/Temporary/LastTest.log
             ${{ runner.temp }}/capture-consumer/Testing/Temporary/LastTest.log
             ${{ runner.temp }}/capture-build/CMakeFiles/CMakeConfigureLog.yaml
+            ${{ runner.temp }}/capture-api21.log
+            ${{ runner.temp }}/capture-api21/CMakeFiles/CMakeConfigureLog.yaml
+            ${{ runner.temp }}/capture-api26/CMakeFiles/CMakeConfigureLog.yaml
           if-no-files-found: warn
 
   original-virtual-audio-tsan:

@@ -7,6 +7,7 @@ not replace the original migration gate or executed installed consumers.
 from __future__ import annotations
 
 import argparse
+from contextlib import nullcontext
 import hashlib
 import json
 import os
@@ -21,6 +22,7 @@ import zipfile
 
 REPOSITORY = "qigao/salts-core"
 MANIFEST = "saltscore-sdk-manifest.json"
+MANIFEST_SCHEMA = 2
 RIDS = frozenset({"linux-x64", "linux-arm64", "windows-x64", "macos-arm64",
                   "android-arm64-v8a", "ios-arm64"})
 CROSS_RIDS = frozenset({"android-arm64-v8a", "ios-arm64"})
@@ -34,13 +36,15 @@ FOUNDATION = frozenset("Salts::" + name for name in (
     "Core", "Platform", "Concurrency", "Coroutine", "NativeIO", "FS"))
 # This implementation checks archive structure and runs controlled candidate
 # builds. It does not yet verify retained, source-bound CI qualification for
-# every payload or a clean machine's complete runtime-library closure. These
+# every payload, a clean machine's complete runtime-library closure, or a real
+# NuGet pack/restore round trip preserving Unix link identity. These
 # are implementation gaps, so an editable release_deferred list or a manifest
 # saying execution=native-ctest must never turn publication on. Replace these
 # blockers with actual admission checks when that work is implemented/reviewed.
 RELEASE_IMPLEMENTATION_BLOCKERS = (
     "SDK publication admission is incomplete: trusted CI build/test receipts are not bound to every RID payload",
     "SDK publication admission is incomplete: clean-runtime dependency closure is not verified",
+    "SDK publication admission is incomplete: NuGet pack/restore has not qualified typed Unix symlink identity",
 )
 VERSION_FIELDS = ("display_version", "tag", "package_id", "package_version",
                   "cmake_version", "abi_epoch")
@@ -130,13 +134,82 @@ def safe_path(value):
     path = PurePosixPath(value)
     require(not path.is_absolute() and all(p not in ("", ".", "..") for p in value.split("/")),
             f"unsafe SDK path: {value!r}")
-    # All archives are portable to Windows, including archives built on Unix.
+    # Use Windows-portable entry names, including archives built on Unix.
     for part in path.parts:
         require(not part.endswith((" ", ".")) and not any(c in part for c in '<>"|?*'),
                 f"nonportable SDK path: {value!r}")
         require(not re.fullmatch(r"(?i)(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?", part),
                 f"reserved Windows SDK path: {value!r}")
     return path
+
+
+def validate_links(paths, links):
+    """Resolve a file-only link graph within one SDK root, without filesystem I/O.
+
+    Every intermediate directory must exist in the payload tree. In particular,
+    lexical '..' normalization must not hide a missing directory or traverse a
+    symlink-as-parent. Directory links are outside this SDK format.
+    """
+    paths = set(paths)
+    folded = {name.casefold() for name in paths}
+    require(len(folded) == len(paths), "case-insensitive duplicate SDK path")
+    directories = {""}
+    for name in paths:
+        safe_path(name)
+        parents = [p.as_posix() for p in PurePosixPath(name).parents if str(p) != "."]
+        require(not any(p.casefold() in folded for p in parents),
+                "SDK file or symlink is also a parent directory: " + name)
+        directories.update(parents)
+    destinations = {}
+    for name, target in links.items():
+        require(name in paths and name != MANIFEST, "SDK manifest must be a regular file")
+        require(isinstance(target, str) and target and not target.startswith("/")
+                and "\\" not in target and ":" not in target
+                and not any(ord(c) < 32 for c in target),
+                "unsafe or absolute SDK symlink target: " + repr(target))
+        try:
+            target.encode("utf-8")
+        except UnicodeEncodeError as error:
+            raise SDKError("SDK symlink target is not UTF-8: " + name) from error
+        parts = list(PurePosixPath(name).parent.parts)
+        raw = target.split("/")
+        for index, part in enumerate(raw):
+            if part == "..":
+                require(parts, "SDK symlink escapes its SDK root: " + name)
+                parts.pop()
+            else:
+                safe_path(part)
+                parts.append(part)
+            if index < len(raw) - 1:
+                require("/".join(parts) in directories,
+                        "SDK symlink traverses a missing or non-directory parent: " + name)
+        destination = "/".join(parts)
+        require(destination in paths, "dangling or directory SDK symlink: " + name)
+        destinations[name] = destination
+    resolved = {}
+    for start in links:
+        chain, seen = [], set()
+        current = start
+        while current in destinations and current not in resolved:
+            require(current not in seen, "cyclic SDK symlink: " + start)
+            seen.add(current)
+            chain.append(current)
+            current = destinations[current]
+        endpoint = resolved.get(current, current)
+        require(endpoint in paths and endpoint not in links,
+                "SDK symlink does not resolve to a regular file: " + start)
+        for name in chain:
+            resolved[name] = endpoint
+    return resolved
+
+
+def filesystem_links(files):
+    return {name: os.readlink(path) for name, path in files.items() if path.is_symlink()}
+
+
+def entry_bytes(path):
+    # Hash/archive the link text itself, never the dereferenced library bytes.
+    return os.readlink(path).encode("utf-8") if path.is_symlink() else path.read_bytes()
 
 
 def files_under(prefix):
@@ -153,9 +226,11 @@ def files_under(prefix):
             safe_path(relative)
             require(relative.casefold() not in seen, f"case-insensitive duplicate SDK path: {relative}")
             seen.add(relative.casefold())
-            require(path.resolve().is_relative_to(prefix) and path.is_file(),
-                    f"SDK file escapes its prefix or is not regular: {relative}")
+            mode = path.lstat().st_mode
+            require(stat.S_ISREG(mode) or stat.S_ISLNK(mode),
+                    f"SDK entry is not a regular file or symlink: {relative}")
             files[relative] = path
+    validate_links(files, filesystem_links(files))
     return files
 
 
@@ -228,8 +303,9 @@ def release_blockers(manifest, config):
     return problems
 
 
-def validate_manifest(manifest, config, files, read):
-    require(manifest.get("schema") == 1, "unsupported SDK manifest schema")
+def validate_manifest(manifest, config, files, read, links):
+    require(manifest.get("schema") == MANIFEST_SCHEMA, "unsupported SDK manifest schema")
+    resolved = validate_links(files, links)
     for key in VERSION_FIELDS:
         require(manifest.get(key) == config[key], f"SDK manifest has wrong {key}")
     require(manifest.get("rid") in RIDS, "unknown SDK RID")
@@ -245,6 +321,16 @@ def validate_manifest(manifest, config, files, read):
         require(path != MANIFEST and path.casefold() not in folded,
                 "duplicate/self-referential SDK manifest entry")
         folded.add(path.casefold())
+        kind = row.get("kind")
+        require(kind in {"file", "symlink"}, "SDK manifest must record the entry kind")
+        expected_keys = {"path", "kind", "size", "sha256", "executable"}
+        if kind == "symlink":
+            expected_keys.add("target")
+        require(set(row) == expected_keys, "SDK entry metadata differs from its kind: " + path)
+        require((path in links) == (kind == "symlink"), "SDK entry kind changed: " + path)
+        if kind == "symlink":
+            require(row["target"] == links[path] and row.get("executable") is False,
+                    "SDK symlink target metadata changed: " + path)
         require(isinstance(row.get("size"), int) and row["size"] >= 0
                 and re.fullmatch(r"[0-9a-f]{64}", row.get("sha256", ""))
                 and isinstance(row.get("executable"), bool), "invalid SDK digest record")
@@ -253,13 +339,14 @@ def validate_manifest(manifest, config, files, read):
     for path, row in inventory.items():
         data = read(path)
         require(len(data) == row["size"] and digest(data) == row["sha256"], "SDK bytes changed: " + path)
-    targets, binaries = exported_targets(files, read)
+    read_content = lambda name: read(resolved.get(name, name))
+    targets, binaries = exported_targets(files, read_content)
     require(manifest.get("targets") == targets and manifest.get("imported_binaries") == binaries,
             "SDK target inventory differs from installed exports")
     version_file = "lib/cmake/SaltsCore/SaltsCoreConfigVersion.cmake"
     require(version_file in files, "installed Core version file is absent")
     require(re.search(r'\bset\(PACKAGE_VERSION\s+"' + re.escape(config["cmake_version"]) + r'"\)',
-                      read(version_file).decode("utf-8")), "installed CMake version does not match package")
+                      read_content(version_file).decode("utf-8")), "installed CMake version does not match package")
     return manifest
 
 
@@ -267,12 +354,15 @@ def verify_sdk(prefix, config):
     files = files_under(prefix)
     require(MANIFEST in files, "SDK manifest is absent")
     manifest = load_json(files[MANIFEST])
-    return validate_manifest(manifest, config, files, lambda name: files[name].read_bytes())
+    return validate_manifest(manifest, config, files,
+                             lambda name: entry_bytes(files[name]), filesystem_links(files))
 
 
 def stage(args, config):
     require(args.rid in RIDS, "unsupported SDK RID")
-    destination = Path(args.output).resolve()
+    requested = Path(args.output)
+    require(not requested.is_symlink(), "staging output must not be a symlink")
+    destination = requested.resolve()
     require(not destination.exists(), "staging output already exists; choose a fresh directory")
     source_files = files_under(args.prefix)
     require(MANIFEST not in source_files, "input is already staged; verify its original manifest instead")
@@ -283,21 +373,31 @@ def stage(args, config):
         check_identity(source_identity)
         require(identity(args.source_root) == source_identity, "source identity changed during the build")
     destination.mkdir(parents=True)
-    for relative, path in source_files.items():
+    # Files first, then links. Validated links can never be a parent directory.
+    for relative, path in sorted(source_files.items(), key=lambda item: item[1].is_symlink()):
         target = destination.joinpath(*PurePosixPath(relative).parts)
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(path, target)  # Internal SONAME symlinks become verified regular files.
-        shutil.copymode(path, target)
+        if path.is_symlink():
+            target.symlink_to(os.readlink(path))
+        else:
+            shutil.copyfile(path, target)
+            shutil.copymode(path, target)
     files = files_under(destination)
     targets, binaries = exported_targets(files, lambda name: files[name].read_bytes())
-    manifest = {"schema": 1, **{key: config[key] for key in VERSION_FIELDS},
+    rows = []
+    for name, path in sorted(files.items()):
+        data = entry_bytes(path)
+        row = {"path": name, "kind": "symlink" if path.is_symlink() else "file",
+               "size": len(data), "sha256": digest(data),
+               "executable": not path.is_symlink() and bool(path.stat().st_mode & 0o111)}
+        if path.is_symlink():
+            row["target"] = os.readlink(path)
+        rows.append(row)
+    manifest = {"schema": MANIFEST_SCHEMA, **{key: config[key] for key in VERSION_FIELDS},
                 "rid": args.rid, "profile": config["candidate_profile"], "source": source_identity,
                 "native_backend": native_backend(args.build_dir, args.rid),
                 "execution": args.execution, "targets": targets, "imported_binaries": binaries,
-                "files": [{"path": name, "size": path.stat().st_size,
-                           "sha256": digest(path.read_bytes()),
-                           "executable": bool(path.stat().st_mode & 0o111)}
-                          for name, path in sorted(files.items())]}
+                "files": rows}
     write_json(destination / MANIFEST, manifest)
     verify_sdk(destination, config)
     return manifest
@@ -312,32 +412,54 @@ def archive_sdk(prefix, output, config):
         for name, path in sorted(files.items()):
             entry = zipfile.ZipInfo("sdk/" + manifest["rid"] + "/" + name, (1980, 1, 1, 0, 0, 0))
             entry.create_system = 3
-            entry.external_attr = (stat.S_IFREG | (0o755 if path.stat().st_mode & 0o111 else 0o644)) << 16
-            archive.writestr(entry, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED)
+            mode = (stat.S_IFLNK | 0o777 if path.is_symlink() else
+                    stat.S_IFREG | (0o755 if path.stat().st_mode & 0o111 else 0o644))
+            entry.external_attr = mode << 16
+            archive.writestr(entry, entry_bytes(path), compress_type=zipfile.ZIP_DEFLATED)
     return manifest
 
 
 def archive_entries(archive):
     entries = {}
     folded = set()
+    links = {}
     for item in archive.infolist():
         name = item.filename.rstrip("/")
         safe_path(name)
         require(name.casefold() not in folded, "duplicate archive path: " + name)
         folded.add(name.casefold())
-        require(not stat.S_ISLNK(item.external_attr >> 16), "archive symlinks are forbidden")
-        if not item.is_dir():
-            entries[name] = item
+        kind = stat.S_IFMT(item.external_attr >> 16)
+        if item.is_dir():
+            require(kind in {0, stat.S_IFDIR}, "archive directory has conflicting entry type: " + name)
+            continue
+        require(kind in {0, stat.S_IFREG, stat.S_IFLNK}, "unsupported archive entry type: " + name)
+        entries[name] = item
+        if kind == stat.S_IFLNK:
+            require(item.create_system == 3 and not item.external_attr & 0x10,
+                    "archive symlink has conflicting platform/directory attributes: " + name)
+            parts = PurePosixPath(name).parts
+            require(len(parts) >= 3 and parts[0] == "sdk" and parts[1] in RIDS,
+                    "archive symlinks must be inside a canonical SDK root: " + name)
+            try:
+                target = archive.read(item).decode("utf-8")
+            except UnicodeDecodeError as error:
+                raise SDKError("archive symlink target is not UTF-8: " + name) from error
+            links.setdefault(parts[1], {})["/".join(parts[2:])] = target
     file_paths = {name.casefold() for name in entries}
     for name in entries:
         require(not any(parent.as_posix().casefold() in file_paths
                         for parent in PurePosixPath(name).parents if str(parent) != "."),
                 "archive file is also a parent directory: " + name)
+    for rid, targets in links.items():
+        prefix = f"sdk/{rid}/"
+        validate_links({name[len(prefix):] for name in entries if name.startswith(prefix)}, targets)
     return entries
 
 
 def inspect_archive(path, config, require_all=False, nuget=False):
-    with zipfile.ZipFile(path) as archive:
+    # Extraction validates and reads the same open archive, not a reopened path.
+    manager = nullcontext(path) if isinstance(path, zipfile.ZipFile) else zipfile.ZipFile(path)
+    with manager as archive:
         entries = archive_entries(archive)
         if not nuget:
             require(all(n.startswith("sdk/") for n in entries), "candidate archive has unexpected non-SDK content")
@@ -366,8 +488,10 @@ def inspect_archive(path, config, require_all=False, nuget=False):
                 files = {n[len(prefix):] for n in entries if n.startswith(prefix)}
                 manifest = json.loads(archive.read(name), object_pairs_hook=unique_object)
                 require(manifest.get("rid") == rid, "manifest RID differs from archive path")
+                links = {n: archive.read(prefix+n).decode("utf-8") for n in files
+                         if stat.S_ISLNK(entries[prefix+n].external_attr >> 16)}
                 manifests[rid] = validate_manifest(manifest, config, files,
-                                                   lambda n, p=prefix: archive.read(p+n))
+                                                   lambda n, p=prefix: archive.read(p+n), links)
         require(manifests, "archive has no actual SDK manifests")
         require({PurePosixPath(n).parts[1] for n in entries if n.startswith("sdk/") and len(PurePosixPath(n).parts)>1}
                 == set(manifests), "SDK payload without its required manifest")
@@ -377,17 +501,32 @@ def inspect_archive(path, config, require_all=False, nuget=False):
 
 
 def extract_archive(path, output, config, nuget=False):
-    inspect_archive(path, config, nuget=nuget)
-    destination = Path(output).resolve()
-    require(not destination.exists(), "extraction output already exists")
     with zipfile.ZipFile(path) as archive:
+        manifests = inspect_archive(archive, config, nuget=nuget)
         entries = archive_entries(archive)
+        requested = Path(output)
+        require(not requested.is_symlink(), "extraction output must not be a symlink")
+        destination = requested.resolve()
+        require(not destination.exists(), "extraction output already exists")
         destination.mkdir(parents=True)
         for name, entry in entries.items():
+            if stat.S_ISLNK(entry.external_attr >> 16):
+                continue
             target = destination.joinpath(*PurePosixPath(name).parts)
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(archive.read(entry))
+            with target.open("xb") as stream:
+                stream.write(archive.read(entry))
             target.chmod(0o755 if (entry.external_attr >> 16) & 0o111 else 0o644)
+        # Only already-validated manifest link text is used to create links.
+        # Hosts that deny symlink creation fail; copying bytes is not equivalent.
+        for rid, manifest in manifests.items():
+            prefix = destination / "sdk" / rid
+            for row in manifest["files"]:
+                if row["kind"] == "symlink":
+                    target = prefix.joinpath(*PurePosixPath(row["path"]).parts)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.symlink_to(row["target"])
+            verify_sdk(prefix, config)
 
 
 def release_check(args, config):

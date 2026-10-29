@@ -186,6 +186,41 @@ def normal_path(path: str) -> str:
     return path.replace("\\", "/").rstrip("/")
 
 
+def primary_artifact(target: dict, target_type: str, build_root: str) -> str:
+    """Select File API's nameOnDisk, independently of sidecar output order.
+
+    CMake documents nameOnDisk as the single primary executable/archive name;
+    artifacts may additionally contain PDBs and import libraries. Keep path
+    handling lexical so Linux can verify a retained Windows build's receipt.
+    """
+    name = target.get("name", "<unknown>")
+    if target.get("type") != target_type or target_type not in {"EXECUTABLE", "STATIC_LIBRARY"}:
+        raise ValueError("compiled target type/owner differs: " + name)
+    filename = target.get("nameOnDisk")
+    if (not isinstance(filename, str) or not filename or filename in {".", ".."} or
+            any(c in filename for c in "/\\:\0")):
+        raise ValueError("target has no valid primary nameOnDisk: " + name)
+    artifacts = target.get("artifacts")
+    if not isinstance(artifacts, list):
+        raise ValueError("target has no artifact inventory: " + name)
+    matches = []
+    for item in artifacts:
+        path = item.get("path") if isinstance(item, dict) else None
+        if not isinstance(path, str) or not path or path.endswith(("/", "\\")) or "\0" in path:
+            raise ValueError("invalid target artifact path: " + name)
+        path = normal_path(path)
+        if ".." in PurePosixPath(path).parts or re.match(r"^[A-Za-z]:(?!/)", path):
+            raise ValueError("invalid target artifact path: " + name)
+        if PurePosixPath(path).name == filename:
+            matches.append(path)
+    if len(matches) != 1:
+        raise ValueError("primary target artifact is missing or ambiguous: " + name)
+    path = matches[0]
+    if PurePosixPath(path).is_absolute() or re.match(r"^[A-Za-z]:/", path):
+        return path
+    return normal_path(build_root) + "/" + path
+
+
 def source_relative(path: str, source_root: str, prefix: str = "") -> str:
     path, base = normal_path(path), normal_path(source_root)
     if path.startswith(base + "/"):
@@ -228,10 +263,7 @@ def capture_build(build: Path, source: Path, config: str, names: dict, bundle: P
         if name not in available:
             raise ValueError("real compiled target missing: " + name)
         target = json.loads(safe_file(reply, available[name]["jsonFile"]).read_text())
-        artifacts = target.get("artifacts", [])
-        if len(artifacts) != 1:
-            raise ValueError("target must produce one real artifact: " + name)
-        artifact = build / artifacts[0]["path"]
+        artifact = Path(primary_artifact(target, names[name][0], str(build)))
         targets[name] = {"codemodel": target, "artifact": file_record(
             bundle, artifact, f"artifacts/{kind}/{name}/{artifact.name}")}
     cache = read_cache(build)
@@ -303,6 +335,7 @@ def verify_receipt(root: Path, receipt_path: Path, identity: dict | None = None)
                     raise ValueError("required native feature disabled: " + option)
         elif build["cache"].get("SALTSCORE_REQUIRE_SIMD") != "ON":
             raise ValueError("installed SIMD consumer was optional")
+        primary_paths = {}
         for name, (target_type, sources) in expected_targets.items():
             record = build["targets"][name]
             target = record["codemodel"]
@@ -313,6 +346,11 @@ def verify_receipt(root: Path, receipt_path: Path, identity: dict | None = None)
                       for s in target.get("sources", []) if "compileGroupIndex" in s}
             if actual != set(sources):
                 raise ValueError("compiled target sources differ: " + name)
+            primary = primary_artifact(target, target_type, build["build_root"])
+            retained = f"artifacts/{kind}/{name}/{PurePosixPath(primary).name}"
+            if record["artifact"].get("path") != retained:
+                raise ValueError("retained artifact differs from the primary target: " + name)
+            primary_paths[name] = primary
             artifact = checked_file(bundle, record["artifact"])
             magic = artifact.read_bytes()[:8]
             if target_type == "STATIC_LIBRARY":
@@ -333,8 +371,7 @@ def verify_receipt(root: Path, receipt_path: Path, identity: dict | None = None)
             record = receipt["tests"][kind][name]
             inventory = json.loads(checked_file(bundle, record["inventory"]).read_text())
             tests = inventory.get("tests", [])
-            target = build["targets"][target_name]["codemodel"]
-            executable = normal_path(str(Path(build["build_root"]) / target["artifacts"][0]["path"]))
+            executable = primary_paths[target_name]
             if (len(tests) != 1 or tests[0].get("name") != name or
                     [normal_path(x) for x in tests[0].get("command", [])] != [executable] or
                     any(p.get("name") == "DISABLED" and p.get("value")

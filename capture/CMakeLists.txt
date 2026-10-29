@@ -2,8 +2,8 @@ if(NOT WIN32 AND NOT ANDROID AND NOT APPLE AND
    NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
   message(FATAL_ERROR "Capture requires its real Windows/Linux/macOS/Android/iOS backend")
 endif()
-if(ANDROID AND CMAKE_SYSTEM_VERSION VERSION_LESS "26")
-  message(FATAL_ERROR "The original Capture MediaProjection ABI requires Android API 26")
+if(ANDROID)
+  include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/require_android_api.cmake")
 endif()
 
 add_library(

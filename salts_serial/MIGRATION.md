@@ -135,18 +135,38 @@ access and `detect_leaks=1`. No sanitizer check was disabled, no failure was
 suppressed, and no production behavior was changed for a sanitizer profile.
 TSan also covered the real async pump and its test injection cases.
 
+## Observed native CI and Darwin compile correction
+
+The [Serial workflow run at
+`e48700d8e6219c2eed9dcc3d2ebb85b79465da20`](https://github.com/qigao/salts-core/actions/runs/40829937071)
+passed its Linux Release, ASan/UBSan, TSan and Windows jobs, including their
+installed consumers. Its macOS job failed while compiling `backend_posix.c`:
+`B57600`, `B115200` and `B230400` were hidden by the private strict-POSIX feature
+selection. The glibc `_DEFAULT_SOURCE` macro does not enable Darwin extensions.
+Apple's [published termios header](https://github.com/apple-oss-distributions/xnu/blob/f6217f891ac0bb64f3d375211650a4c1ff8ca1ea/bsd/sys/termios.h)
+places those constants behind the `_POSIX_C_SOURCE` / `_DARWIN_C_SOURCE` gate.
+
+The production target and the test-only target compiling the same backend now
+also define `_DARWIN_C_SOURCE=1` privately on Apple platforms. No termios value
+is redefined, no baud case or fallback is removed, and no production C source
+or public header changes. A local compile probe using Apple's unmodified speed
+definitions reproduced all three missing constants with the old flags and
+passed with the Darwin feature macro. This probe is a feature-selection
+regression, not a macOS backend execution. The corrected macOS graph still
+requires its native CI run at the replacement candidate revision.
+
 ## Remaining admission and retained limits
 
 `.github/workflows/serial-native.yml` defines exact-revision Linux Release,
 ASan/UBSan/leak-check, TSan, Windows and macOS jobs, including installation and
-independent consumers. The workflow has been syntax-checked locally; adding it
-does not mean those remote jobs have passed. Its qualification record leaves
-physical-device coverage and global migration completion pending.
+independent consumers. The historical results above do not qualify a later
+candidate revision. Its qualification record leaves physical-device coverage
+and global migration completion pending.
 
 Physical UART/USB serial data, actual baud/parity/flow-control behavior,
-hardware disconnect and reattachment, Windows execution (including its
-retained UTF-8 case), macOS execution and mobile profiles need their own real
-environment evidence. A PTY or injected backend does not qualify hardware.
+hardware disconnect and reattachment, the corrected macOS graph and mobile
+profiles need their own real environment evidence. A PTY or injected backend
+does not qualify hardware.
 
 The migration preserves existing backend limitations. POSIX configuration
 does not normalize every input flag and does not support every parity preset;

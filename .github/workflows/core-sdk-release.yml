@@ -81,6 +81,10 @@ jobs:
       - name: Canonical vcpkg and pinned private native dependencies
         id: dependencies
         uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@7bb5b556a001bc82d2922a04a718e986a7f47f54
+        env:
+          # Preserve the exact source checkout; the pinned action otherwise
+          # creates its binary cache under the repository's build directory.
+          VCPKG_BINARY_CACHE: ${{ runner.temp }}/core-sdk-vcpkg-binary-cache
         with:
           token: ${{ github.token }}
           triplet: ${{ matrix.triplet }}

@@ -2,6 +2,7 @@
 from contextlib import contextmanager
 from copy import deepcopy
 import importlib.util
+from itertools import permutations
 import json
 import os
 from pathlib import Path
@@ -114,6 +115,120 @@ class MigrationEvidenceTests(unittest.TestCase):
                 evidence.checked_file(bundle, record)
             with self.assertRaisesRegex(ValueError, "escapes bundle"):
                 evidence.safe_file(bundle, "../report.xml")
+
+    def test_codemodel_selects_primary_binary_with_pdb_and_import_outputs(self):
+        # Windows File API reports sidecars as well as the executable. Capture
+        # the declared primary file in every order, never whichever comes first.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            build = root / "build"
+            reply = build / ".cmake/api/v1/reply"
+            reply.mkdir(parents=True)
+            (build / "CMakeCache.txt").write_text("CMAKE_BUILD_TYPE:STRING=Release\n")
+            name = "saltscore_simd_original_c11"
+            primary = f"bin/{name}.exe"
+            outputs = {primary: b"MZprimary executable fixture",
+                       f"bin/{name}.pdb": b"Microsoft C/C++ MSF 7.00 debug fixture",
+                       f"lib/{name}.lib": b"!<arch>\nimport-library fixture"}
+            for relative, data in outputs.items():
+                path = build / relative
+                path.parent.mkdir(exist_ok=True)
+                path.write_bytes(data)
+            documents = {
+                "index-test.json": {"objects": [
+                    {"kind": kind, "jsonFile": kind + ".json"}
+                    for kind in ("codemodel", "toolchains")]},
+                "codemodel.json": {"paths": {"source": str(ROOT)},
+                    "configurations": [{"name": "Release", "targets": [
+                        {"name": name, "jsonFile": "target.json"}]}]},
+                "toolchains.json": {"toolchains": []},
+            }
+            for filename, data in documents.items():
+                (reply / filename).write_text(json.dumps(data))
+            for index, order in enumerate(permutations(outputs)):
+                target = {"name": name, "type": "EXECUTABLE", "nameOnDisk": name + ".exe",
+                          "artifacts": [{"path": path} for path in order]}
+                (reply / "target.json").write_text(json.dumps(target))
+                bundle = root / f"bundle-{index}"
+                captured = evidence.capture_build(
+                    build, ROOT, "Release", {name: evidence.NATIVE_TARGETS[name]}, bundle, "native")
+                record = captured["targets"][name]["artifact"]
+                self.assertEqual(record["path"], f"artifacts/native/{name}/{name}.exe")
+                self.assertEqual(evidence.checked_file(bundle, record).read_bytes(), outputs[primary])
+
+    def test_primary_artifact_rejects_missing_or_ambiguous_metadata_across_hosts(self):
+        target = {"name": "consumer", "type": "EXECUTABLE", "nameOnDisk": "consumer.exe",
+                  "artifacts": [{"path": r"bin\consumer.pdb"},
+                                {"path": r"bin\consumer.exe"}, {"path": r"lib\consumer.lib"}]}
+        build = r"D:\candidate\build"
+        self.assertEqual(evidence.primary_artifact(target, "EXECUTABLE", build),
+                         "D:/candidate/build/bin/consumer.exe")
+        absolute = deepcopy(target)
+        absolute["artifacts"][1]["path"] = r"E:\output\consumer.exe"
+        self.assertEqual(evidence.primary_artifact(absolute, "EXECUTABLE", build),
+                         "E:/output/consumer.exe")
+        archive = deepcopy(target)
+        archive.update(type="STATIC_LIBRARY", nameOnDisk="consumer.lib")
+        self.assertEqual(evidence.primary_artifact(archive, "STATIC_LIBRARY", build),
+                         "D:/candidate/build/lib/consumer.lib")
+        missing_name, missing_file, ambiguous = (deepcopy(target) for _ in range(3))
+        del missing_name["nameOnDisk"]
+        missing_file["artifacts"].pop(1)
+        ambiguous["artifacts"].append({"path": "elsewhere/consumer.exe"})
+        for changed in (missing_name, missing_file, ambiguous):
+            with self.subTest(target=changed), self.assertRaisesRegex(ValueError, "primary"):
+                evidence.primary_artifact(changed, "EXECUTABLE", build)
+
+    def test_retained_binary_and_ctest_cannot_substitute_a_sidecar_or_other_executable(self):
+        # Synthetic native records reach rejection boundaries only; they do not
+        # qualify Windows execution or bypass any complete receipt verification.
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = Path(directory)
+            data = early_receipt()
+            data.update(profile="windows-release", host={"system": "Windows", "machine": "AMD64"})
+            build = data["builds"]["native"]
+            build["build_root"] = r"D:\candidate\build"
+            for name, record in build["targets"].items():
+                static = record["codemodel"]["type"] == "STATIC_LIBRARY"
+                filename = name + (".lib" if static else ".exe")
+                record["codemodel"].update(nameOnDisk=filename, artifacts=[
+                    {"path": "bin/" + name + ".pdb"}, {"path": "bin/" + filename}])
+                relative = f"artifacts/native/{name}/{filename}"
+                path = bundle / relative
+                path.parent.mkdir(parents=True)
+                path.write_bytes(b"!<arch>\narchive fixture" if static else b"MZexecutable fixture")
+                record["artifact"] = {"path": relative, "sha256": evidence.digest(path.read_bytes())}
+            name = "saltscore_simd_original_c11"
+            receipt = bundle / "receipt.json"
+            forged = deepcopy(data)
+            original = bundle / forged["builds"]["native"]["targets"][name]["artifact"]["path"]
+            substitute = original.with_name("other.exe")
+            substitute.write_bytes(original.read_bytes())
+            forged["builds"]["native"]["targets"][name]["artifact"]["path"] = substitute.relative_to(bundle).as_posix()
+            receipt.write_text(json.dumps(forged))
+            with self.assertRaisesRegex(ValueError, "retained artifact differs"):
+                evidence.verify_receipt(ROOT, receipt, data["source"])
+            sidecar = deepcopy(data)
+            record = sidecar["builds"]["native"]["targets"][name]
+            record["codemodel"]["nameOnDisk"] = name + ".pdb"
+            path = original.with_suffix(".pdb")
+            path.write_bytes(b"Microsoft C/C++ MSF 7.00 debug fixture")
+            record["artifact"] = {"path": path.relative_to(bundle).as_posix(),
+                                  "sha256": evidence.digest(path.read_bytes())}
+            receipt.write_text(json.dumps(sidecar))
+            with self.assertRaisesRegex(ValueError, "not a native executable"):
+                evidence.verify_receipt(ROOT, receipt, data["source"])
+            test = "saltscore.simd_original_c11"
+            data["tests"]["native"] = {key: {} for key in evidence.TESTS["native"]}
+            inventory = bundle / "inventory.json"
+            for executable in (name + ".pdb", name + ".lib", "other.exe"):
+                inventory.write_text(json.dumps({"tests": [{"name": test,
+                    "command": ["D:\\candidate\\build\\bin\\" + executable]}]}))
+                data["tests"]["native"][test] = {"inventory": {
+                    "path": inventory.name, "sha256": evidence.digest(inventory.read_bytes())}}
+                receipt.write_text(json.dumps(data))
+                with self.subTest(executable=executable), self.assertRaisesRegex(ValueError, "CTest does not execute"):
+                    evidence.verify_receipt(ROOT, receipt, data["source"])
 
     def test_real_ctest_reports_require_executed_exact_test_without_skip_or_failure(self):
         # CMake can configure this project through an absolute executable even

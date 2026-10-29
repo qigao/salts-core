@@ -61,6 +61,21 @@ Android requires API **26**, as the retained MediaProjection interface uses
 `ANativeWindow_toSurface`. Building only the older Core API-24 profile does not
 qualify Capture.
 
+The API floor is checked by compiling against the actual Android compiler's
+`__ANDROID_API__`. The NDK's legacy toolchain sets `CMAKE_SYSTEM_VERSION=1` as
+an integration sentinel, even when its compiler targets API 26; that sentinel
+is not treated as the effective API. The dedicated NDK configure regression
+accepts API 26 and requires API 21 to fail the same production guard. It does
+not claim execution on an Android device.
+
+The Capture-only iOS feature has no private vcpkg packages: the original iOS
+backend uses Apple frameworks. Its workflow therefore configures the full
+iPhoneOS/arm64 source and installed-consumer graphs through CMake's real Apple
+SDK support without invoking an empty private-provider restore. All common
+public-symbol references remain required, including the six unresolved iOS
+implementations below. The unified Core SDK's iOS restore is unchanged because
+its other enabled modules have real private dependencies.
+
 The frozen vcpkg baseline is
 `b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01`: miniaudio is `0.11.22`, and libyuv
 uses upstream commit `a37e6bc81b52d39cdcfd0f1428f5d6c2b2bc9861` with the baseline's
