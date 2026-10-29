@@ -3,11 +3,15 @@
 This is NOT a functional-migration-complete signal: all 2,975 original
 source blobs and each unresolved owner remain visible as a bounded debt.
 """
+from contextlib import redirect_stdout
 import importlib.util
+import io
+import json
 from pathlib import Path
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
@@ -15,6 +19,12 @@ SPEC = importlib.util.spec_from_file_location(
 assert SPEC and SPEC.loader
 proof = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(proof)
+
+PARITY_SPEC = importlib.util.spec_from_file_location(
+    "utils_parity", ROOT / "tools/audit_original_utils_parity.py")
+assert PARITY_SPEC and PARITY_SPEC.loader
+parity = importlib.util.module_from_spec(PARITY_SPEC)
+PARITY_SPEC.loader.exec_module(parity)
 
 
 class ExactMigrationSourceTests(unittest.TestCase):
@@ -138,6 +148,54 @@ class ExactMigrationSourceTests(unittest.TestCase):
             normalized = data.replace(b"\r\n", b"\n")
             target.write_bytes(normalized.replace(b"\n", b"\r\n"))
             self.assertEqual(proof.verify_public_functions(root, source), 610)
+
+    def test_deferred_algorithms_retain_original_unqualified_files_and_apis(self):
+        plan = json.loads((ROOT / "tools/original_utils_parity.json").read_text())
+        deferred = {"ac_automaton", "levenshtein_automaton"}
+        self.assertEqual(set(plan["pending_groups"]["deferred_by_user"]), deferred)
+        self.assertTrue(deferred.isdisjoint(plan["pending_groups"]["algorithms"]))
+        self.assertTrue(deferred.isdisjoint(e["module"] for e in plan["stage_a"]))
+
+        source = {key: proof.verify_origin(ROOT, key)[0] for key in proof.ORIGINS}
+        paths = {f"utils/{directory}/{name}.{suffix}"
+                 for name in deferred
+                 for directory, suffix in (("include", "h"), ("src", "c"))}
+        paths.add("utils/tests/test_string_automata.c")
+        files = {row["path"]: row for row in source["salts"]["files"]
+                 if row["path"] in paths}
+        self.assertEqual(set(files), paths)
+        for row in files.values():
+            self.assertEqual(row["owner"], "salts-core-candidate")
+            self.assertEqual(row["status"], "unaccounted-source-needs-owner")
+
+        self.assertEqual(proof.verify_public_functions(ROOT, source), 610)
+        ledger = json.loads((ROOT / proof.PUBLIC_FUNCTION_INDEX).read_text())
+        headers = {row["path"]: row for row in ledger["headers"]}
+        for name, count in (("ac_automaton", 16), ("levenshtein_automaton", 10)):
+            row = headers[f"utils/include/{name}.h"]
+            self.assertEqual(len(row["explicit_functions"]), count)
+            self.assertEqual(row["status"],
+                             "requires-real-implementation-and-behavior-test")
+
+    def test_full_gate_rejects_deferred_work_even_when_other_pending_work_clears(self):
+        plan = json.loads((ROOT / "tools/original_utils_parity.json").read_text())
+        # Isolate the remaining work: successful Stage A and no other pending
+        # groups must not turn user deferral into acceptance.
+        plan["pending_groups"] = {
+            "deferred_by_user": plan["pending_groups"]["deferred_by_user"]}
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            manifest = root / "tools/original_utils_parity.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps(plan), encoding="utf-8")
+            output = io.StringIO()
+            with patch.object(parity, "check_stage_a", return_value=[]), \
+                    patch("sys.argv", ["audit_original_utils_parity.py",
+                                       "--root", str(root), "--full"]), \
+                    redirect_stdout(output):
+                self.assertEqual(parity.main(), 1)
+            self.assertIn("FULL RESTORATION NOT ACCEPTED: 2 pending",
+                          output.getvalue())
 
     def test_final_gate_stays_red_until_all_originals_qualified(self):
         report = proof.audit(ROOT)

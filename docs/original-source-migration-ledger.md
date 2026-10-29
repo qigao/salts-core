@@ -28,6 +28,25 @@ The new `tools/migration/original-public-functions.json` additionally freezes **
 - Each API points to its original header Git Blob and source commit, with `requires-real-implementation-and-behavior-test` status. A matching function name/header alone **does not** close implementation, linkage, lifetime, failure, or testing obligations.
 - This ledger is immutable Git Blob `19db69a508c6049afcfe6922e19448f5f9c5d875`; the same `tools/check_full_source_migration.py` checks all 54 original header/source associations and 610 names, catches silent function deletion/renaming, and keeps `--require-complete` **RED** while the function-level claims remain unqualified. The full `CNet/Platform/NativeIO` public API inventory is additional scope and is not falsely represented by these 610 initial functions.
 
+## Current iteration scope
+
+AC and Levenshtein development and acceptance are deferred by the user. The
+working plan lists `ac_automaton` and `levenshtein_automaton` under
+`pending_groups.deferred_by_user`, which remains part of the pending total.
+The frozen ledgers retain both original header/source pairs and their shared
+`utils/tests/test_string_automata.c`: **5 unresolved files**. The original
+**16 AC and 10 Levenshtein functions** retain
+`requires-real-implementation-and-behavior-test` status. None is marked
+migrated, verified or waived, and the **2,975-file / 610-function** baseline
+is unchanged. Both `audit_original_utils_parity.py --full` and
+`check_full_source_migration.py --require-complete` continue to reject
+incomplete migration.
+
+This scope change leaves existing byte and UTF-8 behavior, regex error
+handling and resource ownership unchanged. [PR #72](https://github.com/qigao/salts-core/pull/72)
+and [PR #94](https://github.com/qigao/salts-core/pull/94) remain **Draft and
+must not be merged**.
+
 ## Layer ownership contract
 
 - `salts-core`: plain C11 Core, mmap, strings, logging, memory pools, regex, byte scanners; native Platform, Concurrency, NativeIO, SCTP/CNet, Crypto, ASN1, FS, Process, Capture, Playback, Serial, low-level FS watch and native USB transport. Preserve original public behavior, independent lifetime and error paths.

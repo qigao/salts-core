@@ -96,11 +96,23 @@ native invalid-range contract rather than reintroducing old silent truncation.
 
 **Not fully accepted, do not mark migration complete or release:**
 
+AC (`ac_automaton`) and Levenshtein (`levenshtein_automaton`) are excluded
+from development and acceptance in this iteration at the user's direction.
+They remain unresolved in `pending_groups.deferred_by_user`; `--full` still
+counts both as pending. Their two original headers, two implementations and
+shared `utils/tests/test_string_automata.c` remain in the original inventory,
+along with all **26 public functions** (16 AC, 10 Levenshtein). Deferral does
+not qualify any of these **5 files** or reduce the **2,975-file / 610-function**
+final completeness gate.
+
+The existing byte and UTF-8 behavior, regex error handling and resource
+ownership remain unchanged. [PR #72](https://github.com/qigao/salts-core/pull/72)
+and [PR #94](https://github.com/qigao/salts-core/pull/94) remain **Draft; do not
+merge**. Green structural checks cannot accept unresolved migration work.
+
 - Logging/format: `tlog.h`, `tlog_helper.h`, `tlog.c`; the lexer now has a separate native owner. sync/async sinks and flush
   parity, fatal logging, bounded queue and source capture all remain pending.
-- Containers and algorithms: `ac_automaton`, `levenshtein_automaton`,
-  `bucket_priority_queue_mpmc`,
-  `re`, `enum_utils`.
+- Containers and algorithms: `bucket_priority_queue_mpmc`, `re`, `enum_utils`.
 - mmap/UUID/zstd/SIMD/error: original `cmeta_mmap`,
   `cmeta_zstd`, `cmeta_error`.
 - Requires a per-symbol difference audit, **not name matching**:
@@ -112,5 +124,6 @@ native invalid-range contract rather than reintroducing old silent truncation.
 No additional provider, no CMeta runtime dependency, no legacy fallbacks.
 Remaining functionality must be implemented in the appropriate source module
 and verified with the original tests, ASan/UBSan/TSan, Linux/macOS/Windows, and
-installed C11/C++17 consumers. Stage A PR stays Draft until its own exact HEAD
-CI is green, and Issue #71 stays Open until every original function is mapped.
+installed C11/C++17 consumers. PR #72 and PR #94 stay Draft; exact-HEAD CI
+success alone does not close the final completeness gate. Issue #71 stays Open
+until every original function is mapped and qualified.

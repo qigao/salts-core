@@ -395,9 +395,11 @@
   "pending_groups": {
     "logging_formatter": [],
     "algorithms": [
-      "ac_automaton",
-      "levenshtein_automaton",
       "enum_utils"
+    ],
+    "deferred_by_user": [
+      "ac_automaton",
+      "levenshtein_automaton"
     ],
     "queues": [
       "bucket_priority_queue_mpmc"
