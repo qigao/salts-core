@@ -562,3 +562,12 @@ add_test(NAME saltscore.original_re_source_provenance
           -p "test_original_re_provenance.py" -v)
 set_tests_properties(saltscore.original_re_source_provenance
   PROPERTIES TIMEOUT 45)
+
+# The frozen 610-function inventory did not parse the original SIMD header's
+# unannotated C declarations. Keep its separate 32-function supplement intact.
+add_test(NAME saltscore.original_simd_source_provenance
+  COMMAND "${Python3_EXECUTABLE}" -m unittest discover
+          -s "${PROJECT_SOURCE_DIR}/tests"
+          -p "test_original_simd_provenance.py" -v)
+set_tests_properties(saltscore.original_simd_source_provenance
+  PROPERTIES TIMEOUT 45)
