@@ -190,3 +190,50 @@ All **18 explicit** original mmap public entrypoints are present in the C11 head
 - Use the canonical Stun-derived verified ccache and pinned re2c/vcpkg-cache from [Draft CI #90](https://github.com/qigao/salts-core/pull/90) when its independent prerequisite [FIFO #88](https://github.com/qigao/salts-core/pull/88) is merged. No per-file CI trigger bursts.
 
 Tracking: [Issue #71](https://github.com/qigao/salts-core/issues/71) (original 175 utils files / 465 explicit public prototypes), [Issue #89](https://github.com/qigao/salts-core/issues/89) (other Salts modules and old tests), and recovery [Draft PR #72](https://github.com/qigao/salts-core/pull/72).
+
+
+## Current 610-function implementation classification
+
+This classification does **not** reduce the frozen 610-function denominator or
+change final admission. It separates implementation work from evidence work so
+already-restored native owners are not rewritten a second time.
+
+- **468** functions have a production implementation or a mechanical native
+  owner mapping and still require the final evidence policy.
+- **83** are real remaining Core-native implementation work.
+- **33** belong to the upper CMeta/CFlow split and must be qualified there,
+  without a reverse runtime dependency into Core.
+- **26** are the explicitly deferred AC/Levenshtein functions; they remain
+  unwaived and keep final admission RED.
+
+The 83 Core-native functions are: 26 Platform/thread functions, 37 Crypto
+algorithm-surface functions, 7 historically declared-only mDNS functions,
+7 callback-only filesystem-watch functions, and 6 bounded Process-retainer
+functions. The 33 upper functions are the 14 CFlow filesystem executor
+functions, 4 filesystem-watch Publisher functions, 14 CFlow Process IO
+composition functions, and one CMeta metadata-validity function.
+
+Important source facts:
+
+- Original `cmeta_fs` 56/56 and `cmeta_process` 17/17 operations are
+  mechanically owned by current `Salts::FS` and `Salts::Process`; they are
+  evidence debt, not missing source.
+- Base64 6/6 and buffer 29/29 are present in current Core. MPMC 7, mmap 18,
+  Zstd 7 and error 4 were restored after the older Stage-A manifest was
+  written.
+- The frozen Salts tree contains only `utils/include/cmeta_mdns.h`; no mDNS
+  implementation source or definitions exist in that donor tree. Those seven
+  APIs therefore require a new native implementation and must not be described
+  as recovered donor behavior.
+- Original Crypto has a complete `utils/src/cmeta_crypto.c` implementation.
+  The current sole `Salts::Crypto` archive already compiles primitives needed
+  by 32/37 functions. Ed25519 (3) and X25519 (2) still require a reviewed
+  implementation folded into that same archive; no second provider/archive is
+  allowed.
+- Callback-only `fs_watch` source and Linux/macOS/Windows backends are native
+  and do not depend on CFlow. The reactive Publisher remains above Core.
+- The bounded Process retainer belongs to the native Process owner; CFlow
+  executor/IO actor composition remains above Core.
+
+This section is planning/accounting evidence only. It does not qualify any
+function for the final `--require-complete` gate by itself.
