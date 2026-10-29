@@ -247,3 +247,16 @@ add_executable(simd_scan_consumer_cpp simd_scan_consumer.cpp)
 target_compile_features(simd_scan_consumer_cpp PRIVATE cxx_std_17)
 target_link_libraries(simd_scan_consumer_cpp PRIVATE Salts::Core)
 add_test(NAME sdk.original_simd_scan_cpp17 COMMAND simd_scan_consumer_cpp)
+
+
+# Independently installed original native mmap API, one Salts::Core shared
+# owner. ABI and runtime are exercised by both C11 and C++17 consumers.
+add_executable(original_mmap_consumer_c original_mmap_consumer.c)
+target_compile_features(original_mmap_consumer_c PRIVATE c_std_11)
+target_link_libraries(original_mmap_consumer_c PRIVATE Salts::Core)
+add_test(NAME sdk.original_native_mmap_c11 COMMAND original_mmap_consumer_c)
+
+add_executable(original_mmap_consumer_cpp original_mmap_consumer.cpp)
+target_compile_features(original_mmap_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(original_mmap_consumer_cpp PRIVATE Salts::Core)
+add_test(NAME sdk.original_native_mmap_cpp17 COMMAND original_mmap_consumer_cpp)

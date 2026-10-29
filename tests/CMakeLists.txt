@@ -498,3 +498,32 @@ add_executable(saltscore_simd_scan_contract test_simd_scan_contract.c)
 target_compile_features(saltscore_simd_scan_contract PRIVATE c_std_11)
 target_link_libraries(saltscore_simd_scan_contract PRIVATE Salts::Core)
 add_test(NAME saltscore.original_simd_scan_contract COMMAND saltscore_simd_scan_contract)
+
+
+# Actual original qigao/salts utils native memory mapping, not a mock
+# and not a CMeta/CFlow runtime. Real file page / range / write / group.
+add_executable(saltscore_original_native_mmap_test test_original_native_mmap.c)
+target_compile_features(saltscore_original_native_mmap_test PRIVATE c_std_11)
+set_target_properties(saltscore_original_native_mmap_test PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+target_link_libraries(saltscore_original_native_mmap_test PRIVATE Salts::Core)
+add_test(NAME saltscore.original_native_mmap
+  COMMAND saltscore_original_native_mmap_test)
+set_tests_properties(saltscore.original_native_mmap PROPERTIES TIMEOUT 30)
+
+# The complete 1554+1421 Git Blob provenance contract is a non-waivable
+# structural gate: unresolved original native paths remain explicit debt.
+# Do NOT run --require-complete here and fake success: the independent
+# final admission remains RED until every function/test is qualified.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME saltscore.all_original_source_provenance
+  COMMAND "${Python3_EXECUTABLE}"
+          "${PROJECT_SOURCE_DIR}/tools/check_full_source_migration.py")
+set_tests_properties(saltscore.all_original_source_provenance
+  PROPERTIES TIMEOUT 45)
+add_test(NAME saltscore.all_original_source_negative
+  COMMAND "${Python3_EXECUTABLE}" -m unittest discover
+          -s "${PROJECT_SOURCE_DIR}/tests"
+          -p "test_full_source_migration.py" -v)
+set_tests_properties(saltscore.all_original_source_negative
+  PROPERTIES TIMEOUT 45)
