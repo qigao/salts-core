@@ -14,3 +14,16 @@ add_executable(fs_installed_cpp fs_cpp.cpp)
 target_link_libraries(fs_installed_cpp PRIVATE Salts::FS)
 set_target_properties(fs_installed_cpp PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 add_test(NAME saltscore.fs.installed_cpp COMMAND fs_installed_cpp)
+
+# Original Salts native mmap functionality is part of the same FS SDK owner.
+add_executable(fs_mmap_installed_c ../test_cmeta_mmap.c)
+target_link_libraries(fs_mmap_installed_c PRIVATE Salts::FS)
+set_target_properties(fs_mmap_installed_c PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME saltscore.fs.original_mmap_installed_c COMMAND fs_mmap_installed_c)
+
+add_executable(fs_mmap_installed_cpp mmap_cpp.cpp)
+target_link_libraries(fs_mmap_installed_cpp PRIVATE Salts::FS)
+set_target_properties(fs_mmap_installed_cpp PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+add_test(NAME saltscore.fs.original_mmap_installed_cpp COMMAND fs_mmap_installed_cpp)
