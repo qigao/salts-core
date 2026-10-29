@@ -30,6 +30,16 @@ The new `tools/migration/original-public-functions.json` additionally freezes **
 
 ## Current iteration scope
 
+The SIMD source recovery adds a separate
+`tools/migration/original-simd-inventory.json` supplement for all **7 original
+SIMD files and 32 public execution functions**. The frozen 610-function
+inventory lists `simd/include/salts/simd.h` but extracted zero functions from
+its unannotated `bool`/`void` declarations. That gap is recorded explicitly;
+the original inventories are not rewritten and the 610 count is not treated
+as complete SIMD coverage. Source parity, installed/native execution,
+CMeta reflection mapping and downstream descriptor ABI admission remain
+separate obligations; see `simd/README.md`.
+
 AC and Levenshtein development and acceptance are deferred by the user. The
 working plan lists `ac_automaton` and `levenshtein_automaton` under
 `pending_groups.deferred_by_user`, which remains part of the pending total.

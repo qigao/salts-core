@@ -11,7 +11,7 @@ import re
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = (
     "core", "platform", "concurrency", "coroutine", "native-io",
-    "cnet", "uri", "fs", "process", "sctp",
+    "cnet", "uri", "fs", "process", "sctp", "simd",
 )
 OWNER_FILES = (
     "core/include/base64_utils.h",
@@ -35,6 +35,8 @@ OWNER_FILES = (
     "uri/include/uri_parser.h",
     "uri/src/uri_parser.c",
     "uri/parser/uri_lexer.re",
+    "simd/include/salts/simd.h",
+    "simd/src/simd.c",
 )
 for old in ("include", "src", "utils", "cflow-fs", "cflow-process"):
     if (ROOT / old).exists():
@@ -122,6 +124,7 @@ extra = {
     "native-io/src/native_io.c": "Salts::NativeIO",
     "uri/parser/uri_lexer.re": "Salts::URI",
     "sctp/src/sctp_wire.c": "Salts::SCTPWire",
+    "simd/src/simd.c": "Salts::SIMD",
 }
 for rel, alias in extra.items():
     module, local = rel.split("/", 1)
