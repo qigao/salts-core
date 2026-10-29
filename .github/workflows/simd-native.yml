@@ -10,6 +10,9 @@ on:
       - "vcpkg-configuration.json"
       - "tools/migration/original-simd-inventory.json"
       - "tools/check_dependency_boundaries.py"
+      - "tools/check_migration_evidence.py"
+      - "tools/migration/native-evidence-contracts.json"
+      - "tests/test_migration_evidence.py"
       - "tests/test_original_simd_provenance.py"
       - "tests/CMakeLists.txt"
       - "tests/installed/CMakeLists.txt"
@@ -25,6 +28,12 @@ permissions:
 concurrency:
   group: saltscore-simd-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: "false"
 
 jobs:
   simd:
@@ -94,7 +103,7 @@ jobs:
             flags='-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1'
             args+=("-DCMAKE_C_FLAGS=$flags" "-DCMAKE_CXX_FLAGS=$flags")
           fi
-          cmake -S . -B build-simd -G Ninja \
+          cmake -S . -B "$RUNNER_TEMP/simd-native-build" -G Ninja \
             -DBUILD_TESTING=ON \
             -DSALTSCORE_BUILD_SIMD=ON -DSALTSCORE_BUILD_TINYTEST=ON \
             "-DCMAKE_TOOLCHAIN_FILE=$SIMD_TOOLCHAIN" \
@@ -104,7 +113,7 @@ jobs:
             "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/simd-sdk" \
             -DCMAKE_POLICY_DEFAULT_CMP0141=NEW \
             -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded "${args[@]}"
-          cmake --build build-simd --config Release --parallel 2
+          cmake --build "$RUNNER_TEMP/simd-native-build" --config Release --parallel 2
       - name: Execute original numeric cases and native failure contracts
         shell: bash
         env:
@@ -115,10 +124,10 @@ jobs:
           for case in simd_original_c11 simd_original_cpp17 simd_native_boundaries \
                       original_simd_source_provenance all_original_source_provenance \
                       all_original_source_negative; do
-            ctest --test-dir build-simd -C Release --output-on-failure \
+            ctest --test-dir "$RUNNER_TEMP/simd-native-build" -C Release --output-on-failure \
               --no-tests=error --timeout 120 -R "^saltscore[.]${case}$"
           done
-          cmake --install build-simd --config Release
+          cmake --install "$RUNNER_TEMP/simd-native-build" --config Release
       - name: Require the static SIMD archive and reject a SIMD runtime library
         shell: bash
         run: |
@@ -151,16 +160,34 @@ jobs:
             flags='-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1'
             args+=("-DCMAKE_C_FLAGS=$flags" "-DCMAKE_CXX_FLAGS=$flags")
           fi
-          cmake -S tests/installed -B build-simd-installed -G Ninja \
+          cmake -S tests/installed -B "$RUNNER_TEMP/simd-installed-build" -G Ninja \
             -DSALTSCORE_REQUIRE_SIMD=ON \
             "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/simd-sdk" \
             -DCMAKE_POLICY_DEFAULT_CMP0141=NEW \
             -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded "${args[@]}"
-          cmake --build build-simd-installed --config Release --parallel 2
+          cmake --build "$RUNNER_TEMP/simd-installed-build" --config Release --parallel 2
           for lang in c11 cpp17; do
-            ctest --test-dir build-simd-installed -C Release --output-on-failure \
+            ctest --test-dir "$RUNNER_TEMP/simd-installed-build" -C Release --output-on-failure \
               --no-tests=error --timeout 120 -R "^sdk[.]simd_${lang}$"
           done
+      - name: Collect actual native and installed SIMD execution evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -B tools/check_migration_evidence.py collect \
+            --native-build "$RUNNER_TEMP/simd-native-build" \
+            --installed-build "$RUNNER_TEMP/simd-installed-build" \
+            --sdk-prefix "$RUNNER_TEMP/simd-sdk" \
+            --profile '${{ matrix.profile }}' \
+            --output "$RUNNER_TEMP/simd-evidence/${{ matrix.profile }}"
+          python -B tools/check_migration_evidence.py verify \
+            --evidence-dir "$RUNNER_TEMP/simd-evidence"
+      - name: Retain exact-source execution evidence for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: simd-evidence-${{ matrix.profile }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/simd-evidence/${{ matrix.profile }}
+          if-no-files-found: error
       - name: Record real compiler cache statistics
         if: always()
         shell: bash
@@ -170,6 +197,6 @@ jobs:
         with:
           name: simd-${{ matrix.profile }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
-            build-simd/Testing/Temporary/LastTest.log
-            build-simd-installed/Testing/Temporary/LastTest.log
+            ${{ runner.temp }}/simd-native-build/Testing/Temporary/LastTest.log
+            ${{ runner.temp }}/simd-installed-build/Testing/Temporary/LastTest.log
           if-no-files-found: warn

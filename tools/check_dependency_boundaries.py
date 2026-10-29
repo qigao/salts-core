@@ -13,66 +13,94 @@ import re
 SCANNED_EXTENSIONS = {".c", ".cc", ".cpp", ".h", ".hpp", ".m", ".mm", ".cmake"}
 IGNORED_DIRECTORIES = {".git", ".github", "vendor", "third_party", "build", "out", "tools", "docs", "_build", "_installed", "_sdk", "CMakeFiles"}
 PATTERNS = {
-    "forbidden high-level Salts target": re.compile(r"\bSalts::(?!Core\b|Platform\b|Concurrency\b|Coroutine\b|NativeIO\b|URI\b|CNet\b|Unicode\b|IDNA\b|CSerde\b|TinyTest\b|SIMD\b|SCTP\b|SCTPWire\b|FS\b|Process\b|Crypto\b)[A-Za-z_0-9]+"),
+    "forbidden high-level Salts target": re.compile(r"\bSalts::(?!Core\b|Platform\b|Concurrency\b|Coroutine\b|NativeIO\b|URI\b|CNet\b|Unicode\b|IDNA\b|CSerde\b|TinyTest\b|SIMD\b|SCTP\b|SCTPWire\b|FS\b|Process\b|Crypto\b|ASN1\b|USB\b|Playback\b|Serial\b|Capture\b)[A-Za-z_0-9]+"),
     "forbidden alternate target namespace": re.compile(r"\b(?:SaltsCore|SaltsCrypto|Crypto)::[A-Za-z_0-9]+"),
     "legacy package lookup": re.compile(r"\b(?:find_package|find_dependency)\s*\(\s*Salts(?:Utils)?(?:\s|\))", re.IGNORECASE),
     "CMeta/CFlow/CSTL include": re.compile(r'^\s*#\s*include\s*[<"](?:cmeta/|cflow/|cstl(?:/|\.h))'),
     "CMeta/CFlow runtime object": re.compile(r"\b(?:CMETA_STRUCT|CMETA_IMPLEMENTS|cmeta_type_desc|cflow_executor|cflow_io_actor|cflow_waker|cflow_publisher)\b"),
 }
 
+# USB's original header has a historical cflow/ path but contains only native
+# opaque handles and C callbacks. Keep that exact public path without admitting
+# any reactive CFlow header or runtime into the native dependency graph.
+NATIVE_USB_HEADER_USERS = frozenset({
+    Path("usb/src/usb.c"),
+    Path("usb/tests/cflow_usb_test.c"),
+    Path("usb/tests/cflow_usb_state_test.c"),
+    Path("usb/tests/cflow_usb_header_cpp_test.cpp"),
+    Path("usb/tests/usb_lifecycle_test.c"),
+    Path("usb/tests/installed/usb_consumer.c"),
+    Path("usb/tests/installed/usb_consumer.cpp"),
+})
+NATIVE_USB_INCLUDE = re.compile(r'^\s*#\s*include\s*[<"]cflow/usb\.h[>"]\s*$')
 
-# The test-local sole-static candidate rejects split providers at configure
-# time. Two exact guard lines are non-dependency references; no other CMake
-# lines or source paths are exempt.
-STATIC_CRYPTO_GUARD_FILE = Path("tests/cnet-crypto-static/CMakeLists.txt")
-STATIC_CRYPTO_DENIED_TARGET_GUARD = (
-    "foreach(_forbidden IN ITEMS",
-    "Salts::TLS Salts::TLSCipherBIO Salts::CryptoProvider",
-    "Crypto::TLS Crypto::TLSCipherBIO Crypto::Provider)",
+
+# Negative CMake checks are prohibitions, not dependencies. Only these
+# exact source-contract locations can opt out, and only when the entire
+# if(TARGET ...)/FATAL_ERROR or foreach(...)/if/FATAL/endif/endforeach
+# structure remains intact. Active links elsewhere are never excluded.
+NEGATIVE_ASSERTION_FILES = frozenset({
+    Path("tests/cnet-crypto-static/CMakeLists.txt"),
+    Path("asn1/tests/installed/CMakeLists.txt"),
+    Path("crypto/tests/asn1/installed/CMakeLists.txt"),
+    Path("crypto/tests/mobile/CMakeLists.txt"),
+    Path("crypto/tests/owner/CMakeLists.txt"),
+    Path("crypto/tests/sdk/CMakeLists.txt"),
+})
+_TARGET_NAME = r"[A-Za-z_][A-Za-z_0-9]*::[A-Za-z_][A-Za-z_0-9]*"
+_LIST_GUARD = re.compile(
+    rf"foreach\(\s*([A-Za-z_][A-Za-z_0-9]*)\s+IN\s+ITEMS\s+"
+    rf"({_TARGET_NAME}(?:\s+{_TARGET_NAME})*)\s*\)"
+)
+_IF_DENY_GUARD = re.compile(
+    rf"if\(\s*TARGET\s+{_TARGET_NAME}"
+    rf"(?:\s+OR\s+TARGET\s+{_TARGET_NAME})*\s*\)"
 )
 
 
-# ASN1 and Crypto copied from qigao/crypto are first-party source modules.
-# Salts::ASN1 is allowed only within those two module subtrees.
-ASN1_OWNERS = {"asn1", "crypto"}
-NATIVE_ASN1_TARGET = re.compile(r"\bSalts::ASN1\b")
+def _negative_assertion_indices(relative: Path, lines: list[str]) -> set[int]:
+    if relative not in NEGATIVE_ASSERTION_FILES:
+        return set()
+    allowed: set[int] = set()
+    for index, line in enumerate(lines):
+        # A literal if(TARGET Old::Target OR TARGET Other::Target)
+        # followed immediately by FATAL_ERROR and endif is a denial.
+        if (_IF_DENY_GUARD.fullmatch(line.strip())
+                and index + 2 < len(lines)
+                and lines[index + 1].strip().startswith("message(FATAL_ERROR ")
+                and lines[index + 2].strip() == "endif()"):
+            allowed.add(index)
+        if not line.lstrip().startswith("foreach("):
+            continue
+        last = index
+        while last < len(lines) and not lines[last].strip().endswith(")"):
+            last += 1
+        if last >= len(lines) or last + 4 >= len(lines):
+            continue
+        declaration = " ".join(part.strip() for part in lines[index:last + 1])
+        match = _LIST_GUARD.fullmatch(declaration)
+        if match is None:
+            continue
+        variable = match.group(1)
+        if not re.fullmatch(
+                rf'if\(\s*TARGET\s+"?\$\{{{re.escape(variable)}\}}"?\s*\)',
+                lines[last + 1].strip()):
+            continue
+        if (not lines[last + 2].strip().startswith("message(FATAL_ERROR ")
+                or lines[last + 3].strip() != "endif()"
+                or lines[last + 4].strip() != "endforeach()"):
+            continue
+        allowed.update(range(index, last + 1))
+    return allowed
 
-# These exact checks DENY split providers, rather than linking to them.
-NEGATIVE_LIST_PATHS = {
-    Path("asn1/tests/installed/CMakeLists.txt"): "_forbidden",
-    Path("crypto/tests/mobile/CMakeLists.txt"): "_split",
-    Path("crypto/tests/owner/CMakeLists.txt"): "_split",
-    Path("crypto/tests/sdk/CMakeLists.txt"): "_split",
-}
 
-def _negative_guard_line_indices(relative: Path, lines: list[str]) -> set[int]:
-    ignored: set[int] = set()
-    variable = NEGATIVE_LIST_PATHS.get(relative)
-    if variable:
-        for begin, line in enumerate(lines):
-            if not line.strip().startswith(f"foreach({variable} IN ITEMS "):
-                continue
-            end = begin
-            while end < len(lines) and ")" not in lines[end]:
-                end += 1
-            if end + 4 >= len(lines):
-                continue
-            # chr(36) produces the CMake dollar sign; this is an EXACT guard.
-            exact = 'if(TARGET "' + chr(36) + '{' + variable + '}")'
-            alternative = 'if(TARGET ' + chr(36) + '{' + variable + '})'
-            guard = [lines[k].strip() for k in range(end + 1, end + 5)]
-            if (guard[0] in (exact, alternative)
-                    and guard[1].startswith("message(FATAL_ERROR ")
-                    and guard[2:] == ["endif()", "endforeach()"]):
-                ignored.update(range(begin, end + 1))
-    if relative == Path("crypto/tests/asn1/installed/CMakeLists.txt"):
-        for i in range(len(lines) - 2):
-            if (lines[i].strip() ==
-                    "if(TARGET SaltsCore::ASN1 OR TARGET Crypto::ASN1)"
-                    and lines[i + 1].strip().startswith("message(FATAL_ERROR ")
-                    and lines[i + 2].strip() == "endif()"):
-                ignored.add(i)
-    return ignored
+def _is_comment_line(relative: Path, line: str) -> bool:
+    stripped = line.lstrip()
+    if relative.name == "CMakeLists.txt" or relative.suffix == ".cmake":
+        return stripped.startswith("#")
+    # C/C++ whole-line comments only. An active #include remains checked;
+    # disabled #if branches are still scanned, and *ptr code is not ignored.
+    return stripped.startswith(("/*", "*/", "//", "* "))
 
 
 def check_repository(root: Path) -> list[str]:
@@ -86,34 +114,24 @@ def check_repository(root: Path) -> list[str]:
         if path.suffix not in SCANNED_EXTENSIONS and path.name != "CMakeLists.txt":
             continue
         lines = path.read_text(encoding="utf-8").splitlines()
-        denied_guard_indices: set[int] = set()
-        if relative == STATIC_CRYPTO_GUARD_FILE:
-            # Only a complete, contiguous CMake foreach(_forbidden...)
-            # definition can be treated as a negative assertion; never
-            # exclude target_link_libraries or unrelated lines in this file.
-            for offset in range(len(lines) - 2):
-                if tuple(line.strip() for line in lines[offset:offset + 3]) == (
-                        STATIC_CRYPTO_DENIED_TARGET_GUARD):
-                    denied_guard_indices.update((offset + 1, offset + 2))
-        denied_guard_indices.update(_negative_guard_line_indices(relative, lines))
+        denied_guard_indices = _negative_assertion_indices(relative, lines)
         for index, line in enumerate(lines):
-            if index in denied_guard_indices:
+            if index in denied_guard_indices or _is_comment_line(relative, line):
                 continue
             lineno = index + 1
-            # Salts::Foo is a C++ type namespace inside .cpp/.hpp, not
-            # a CMake imported target. Target name restrictions apply ONLY
-            # to CMake source; includes/runtime forbidden patterns are still
-            # applied to C and C++ source without exceptions.
+            # Salts::UUID and other C++ types are not imported CMake targets.
+            # Target-namespace checks apply to CMake, while real includes and
+            # reflection/actor types remain forbidden in all C/C++ sources.
             is_cmake = relative.name == "CMakeLists.txt" or relative.suffix == ".cmake"
             for rule, regex in PATTERNS.items():
+                if (rule == "CMeta/CFlow/CSTL include"
+                        and relative in NATIVE_USB_HEADER_USERS
+                        and NATIVE_USB_INCLUDE.fullmatch(line)):
+                    continue
                 if rule in ("forbidden high-level Salts target",
                             "forbidden alternate target namespace") and not is_cmake:
                     continue
-                scan_line = line
-                if (rule == "forbidden high-level Salts target"
-                    and is_cmake and relative.parts[0] in ASN1_OWNERS):
-                    scan_line = NATIVE_ASN1_TARGET.sub("", line)
-                if regex.search(scan_line):
+                if regex.search(line):
                     violations.append(f"{relative}:{lineno}: {rule}: {line.strip()}")
     return violations
 

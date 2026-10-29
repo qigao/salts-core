@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <PackageId>SaltsCore.Native</PackageId>
+    <PackageVersion>0.1.0</PackageVersion>
+    <Authors>qigao</Authors>
+    <Description>SaltsCore native C11 SDK install trees. Release display version 0.1.000; normalized package version 0.1.0.</Description>
+    <PackageTags>salts;core;native;c;cpp;cmake</PackageTags>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/qigao/salts-core</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="$(PackageRoot)/sdk/**/*" Pack="true" PackagePath="sdk/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

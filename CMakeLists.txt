@@ -26,15 +26,44 @@ add_subdirectory(native-io)
 # Original formal concurrency/ownership models, source-owned and retained.
 add_subdirectory(verification)
 
+# ASN1 is an always-assembled, first-party, provider-neutral codec.
+# Never import a second ASN1 implementation or an external source repository.
+if(TARGET Salts::ASN1)
+  message(FATAL_ERROR "Duplicate ASN1 owner: never import and build twice")
+endif()
+add_subdirectory(asn1)
+
 option(SALTSCORE_BUILD_URI "Build standalone re2c-generated URI parser" OFF)
 if(SALTSCORE_BUILD_URI)
   add_subdirectory(uri)
 endif()
 option(SALTSCORE_BUILD_CNET "Build standalone CNet with required pinned providers" OFF)
 option(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST
-  "Qualify test-only original CNet Owner with sole static Salts::Crypto" OFF)
-if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST AND NOT BUILD_TESTING)
-  message(FATAL_ERROR "Original static Crypto Owner qualification requires BUILD_TESTING")
+  "Qualify test-only original CNet Owner with sole local static Salts::Crypto" OFF)
+if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST AND
+   (NOT BUILD_TESTING OR NOT SALTSCORE_BUILD_CNET OR NOT DEFINED CRYPTO_GMSSL_ROOT))
+  message(FATAL_ERROR
+    "Local M5 Crypto Owner requires BUILD_TESTING, CNet and the exact pinned CRYPTO_GMSSL_ROOT")
+endif()
+# The local static Crypto archive requires its pinned installed GmSSL input.
+# No source download, split provider, alternate TLS engine or compatibility alias.
+# The incumbent direct-GmSSL CNet must stay separate from a local Crypto
+# Owner. Only the explicit test-only M5 qualification may assemble both
+# targets in one CMake graph; NO executable/DSO may link both TLS engines.
+if(DEFINED CRYPTO_GMSSL_ROOT)
+  if("${CRYPTO_GMSSL_ROOT}" STREQUAL "")
+    message(FATAL_ERROR "CRYPTO_GMSSL_ROOT was supplied but is empty")
+  endif()
+  if(SALTSCORE_BUILD_CNET)
+    if(NOT (BUILD_TESTING AND SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST))
+      message(FATAL_ERROR
+        "Dual TLS source assembly is forbidden except for isolated M5 static Crypto Owner tests")
+    endif()
+  endif()
+  if(TARGET Salts::Crypto)
+    message(FATAL_ERROR "Duplicate Crypto owner: use exactly one static archive")
+  endif()
+  add_subdirectory(crypto)
 endif()
 option(SALTSCORE_BUILD_WEBSOCKET_PARSER "Qualify CNet-private WebSocket frame parser" OFF)
 if(SALTSCORE_BUILD_CNET AND NOT TARGET Salts::URI)
@@ -72,6 +101,22 @@ endif()
 if(SALTSCORE_BUILD_SIMD)
   add_subdirectory(simd)
 endif()
+option(SALTSCORE_BUILD_USB "Build the native libusb USB owner" OFF)
+if(SALTSCORE_BUILD_USB)
+  add_subdirectory(usb)
+endif()
+option(SALTSCORE_BUILD_PLAYBACK "Build the native PCM Playback owner" OFF)
+if(SALTSCORE_BUILD_PLAYBACK)
+  add_subdirectory(playback)
+endif()
+option(SALTSCORE_BUILD_SERIAL "Build the native Serial owner" OFF)
+if(SALTSCORE_BUILD_SERIAL)
+  add_subdirectory(salts_serial)
+endif()
+option(SALTSCORE_BUILD_CAPTURE "Build the native audio/video/screen Capture owner" OFF)
+if(SALTSCORE_BUILD_CAPTURE)
+  add_subdirectory(capture)
+endif()
 if(SALTSCORE_BUILD_IDNA AND NOT SALTSCORE_BUILD_UNICODE)
   message(FATAL_ERROR "Salts::IDNA requires explicit SALTSCORE_BUILD_UNICODE=ON")
 endif()
@@ -107,6 +152,10 @@ if(SALTSCORE_BUILD_SCTP)
 endif()
 
 # Package config/version and export assembly are global concerns.
+set(SALTSCORE_CONFIG_HAS_CRYPTO OFF)
+if(TARGET Salts::Crypto)
+  set(SALTSCORE_CONFIG_HAS_CRYPTO ON)
+endif()
 set(_saltscore_package_dir "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsCore")
 configure_package_config_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsCoreConfig.cmake.in"
@@ -124,6 +173,9 @@ install(EXPORT SaltsCoreTargets FILE SaltsCoreTargets.cmake
 
 if(BUILD_TESTING)
   add_subdirectory(tests)
+  if(TARGET Salts::TinyTest)
+    add_subdirectory(concurrency/tests)
+  endif()
   if(SALTSCORE_BUILD_UNICODE OR SALTSCORE_BUILD_IDNA OR
      SALTSCORE_BUILD_CSERDE OR SALTSCORE_BUILD_TINYTEST)
     if(NOT SALTSCORE_BUILD_TINYTEST)

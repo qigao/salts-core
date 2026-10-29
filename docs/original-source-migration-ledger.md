@@ -18,6 +18,111 @@ The complete per-file path, byte count, original Git Blob SHA, owner assignment 
 
 **Presence is not API parity.** A changed file with the same name requires explicit semantic review. A byte-identical source file still requires CMake build ownership, public header, installed C11/C++17 consumer tests, lifecycle/error semantics, sanitizer and relevant platform evidence. No missing cases are silently waived. The future `--require-complete` gate remains intentionally **RED** until **all 924 native candidate/split cases** have real acceptance evidence.
 
+
+## Independent native evidence entry point
+
+`tools/check_migration_evidence.py` adds an evidence layer outside the three
+frozen source/API inventories. All 2,975 file records, 610 API identities and
+their Git Blob hashes remain unchanged. The first reviewed contract,
+`tools/migration/native-evidence-contracts.json`, covers only bounded native
+SIMD obligations: twelve production/build/test blobs, the immutable
+32-function supplement and four required native profiles. It has no
+`accepted` or `complete` switch.
+
+`collect` starts from explicitly configured native and installed builds,
+adds CMake File API queries, reconfigures and builds each **whole** graph,
+installs the SDK, and actually executes three exact native SIMD CTests plus
+two exact installed C11/C++17 CTests. It retains target/compile information,
+the real archive and executables, installed headers/exports, exact CTest
+inventories, JUnit reports and command output, with SHA-256 artifact hashes.
+Validation requires the reviewed source blobs, actual target sources/types,
+one native owner, the same installed archive, canonical static `Salts::SIMD`,
+math linkage, GNU wrap flags and the sanitizer profile's instrumentation.
+
+Candidate identity includes tracked and new uncommitted files, source edits
+and deletions. It is checked before and after execution. Concurrent writes
+invalidate collection. Builds, SDKs and receipts must be outside the source
+tree; Python bytecode and Git-ignored outputs are excluded. Older candidate
+receipts never become current evidence through filename matching.
+
+After configuring both builds with the intended compiler and flags:
+
+```sh
+python3 -B tools/check_migration_evidence.py collect \
+  --native-build /tmp/core-native --installed-build /tmp/core-installed \
+  --sdk-prefix /tmp/core-sdk --profile linux-release \
+  --output /tmp/core-evidence/linux-release
+python3 -B tools/check_migration_evidence.py verify \
+  --evidence-dir /tmp/core-evidence
+python3 -B tools/check_full_source_migration.py --require-complete \
+  --evidence-dir /tmp/core-evidence
+```
+
+Enable `BUILD_TESTING`, `SALTSCORE_BUILD_SIMD`, `SALTSCORE_BUILD_TINYTEST` in
+the native build. Configure the installed build from `tests/installed` with
+`SALTSCORE_REQUIRE_SIMD=ON`. Preserve required generator/provider environment
+such as `RE2C_ROOT`. Collect `linux-release`, `linux-asan-ubsan`,
+`windows-release` and `macos-release` on their native x86-64 Linux/Windows
+or ARM64 macOS runners. The sanitizer build must instrument native and
+installed code alike; execution enables leak detection and fail-on-report.
+
+Missing evidence stays pending. An explicitly empty or malformed bundle
+fails, as do duplicate profiles, stale trees, altered blobs/reports, missing
+targets, disabled features, skipped/failed/zero tests, or a CTest invoking a
+different executable. Hand-written `accepted: true` records are rejected.
+
+These are bounded, declared source/build/runtime obligations, not a proof
+of every possible behavior or every API's semantic equivalence. Hashes
+establish consistency and integrity, not the origin of an arbitrary
+downloaded bundle. Release automation must collect in its trusted native
+jobs or authenticate their retained artifacts and candidate identity.
+A hand-written passing JUnit report is not release authorization.
+
+The first policy returns **no qualified IDs from the original 924 file
+obligations or 610 API obligations**. Four validated profiles can establish
+the supplement's declared native evidence for 32 functions; all seven
+original SIMD file obligations and the original reflection assertions remain
+pending. Additional policies require reviewed per-file/per-function owner
+maps, semantic differences, test cases and native platform coverage.
+`--require-complete` derives live pending obligations from independent
+qualified-ID sets, while keeping the historical 573/351 snapshot visible.
+
+AC/Levenshtein IDs are explicitly rejected if a policy attempts to qualify
+them while deferred. Even if every other obligation obtains evidence, their
+five original files and 26 APIs keep final migration admission blocked.
+
+### Frozen module counts
+
+These are original obligations, not current absent-file counts. A dash in
+the API column means the initial 610-function scan did not cover the module.
+
+| Origin / original module | Files | Historical missing/changed | Historical identical | APIs in 610 |
+| --- | ---: | ---: | ---: | ---: |
+| Salts `cnet/` | 258 | 165 | 93 | — |
+| Salts `utils/` | 175 | 149 | 26 | 476 |
+| Salts `unicode/` | 79 | 4 | 75 | — |
+| Salts `native-io/` | 64 | 43 | 21 | — |
+| Salts `platform/` | 41 | 28 | 13 | — |
+| Salts `tinytest/` | 35 | 4 | 31 | — |
+| Salts `concurrency/` | 31 | 19 | 12 | — |
+| Salts `coroutine/` | 21 | 14 | 7 | — |
+| Salts `cserde/` | 17 | 2 | 15 | — |
+| Salts `asn1/` | 15 | 15 | 0 | — |
+| Salts `idna/` | 9 | 2 | 7 | — |
+| Salts `simd/` | 7 | 7 | 0 | 0; 32 supplemental |
+| Salts `uri/` | 7 | 4 | 3 | — |
+| Salts-utils `unicode/` | 56 | 8 | 48 | — |
+| Salts-utils `capture/` | 39 | 39 | 0 | 29 |
+| Salts-utils `salts_serial/` | 20 | 20 | 0 | 30 |
+| Salts-utils `cflow-fs/` | 19 | 19 | 0 | 25 |
+| Salts-utils `playback/` | 11 | 11 | 0 | 17 |
+| Salts-utils `cflow-process/` | 10 | 10 | 0 | 20 |
+| Salts-utils `cflow-usb/` | 10 | 10 | 0 | 13 |
+| **Total** | **924** | **573** | **351** | **610** |
+
+The two Unicode origins remain separate provenance obligations even where
+they share the same current implementation. The denominator is not reduced.
+
 ## Separate public-function/source ABI ledger
 
 The new `tools/migration/original-public-functions.json` additionally freezes **54 original headers** and **610 distinct explicitly declared public functions**:

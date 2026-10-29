@@ -11,7 +11,7 @@ import re
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = (
     "core", "platform", "concurrency", "coroutine", "native-io",
-    "cnet", "uri", "fs", "process", "sctp", "simd",
+    "cnet", "uri", "fs", "process", "sctp", "simd", "usb",
 )
 OWNER_FILES = (
     "core/include/base64_utils.h",
@@ -37,6 +37,8 @@ OWNER_FILES = (
     "uri/parser/uri_lexer.re",
     "simd/include/salts/simd.h",
     "simd/src/simd.c",
+    "usb/include/cflow/usb.h",
+    "usb/src/usb.c",
 )
 for old in ("include", "src", "utils", "cflow-fs", "cflow-process"):
     if (ROOT / old).exists():
@@ -55,16 +57,6 @@ for rel in OWNER_FILES:
         raise SystemExit(f"missing original module-owned file: {rel}")
 
 source = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
-
-# ASN1 and Crypto are separately packaged qigao/crypto source modules.
-# They retain module-local CMakeLists.txt and exact first-party target
-# ownership, but must NOT be rebuilt in SaltsCore's root along with a
-# separately imported static Crypto owner: that duplicates TLS state.
-# CNet will import Salts::Crypto only after full provider parity; no fallback.
-EXTERNAL_SOURCE_MODULES = {
-    "asn1": ("Salts::ASN1", "salts_asn1"),
-    "crypto": ("Salts::Crypto", "salts_crypto"),
-}
 
 # Discover every *current or future* root-level source module. An explicit
 # MODULES tuple alone is insufficient: it would silently miss a new vendor/,
@@ -85,22 +77,40 @@ if missing_sources:
     raise SystemExit("missing required root source module(s): "
                      + ", ".join(sorted(missing_sources)))
 for module in sorted(root_code_modules):
-    owner_cmake = ROOT / module / "CMakeLists.txt"
-    if not owner_cmake.is_file():
+    if not (ROOT / module / "CMakeLists.txt").is_file():
         raise SystemExit(f"missing root source module CMakeLists.txt: {module}")
-    if module in EXTERNAL_SOURCE_MODULES:
-        alias, native_target = EXTERNAL_SOURCE_MODULES[module]
-        code = owner_cmake.read_text(encoding="utf-8")
-        if f"add_library({alias} ALIAS {native_target})" not in code:
-            raise SystemExit(f"missing independent first-party module target: {module}/{alias}")
-        # These files originate from qigao/crypto and have their own package
-        # exports. Building the source copy as well as importing the archive
-        # would violate the single *physical* TLS owner invariant.
-        if f"add_subdirectory({module})" in source:
-            raise SystemExit(f"duplicate external Crypto/ASN1 source owner: {module}")
-        continue
     if f"add_subdirectory({module})" not in source:
         raise SystemExit(f"root does not assemble source module: {module}")
+
+# ASN1 and Crypto now belong to this repository's native module graph.
+# They MUST have local CMake and explicit root assembly; no external-owner
+# exemption and no alternate TLS target is accepted.
+for module, target in (("asn1", "Salts::ASN1"), ("crypto", "Salts::Crypto")):
+    local = ROOT / module / "CMakeLists.txt"
+    if not local.is_file() or f"add_subdirectory({module})" not in source:
+        raise SystemExit(f"missing native first-party module assembly: {module}")
+    cmake = local.read_text(encoding="utf-8")
+    if f"add_library({target} ALIAS " not in cmake:
+        raise SystemExit(f"missing native first-party target: {target}")
+# ASN1 is a root default; Crypto requires an explicit pinned installed
+# provider path (not a new boolean switch). Refuse stale build flags.
+if not re.search(r"(?m)^add_subdirectory\(asn1\)\s*$", source):
+    raise SystemExit("first-party ASN1 must always be assembled")
+crypto_segment = source.split("if(DEFINED CRYPTO_GMSSL_ROOT)", 1)
+if len(crypto_segment) != 2 or not (
+    "if(SALTSCORE_BUILD_CNET)" in crypto_segment[1].split("add_subdirectory(crypto)", 1)[0]
+    and "if(NOT (BUILD_TESTING AND SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST))"
+        in crypto_segment[1].split("add_subdirectory(crypto)", 1)[0]
+    and "add_subdirectory(crypto)" in crypto_segment[1]
+    and "if(TARGET Salts::Crypto)" in crypto_segment[1].split("add_subdirectory(crypto)", 1)[0]
+):
+    raise SystemExit("local Crypto must require pinned provider and reject duplicate CNet TLS")
+for suffix in ("ASN1", "CRYPTO"):
+    retired = "SALTSCORE_BUILD_" + suffix
+    for path in (ROOT / "CMakeLists.txt",
+                 ROOT / ".github/workflows/first-party-asn1.yml"):
+        if retired in path.read_text(encoding="utf-8"):
+            raise SystemExit(f"retired build switch remains in {path}: {retired}")
 
 for module in MODULES:
     # Only package assembly belongs to the root; no module binary is made
@@ -125,6 +135,7 @@ extra = {
     "uri/parser/uri_lexer.re": "Salts::URI",
     "sctp/src/sctp_wire.c": "Salts::SCTPWire",
     "simd/src/simd.c": "Salts::SIMD",
+    "usb/src/usb.c": "Salts::USB",
 }
 for rel, alias in extra.items():
     module, local = rel.split("/", 1)
@@ -164,7 +175,4 @@ for workflow in WORKFLOWS.glob("*.yml"):
                 f"{workflow.relative_to(ROOT)}:{line_number}: {line.strip()}"
             )
 
-print(f"PASS: {len(root_code_modules)} root source modules have module-local CMake; "
-      f"{len(root_code_modules & set(EXTERNAL_SOURCE_MODULES))} qigao/crypto source modules "
-      "remain external package owners; every other source module assembled by root; "
-      "SCTP root; no legacy root include/src")
+print(f"PASS: {len(root_code_modules)} root source modules each have CMakeLists.txt and root assembly; SCTP root; no legacy root include/src")

@@ -1,0 +1,6 @@
+{
+  "name": "salts-crypto",
+  "version": "0.1.0",
+  "description": "Static Salts::Crypto with official qigao/vcpkg-cache gmssl input",
+  "dependencies": ["gmssl"]
+}

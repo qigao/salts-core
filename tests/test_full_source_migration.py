@@ -203,6 +203,11 @@ class ExactMigrationSourceTests(unittest.TestCase):
         self.assertEqual(report["salts-utils"]["frozen_total"], 1421)
         self.assertGreater(report["salts"]["unaccounted_or_changed"], 0)
         self.assertGreater(report["salts-utils"]["unaccounted_or_changed"], 0)
+        self.assertEqual(report["evidence"]["native_file_obligations"], 924)
+        self.assertEqual(report["evidence"]["pending_native_files"], 924)
+        self.assertEqual(report["evidence"]["pending_public_functions"], 610)
+        self.assertEqual(report["evidence"]["qualified_file_ids"], [])
+        self.assertEqual(report["evidence"]["qualified_api_ids"], [])
         with self.assertRaisesRegex(ValueError, "FINAL MIGRATION BLOCKED"):
             proof.audit(ROOT, require_complete=True)
 

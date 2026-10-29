@@ -370,6 +370,12 @@ jobs:
           $env:PATH = "$vcpkgBin;$buildBin;$env:PATH"
           & ctest --test-dir build-cnet -C Release --output-on-failure --no-tests=error --timeout 18 -R '^saltscore[.]cnet_owner_numeric_host_gate_contract$'
           if ($LASTEXITCODE -ne 0) { throw 'Issue #64 fail-closed numeric-host selection contract failed' }
+          # Run all original cases in their real TinyTest order and in fresh
+          # processes. The filtered gate alone cannot prove cross-case safety.
+          & ctest --test-dir build-cnet -C Release --output-on-failure --no-tests=error --timeout 65 -R '^saltscore[.]cnet_owner_original$' --repeat until-fail:32
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Issue #64 actual Windows IOCP original-order Owner first RED'
+          }
           & ctest --test-dir build-cnet -C Release --output-on-failure --no-tests=error --timeout 18 -R '^saltscore[.]cnet_owner_original_numeric_host$' --repeat until-fail:32
           if ($LASTEXITCODE -ne 0) {
             throw 'Issue #64 actual Windows IOCP numeric-host RESOLVE->OPEN RED; inspect terminal stage/status'

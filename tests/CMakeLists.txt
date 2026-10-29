@@ -67,6 +67,22 @@ set_target_properties(saltscore_bytes_test PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.bytes COMMAND saltscore_bytes_test)
 
+# Preserve the original error registry and borrowed diagnostic lifetimes.
+# The native contract includes INT_MIN decoding and concurrent registration.
+add_executable(saltscore_error_contract error_native_contract.c)
+target_compile_features(saltscore_error_contract PRIVATE c_std_11)
+target_link_libraries(saltscore_error_contract PRIVATE Salts::Core)
+set_target_properties(saltscore_error_contract PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+add_test(NAME saltscore.error_native_contract COMMAND saltscore_error_contract)
+set_tests_properties(saltscore.error_native_contract PROPERTIES TIMEOUT 30)
+if(TARGET Salts::TinyTest)
+  add_executable(saltscore_original_error_test test_cmeta_error.c)
+  target_compile_features(saltscore_original_error_test PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_error_test PRIVATE Salts::Core Salts::TinyTest)
+  add_test(NAME saltscore.original_error COMMAND saltscore_original_error_test)
+endif()
+
 # Core Platform is the sole owner of native fast-key state; no CMeta ABI.
 add_executable(saltscore_fastpath_test test_fastpath.c)
 target_compile_features(saltscore_fastpath_test PRIVATE c_std_11)
@@ -394,6 +410,22 @@ target_compile_features(saltscore_original_spsc_smoke PRIVATE c_std_11)
 target_link_libraries(saltscore_original_spsc_smoke PRIVATE Salts::Concurrency)
 add_test(NAME saltscore.original_spsc_smoke COMMAND saltscore_original_spsc_smoke)
 
+# The original seven-function MPMC API is owned by the existing concurrency
+# module. Its original test and independent delivery oracle exercise that DSO.
+add_executable(saltscore_mpmc_contract installed/mpmc_consumer.c)
+target_compile_features(saltscore_mpmc_contract PRIVATE c_std_11)
+target_link_libraries(saltscore_mpmc_contract PRIVATE Salts::Concurrency)
+add_test(NAME saltscore.mpmc_delivery_contract COMMAND saltscore_mpmc_contract)
+set_tests_properties(saltscore.mpmc_delivery_contract PROPERTIES TIMEOUT 30)
+if(TARGET Salts::TinyTest)
+  add_executable(saltscore_original_bucket_mpmc_test test_bucket_priority_queue_mpmc.c)
+  target_compile_features(saltscore_original_bucket_mpmc_test PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_bucket_mpmc_test PRIVATE
+    Salts::Concurrency Salts::TinyTest)
+  add_test(NAME saltscore.original_bucket_mpmc COMMAND saltscore_original_bucket_mpmc_test)
+  set_tests_properties(saltscore.original_bucket_mpmc PROPERTIES TIMEOUT 30)
+endif()
+
 # Original 8-case formatter lexer TinyTest suite plus dependency-free C11 smoke.
 add_executable(saltscore_fmt_lexer_smoke test_fmt_lexer_smoke.c)
 target_compile_features(saltscore_fmt_lexer_smoke PRIVATE c_std_11)
@@ -571,3 +603,17 @@ add_test(NAME saltscore.original_simd_source_provenance
           -p "test_original_simd_provenance.py" -v)
 set_tests_properties(saltscore.original_simd_source_provenance
   PROPERTIES TIMEOUT 45)
+
+add_test(NAME saltscore.original_error_source_provenance
+  COMMAND "${Python3_EXECUTABLE}" -B -m unittest discover
+          -s "${PROJECT_SOURCE_DIR}/tests"
+          -p "test_original_error_provenance.py" -v)
+set_tests_properties(saltscore.original_error_source_provenance PROPERTIES TIMEOUT 45)
+
+add_test(NAME saltscore.migration_evidence_negative
+  COMMAND "${CMAKE_COMMAND}" -E env
+          "SALTSCORE_CTEST_COMMAND=${CMAKE_CTEST_COMMAND}"
+          "SALTSCORE_CMAKE_COMMAND=${CMAKE_COMMAND}"
+          "${Python3_EXECUTABLE}" -B -m unittest discover
+          -s "${PROJECT_SOURCE_DIR}/tests" -p "test_migration_evidence.py" -v)
+set_tests_properties(saltscore.migration_evidence_negative PROPERTIES TIMEOUT 60)

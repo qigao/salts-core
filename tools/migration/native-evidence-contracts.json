@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "module": "simd",
+  "scope": "supplemental-native-obligations-only",
+  "supplement_git_blob": "7ea91f1654e32a8d6baf054ff67143c43d8d04c3",
+  "required_profiles": [
+    "linux-release",
+    "linux-asan-ubsan",
+    "windows-release",
+    "macos-release"
+  ],
+  "source_blobs": {
+    "simd/CMakeLists.txt": "aba34f090611bb063e58177d36cea7ed4f65a873",
+    "simd/tests/CMakeLists.txt": "17c5d22682a9ab111d955545d7186773f5026ba0",
+    "simd/src/simd.c": "12dfa6ee6e52573e0c63b198de4a60b9836fe815",
+    "simd/src/simd_types.c": "25b01fcdd7d80685b20bf08ca366d4475c1b0d9b",
+    "simd/include/salts/simd.h": "c08f05a772624c20b15170bda38e853bfeb45798",
+    "simd/include/salts/simd_types.h": "699c2243dd9155539d1e7bc0bd8b1f7b66a6259c",
+    "simd/tests/simd_test.c": "4ad501a85bfc5a8b6bb517b9125c06ef0c05ed4e",
+    "simd/tests/simd_header_cpp_test.cpp": "8664b59f09546db68a55b2a09df307ae8ff710e0",
+    "simd/tests/simd_native_boundaries.c": "ecd51935bfcb990c68a8d08ea184ce26a1497e59",
+    "tests/installed/simd_consumer.c": "e45077b0c527b8ff737f045de97f44787d2a87eb",
+    "tests/installed/simd_consumer.cpp": "15a046f12e092542de62f4e3fb207f1483da7a67",
+    "tests/test_original_simd_provenance.py": "92198ea07bd6add5258141910d66b11d40ba8a61"
+  }
+}

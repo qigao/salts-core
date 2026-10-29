@@ -1,0 +1,228 @@
+name: Crypto M5 static mTLS exact-head qualification
+
+on:
+  pull_request:
+    paths:
+      - "crypto/include/crypto/tls_auth.h"
+      - "crypto/src/crypto_tls_gmssl.c"
+      - "crypto/tests/sdk/**"
+      - "crypto/tools/stage_mtls_gmssl_overlay.py"
+      - "vendor/gmssl-extensions/patches/tls12-empty-authorities.cmake"
+      - "vendor/gmssl-extensions/patches/tls13-session-ticket-bounds.cmake"
+      - "vendor/gmssl-extensions/src/tls13-handshake-reader.h"
+      - "crypto/tests/sdk/python_mtls.py"
+      - "crypto/tests/owner/**"
+      - "crypto/tools/audit_static_crypto.py"
+      - ".github/workflows/mtls-qualification.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-posix:
+    name: "${{ matrix.os }} static Crypto / C11 + C++17 + Python ssl mTLS"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            triplet: x64-linux
+          - os: macos-15
+            triplet: arm64-osx
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Host tools and Python-only TLS test fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends \
+              cmake ninja-build python3 curl zip unzip tar pkg-config \
+              re2c nasm autoconf automake libtool
+          else
+            brew install ninja pkg-config
+          fi
+          python3 -m pip install --disable-pip-version-check --no-cache-dir "cryptography==46.0.4"
+          python3 -c 'import ssl, cryptography; assert ssl.HAS_TLSv1_3'
+      - name: Pinned port14 source from qigao/vcpkg-cache via curl
+        shell: bash
+        run: |
+          set -euo pipefail
+          pin=65c12e71d02b9b7dacfafc3d188a3bda18184296
+          mkdir -p "$RUNNER_TEMP/overlay"
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/qigao/vcpkg-cache/archive/$pin.tar.gz" \
+            -o "$RUNNER_TEMP/port14.tar.gz"
+          tar xzf "$RUNNER_TEMP/port14.tar.gz" \
+            -C "$RUNNER_TEMP/overlay" --strip-components=1
+          grep -q '"port-version": 14' "$RUNNER_TEMP/overlay/ports/gmssl/vcpkg.json"
+          python3 crypto/tools/stage_mtls_gmssl_overlay.py \
+            "$RUNNER_TEMP/overlay/ports/gmssl"
+      - name: Bootstrap pinned vcpkg without NuGet or Mono
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/vcpkg"
+          mkdir -p "$root"
+          git -C "$root" init -q
+          git -C "$root" remote add origin https://github.com/microsoft/vcpkg.git
+          git -C "$root" fetch --no-tags origin 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
+          git -C "$root" checkout --detach FETCH_HEAD
+          test "$(git -C "$root" rev-parse HEAD)" = 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
+          "$root/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$root" >> "$GITHUB_ENV"
+      - name: Build pinned GmSSL #14 + Crypto-owned mTLS candidates in one static archive
+        shell: bash
+        env:
+          TRIPLET: ${{ matrix.triplet }}
+        run: |
+          set -euo pipefail
+          cache="$RUNNER_TEMP/vcpkg-cache"
+          mkdir -p "$cache"
+          export VCPKG_BINARY_SOURCES="clear;files,$cache,readwrite"
+          "$VCPKG_ROOT/vcpkg" install "gmssl:$TRIPLET" \
+            "--overlay-ports=$RUNNER_TEMP/overlay/ports" \
+            --x-install-root="$RUNNER_TEMP/gmssl-sdk"
+          test -s "$RUNNER_TEMP/gmssl-sdk/$TRIPLET/lib/libgmssl.a"
+      - name: Read exact patched GmSSL TLS12 source failure site
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ["VCPKG_ROOT"]) / "buildtrees/gmssl/src"
+          candidates = [p for p in root.rglob("tls12.c") if p.parent.name == "src"]
+          if not candidates:
+              raise SystemExit("GmSSL pinned TLS12 source missing")
+          candidates.sort(key=lambda p: (".clean" not in str(p), str(p)))
+          path = candidates[0]
+          lines = path.read_text(encoding="utf-8").splitlines()
+          print("PINNED_TLS12_SITE", path.parent.parent.name, "lines", len(lines))
+          for i in list(range(1640, 1704)) + list(range(2248, 2283)):
+              print("PINNED_TLS12_LINE", i, lines[i - 1].strip())
+          tls13 = path.with_name("tls13.c")
+          if not tls13.is_file():
+              raise SystemExit("GmSSL pinned TLS13 source missing")
+          lines13 = tls13.read_text(encoding="utf-8").splitlines()
+          print("PINNED_TLS13_SITE", tls13.parent.parent.name, "lines", len(lines13))
+          for i in range(6850, 6910):
+              print("PINNED_TLS13_LINE", i, lines13[i - 1].strip())
+          PY
+      - name: Build, run native CTest, install one static Crypto archive
+        shell: bash
+        env:
+          TRIPLET: ${{ matrix.triplet }}
+        run: |
+          set -euo pipefail
+          gmssl="$RUNNER_TEMP/gmssl-sdk/$TRIPLET"
+          cmake -S . -B build -G Ninja \
+            -DBUILD_TESTING=ON \
+            -DCRYPTO_TLS_TEST_HANDSHAKE_DIAGNOSTICS=ON \
+            -DCRYPTO_GMSSL_ROOT="$gmssl" \
+            "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/crypto-sdk"
+          cmake --build build --parallel 3
+          ctest --test-dir build --output-on-failure --no-tests=error
+          cmake --install build
+          python3 crypto/tools/audit_static_crypto.py \
+            --prefix "$RUNNER_TEMP/crypto-sdk" \
+            --report "$RUNNER_TEMP/crypto-audit.json"
+      - name: Installed C11/C++17 with external Python ssl TLS12/TLS13 mTLS
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="$RUNNER_TEMP/crypto-sdk"
+          cmake -S crypto/tests/owner -B build-owner -G Ninja \
+            "-DCMAKE_PREFIX_PATH=$prefix"
+          cmake --build build-owner --parallel 3
+          ctest --test-dir build-owner --output-on-failure --no-tests=error
+          cmake -S crypto/tests/sdk -B build-sdk -G Ninja \
+            "-DCMAKE_PREFIX_PATH=$prefix" \
+            "-DCRYPTO_TEST_FIXTURES=$GITHUB_WORKSPACE/crypto/tests/fixtures" \
+            -DCRYPTO_SDK_ENABLE_PYTHON_MTLS=ON \
+            -DCRYPTO_SDK_ENABLE_CONCURRENT_LIFECYCLE=ON \
+            -DCRYPTO_SDK_ENABLE_CIPHER_BIO=ON \
+            -DCRYPTO_SDK_ENABLE_CIPHER_BIO_RACE=ON \
+            "-DPython3_EXECUTABLE=$(command -v python3)"
+          cmake --build build-sdk --parallel 3
+          ctest --test-dir build-sdk --output-on-failure --no-tests=error \
+            --timeout 600
+  native-windows:
+    name: Windows MSVC static Crypto / C11 + C++17 auth
+    runs-on: windows-2025
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Pinned vcpkg and Crypto-owned mTLS test patch, no NuGet or Mono
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP "vcpkg"
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          git -C $root init -q
+          git -C $root remote add origin https://github.com/microsoft/vcpkg.git
+          git -C $root fetch --no-tags origin 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
+          if ($LASTEXITCODE -ne 0) { throw 'vcpkg fetch failed' }
+          git -C $root checkout --detach FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'vcpkg checkout failed' }
+          $pin = '65c12e71d02b9b7dacfafc3d188a3bda18184296'
+          $archive = Join-Path $env:RUNNER_TEMP 'port14.zip'
+          curl.exe --fail --silent --show-error --location --retry 3 `
+            "https://github.com/qigao/vcpkg-cache/archive/$pin.zip" -o $archive
+          if ($LASTEXITCODE -ne 0) { throw 'port14 download failed' }
+          Expand-Archive -Path $archive -DestinationPath "$env:RUNNER_TEMP/overlay"
+          $overlay = Join-Path $env:RUNNER_TEMP "overlay/vcpkg-cache-$pin/ports"
+          if (-not (Select-String -Quiet -Pattern '"port-version": 14' `
+                (Join-Path $overlay 'gmssl/vcpkg.json'))) { throw 'incorrect GmSSL revision' }
+          python crypto/tools/stage_mtls_gmssl_overlay.py (Join-Path $overlay 'gmssl')
+          if ($LASTEXITCODE -ne 0) { throw 'GmSSL M5 source candidate staging failed' }
+          & (Join-Path $root 'bootstrap-vcpkg.bat') -disableMetrics
+          if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed' }
+          Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_ROOT=$root"
+          Add-Content -Path $env:GITHUB_ENV -Value "GMSSL_OVERLAY=$overlay"
+      - name: Build pinned GmSSL input and installed static Crypto C11 ABI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gmssl = Join-Path $env:RUNNER_TEMP 'gmssl-sdk/x64-windows'
+          & "$env:VCPKG_ROOT/vcpkg.exe" install 'gmssl:x64-windows' `
+            "--overlay-ports=$env:GMSSL_OVERLAY" `
+            "--x-install-root=$env:RUNNER_TEMP/gmssl-sdk"
+          if ($LASTEXITCODE -ne 0) { throw 'GmSSL static port failed' }
+          if (-not (Test-Path "$gmssl/lib/gmssl.lib")) { throw 'No static GmSSL archive' }
+          $prefix = Join-Path $env:RUNNER_TEMP 'crypto-sdk'
+          cmake -S . -B build -A x64 `
+            -DBUILD_TESTING=ON "-DCRYPTO_GMSSL_ROOT=$gmssl" `
+            "-DCMAKE_INSTALL_PREFIX=$prefix"
+          if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
+          cmake --build build --config Release --parallel 3
+          if ($LASTEXITCODE -ne 0) { throw 'native build failed' }
+          ctest --test-dir build -C Release --output-on-failure --no-tests=error
+          if ($LASTEXITCODE -ne 0) { throw 'native CTest failed' }
+          cmake --install build --config Release
+          if ($LASTEXITCODE -ne 0) { throw 'install failed' }
+          python crypto/tools/audit_static_crypto.py --prefix $prefix --report "$env:RUNNER_TEMP/crypto-audit.json"
+          if ($LASTEXITCODE -ne 0) { throw 'static archive audit failed' }
+          cmake -S crypto/tests/owner -B build-owner -A x64 "-DCMAKE_PREFIX_PATH=$prefix"
+          if ($LASTEXITCODE -ne 0) { throw 'installed owner configure failed' }
+          cmake --build build-owner --config Release --parallel 3
+          if ($LASTEXITCODE -ne 0) { throw 'installed owner build failed' }
+          ctest --test-dir build-owner -C Release --output-on-failure --no-tests=error
+          if ($LASTEXITCODE -ne 0) { throw 'installed C11/C++17 owner failed' }
+          cmake -S crypto/tests/sdk -B build-sdk -A x64 `
+            "-DCMAKE_PREFIX_PATH=$prefix" `
+            "-DCRYPTO_TEST_FIXTURES=$env:GITHUB_WORKSPACE/crypto/tests/fixtures"
+          if ($LASTEXITCODE -ne 0) { throw 'installed SDK configure failed' }
+          cmake --build build-sdk --config Release --parallel 3
+          if ($LASTEXITCODE -ne 0) { throw 'installed SDK build failed' }
+          ctest --test-dir build-sdk -C Release --output-on-failure --no-tests=error
+          if ($LASTEXITCODE -ne 0) { throw 'installed SDK tests failed' }

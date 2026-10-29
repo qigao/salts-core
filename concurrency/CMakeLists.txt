@@ -4,7 +4,8 @@ add_library(saltscore_concurrency SHARED
   src/deadline_queue.c src/disruptor.c
   src/rcu.c src/spsc_ring.c
   src/thread_pool.c src/thread_pool_lf.c
-  src/ring_buffer_spsc.c src/bucket_priority_queue_spsc.c)
+  src/ring_buffer_spsc.c src/bucket_priority_queue_spsc.c
+  src/bucket_priority_queue_mpmc.c)
 add_library(Salts::Concurrency ALIAS saltscore_concurrency)
 set_target_properties(saltscore_concurrency PROPERTIES
   EXPORT_NAME Concurrency C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
@@ -39,5 +40,5 @@ install(DIRECTORY include/salts
 # Original utils SPSC API belongs to the existing native Salts::Concurrency
 # owner; do not add an adapter DSO or a second ring implementation.
 install(FILES include/ring_buffer_spsc.h
-  include/bucket_priority_queue_spsc.h
+  include/bucket_priority_queue_spsc.h include/bucket_priority_queue_mpmc.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

@@ -1,0 +1,191 @@
+name: SaltsCore original native Zstd API
+
+on:
+  pull_request:
+    paths:
+      - "core/**"
+      - "platform/**"
+      - "CMakeLists.txt"
+      - "cmake/SaltsCoreConfig.cmake.in"
+      - "vcpkg.json"
+      - "vcpkg-configuration.json"
+      - "tests/test_cmeta_zstd.c"
+      - "tests/zstd_native_contract.c"
+      - "tests/test_original_zstd_provenance.py"
+      - "tests/test_zstd_binary_owner.py"
+      - "tests/zstd-installed/**"
+      - "tools/migration/**"
+      - ".github/workflows/zstd-native.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: saltscore-zstd-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  zstd:
+    name: "Core Zstd / ${{ matrix.profile }}"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            profile: linux-release
+            triplet: x64-linux
+            flags: ""
+          - os: ubuntu-24.04
+            profile: linux-asan-ubsan
+            triplet: x64-linux
+            flags: "-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1"
+          - os: windows-2025
+            profile: windows-release
+            triplet: qigao-x64-windows-v145
+            flags: ""
+          - os: macos-15
+            profile: macos-release
+            triplet: arm64-osx
+            flags: ""
+    env:
+      ZSTD_FLAGS: ${{ matrix.flags }}
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:abort_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+        with:
+          arch: x64
+      - name: Verified compiler output cache
+        uses: qigao/stun/.github/actions/setup-ccache@6498e9710609820da7d99a938627cc44f17f00ed
+        with:
+          profile: saltscore-zstd-${{ matrix.profile }}
+          source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Exact original static provider from the pinned registry
+        id: cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@7bb5b556a001bc82d2922a04a718e986a7f47f54
+        with:
+          token: ${{ github.token }}
+          triplet: ${{ matrix.triplet }}
+          host-triplet: ${{ matrix.triplet }}
+          features: zstd
+      - name: Frozen input and dependency checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/check_dependency_boundaries.py
+          python tools/check_module_layout.py
+          python tools/check_full_source_migration.py
+          python -m unittest discover -s tests -p test_original_zstd_provenance.py -v
+      - name: Build the complete configured graph
+        shell: bash
+        env:
+          ZSTD_TOOLCHAIN: ${{ steps.cache.outputs.toolchain_file }}
+        run: |
+          set -euo pipefail
+          args=(-DCMAKE_BUILD_TYPE=Release)
+          if [[ -n "$ZSTD_FLAGS" ]]; then
+            args+=("-DCMAKE_C_FLAGS=$ZSTD_FLAGS" "-DCMAKE_CXX_FLAGS=$ZSTD_FLAGS")
+            args+=("-DCMAKE_C_FLAGS_RELEASE=-O1 -DNDEBUG" "-DCMAKE_CXX_FLAGS_RELEASE=-O1 -DNDEBUG")
+          fi
+          cmake -S . -B build-zstd -G Ninja \
+            -DBUILD_TESTING=ON -DSALTSCORE_BUILD_ZSTD=ON \
+            -DSALTSCORE_BUILD_TINYTEST=ON \
+            "-DCMAKE_TOOLCHAIN_FILE=$ZSTD_TOOLCHAIN" \
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} \
+            -DVCPKG_HOST_TRIPLET=${{ matrix.triplet }} \
+            -DVCPKG_MANIFEST_FEATURES=zstd \
+            "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/zstd-sdk" \
+            -DCMAKE_POLICY_DEFAULT_CMP0141=NEW \
+            -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded "${args[@]}"
+          cmake --build build-zstd --config Release --parallel 2
+      - name: Original assertions, frame boundaries and actual private linkage
+        shell: bash
+        run: |
+          set -euo pipefail
+          cases=(original_zstd zstd_native_contract original_zstd_source_provenance)
+          if [[ "$RUNNER_OS" == Linux ]]; then cases+=(zstd_private_archive); fi
+          for case in "${cases[@]}"; do
+            ctest --test-dir build-zstd -C Release --output-on-failure \
+              --no-tests=error --timeout 120 --output-junit "$case.xml" \
+              -R "^saltscore[.]${case}$"
+          done
+          cmake --install build-zstd --config Release
+      - name: Independent installed clients require only the Core owner
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(-DCMAKE_BUILD_TYPE=Release)
+          if [[ -n "$ZSTD_FLAGS" ]]; then
+            args+=("-DCMAKE_C_FLAGS=$ZSTD_FLAGS" "-DCMAKE_CXX_FLAGS=$ZSTD_FLAGS")
+            args+=("-DCMAKE_C_FLAGS_RELEASE=-O1 -DNDEBUG" "-DCMAKE_CXX_FLAGS_RELEASE=-O1 -DNDEBUG")
+          fi
+          case "$RUNNER_OS" in
+            Windows) export PATH="$(cygpath -u "$RUNNER_TEMP")/zstd-sdk/bin:$PATH" ;;
+            macOS) export DYLD_LIBRARY_PATH="$RUNNER_TEMP/zstd-sdk/lib:${DYLD_LIBRARY_PATH:-}" ;;
+            Linux) export LD_LIBRARY_PATH="$RUNNER_TEMP/zstd-sdk/lib:${LD_LIBRARY_PATH:-}" ;;
+          esac
+          cmake -S tests/zstd-installed -B build-zstd-installed -G Ninja \
+            "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/zstd-sdk" \
+            -DCMAKE_POLICY_DEFAULT_CMP0141=NEW \
+            -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded "${args[@]}"
+          cmake --build build-zstd-installed --config Release --parallel 2
+          for lang in c11 cpp17; do
+            ctest --test-dir build-zstd-installed -C Release --output-on-failure \
+              --no-tests=error --timeout 60 --output-junit "zstd-$lang.xml" \
+              -R "^sdk[.]zstd_${lang}$"
+          done
+      - name: Record exact candidate and selected archive
+        shell: bash
+        env:
+          ZSTD_PROFILE: ${{ matrix.profile }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          archive = Path(Path("build-zstd/core/zstd-provider-Release.txt").read_text().strip())
+          result = {
+              "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "profile": os.environ["ZSTD_PROFILE"],
+              "source_donor": "386f81328c656f416d61a6d2ef662f05443e1b4a",
+              "public_functions": 7,
+              "original_test_cases": 6,
+              "provider_registry": "b8bcce436838b716522bb2c8b35438b47ac1830b",
+              "provider_source": "5c7b7bad26808e6b40ac3b3d0075466e27738a9d",
+              "provider_port_version": "1.6.0-dev.20260701#0",
+              "provider_archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+              "sanitizer_scope": "Core and installed consumers; cached provider is not rebuilt with sanitizer flags",
+              "global_migration_complete": False,
+          }
+          Path("build-zstd/zstd-qualification.json").write_text(json.dumps(result, indent=2) + "\n")
+          PY
+      - name: Compiler cache statistics
+        if: always()
+        shell: bash
+        run: ccache --show-stats
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zstd-${{ matrix.profile }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            build-zstd/Testing/Temporary/LastTest.log
+            build-zstd/*.xml
+            build-zstd/CMakeCache.txt
+            build-zstd/core/zstd-provider-Release.txt
+            build-zstd/zstd-qualification.json
+            build-zstd-installed/Testing/Temporary/LastTest.log
+            build-zstd-installed/*.xml
+          if-no-files-found: error

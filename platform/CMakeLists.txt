@@ -3,10 +3,10 @@
 # Platform owns the original registration/dispatch state. Never compile
 # another copy into CFlow or NativeIO. No provider/ACE dependency.
 option(SALTSCORE_ENABLE_EPOLL_READINESS
-  "Explicitly include Linux epoll readiness backend" OFF)
+  "Explicitly include Linux/Android epoll readiness backend" OFF)
 if(SALTSCORE_ENABLE_EPOLL_READINESS AND
-   NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  message(FATAL_ERROR "epoll readiness is available only on Linux")
+   NOT CMAKE_SYSTEM_NAME MATCHES "^(Linux|Android)$")
+  message(FATAL_ERROR "epoll readiness is available only on Linux or Android")
 endif()
 set(_saltscore_platform_sources
     src/clock.c src/random.c src/readiness.c
@@ -23,7 +23,7 @@ if(UNIX)
   list(APPEND _saltscore_platform_sources src/readiness_poll.c)
   if(APPLE)
     list(APPEND _saltscore_platform_sources src/readiness_kqueue.c)
-  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+  elseif(CMAKE_SYSTEM_NAME MATCHES "^(Linux|Android)$" AND
          SALTSCORE_ENABLE_EPOLL_READINESS)
     list(APPEND _saltscore_platform_sources src/readiness_epoll.c)
   endif()
@@ -59,7 +59,7 @@ endif()
 if(APPLE)
   target_compile_definitions(saltscore_platform PRIVATE
     SALTS_ENABLE_KQUEUE_READINESS=1)
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+elseif(CMAKE_SYSTEM_NAME MATCHES "^(Linux|Android)$" AND
        SALTSCORE_ENABLE_EPOLL_READINESS)
   target_compile_definitions(saltscore_platform PRIVATE
     SALTS_ENABLE_EPOLL_READINESS=1)

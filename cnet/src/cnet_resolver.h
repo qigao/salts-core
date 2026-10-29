@@ -42,6 +42,13 @@ int cnet_resolver_init(cnet_resolver *resolver, const cnet_resolver_config *conf
 int cnet_resolver_submit(cnet_resolver *resolver, const char *host, uint16_t port, int socket_type,
                          uintptr_t user_data, cnet_resolver_query *out_query);
 
+#if defined(CNET_INTERNAL_TESTING)
+/** Test-only pure regression for provider-independent IPv4/IPv6 port order.
+ * Never installed or exported from production Salts::CNet. */
+int cnet_resolver_test_apply_requested_port(void *address, size_t address_length,
+                                            int family, uint16_t port);
+#endif
+
 /** Nonblocking caller-owned c-ares socket and timeout progress. */
 int cnet_resolver_poll(cnet_resolver *resolver);
 

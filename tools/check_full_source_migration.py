@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import re
@@ -262,7 +263,8 @@ def verify_public_functions(root: Path, originals: dict[str, dict]) -> int:
     return sum(per_source.values())
 
 
-def audit(root: Path = ROOT, require_complete: bool = False) -> dict:
+def audit(root: Path = ROOT, require_complete: bool = False,
+          evidence_dir: Path | None = None) -> dict:
     output = {}
     originals = {}
     core_debt = 0
@@ -286,28 +288,83 @@ def audit(root: Path = ROOT, require_complete: bool = False) -> dict:
                        "present_but_behavior_unqualified": unqualified}
     verify_restored_mmap(root)
     exported_debt = verify_public_functions(root, originals)
-    if require_complete and (core_debt or review_debt or exported_debt):
+    # Frozen statuses describe the historical comparison, never live completion.
+    # Independent evidence can qualify only explicitly implemented obligation
+    # policies. The first SIMD policy makes no claims against these 924/610
+    # entries; its 32 supplemental native functions are reported separately.
+    spec = importlib.util.spec_from_file_location(
+        "native_migration_evidence", root / "tools/check_migration_evidence.py")
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    spec.loader.exec_module(module)
+    evidence = module.audit_evidence(root, evidence_dir)
+    file_ids = {
+        f"{key}:{row['path']}" for key, data in originals.items()
+        for row in data["files"]
+        if not row["owner"].endswith("upstream-or-build-support")
+    }
+    public = json.loads((root / PUBLIC_FUNCTION_INDEX).read_text(encoding="utf-8"))
+    api_ids = {
+        f"{header['source_repo']}:{header['path']}:{name}"
+        for header in public["headers"] for name in header["explicit_functions"]
+    }
+    if len(api_ids) != exported_debt:
+        raise ValueError("public function evidence identity inventory is incomplete")
+    qualified_files = set(evidence["qualified_file_ids"])
+    qualified_apis = set(evidence["qualified_api_ids"])
+    if not qualified_files.issubset(file_ids) or not qualified_apis.issubset(api_ids):
+        raise ValueError("evidence claims unknown frozen file/API obligations")
+    deferred = {"ac_automaton", "levenshtein_automaton"}
+    deferred_files = {
+        f"salts:utils/{directory}/{name}.{suffix}"
+        for name in deferred for directory, suffix in (("include", "h"), ("src", "c"))
+    } | {"salts:utils/tests/test_string_automata.c"}
+    deferred_apis = {
+        entry for entry in api_ids
+        if any(f"/{name}.h:" in entry for name in deferred)
+    }
+    if qualified_files & deferred_files or qualified_apis & deferred_apis:
+        raise ValueError("deferred AC/Levenshtein work cannot be waived by evidence")
+    pending_files = len(file_ids - qualified_files)
+    pending_apis = len(api_ids - qualified_apis)
+    output["evidence"] = {
+        **evidence, "native_file_obligations": len(file_ids),
+        "pending_native_files": pending_files, "pending_public_functions": pending_apis,
+    }
+    if require_complete and (pending_files or pending_apis or
+                            evidence["simd_supplement"]["pending_profiles"]):
         raise ValueError(
-            f"FINAL MIGRATION BLOCKED: {core_debt} missing/changed original "
-            f"native files, {review_debt} present-but-unqualified file cases "
-            f"and {exported_debt} original public functions without approved "
-            "source/installed-runtime behavior evidence")
+            f"FINAL MIGRATION BLOCKED: {pending_files} original native file "
+            f"obligations and {pending_apis} original public functions lack "
+            "verified source/installed-runtime behavior evidence; "
+            f"historical snapshot: {core_debt} missing/changed, "
+            f"{review_debt} present-but-unqualified; "
+            f"SIMD supplemental profiles pending: "
+            f"{len(evidence['simd_supplement']['pending_profiles'])}")
     return output
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--require-complete", action="store_true")
+    p.add_argument("--evidence-dir", type=Path,
+                   help="Retained native-runner evidence bundles; no input means pending")
     args = p.parse_args()
     try:
-        proof = audit(require_complete=args.require_complete)
+        proof = audit(require_complete=args.require_complete, evidence_dir=args.evidence_dir)
     except (ValueError, OSError, KeyError, TypeError) as exc:
         print("FAIL:", exc)
         return 1
-    for name, counts in proof.items():
+    for name in ORIGINS:
+        counts = proof[name]
         print(f"{name}: frozen={counts['frozen_total']}, "
               f"unaccounted_or_changed={counts['unaccounted_or_changed']}, "
               f"present_but_behavior_unqualified={counts['present_but_behavior_unqualified']}")
+    evidence = proof["evidence"]
+    print(f"Live evidence: {evidence['pending_native_files']}/924 native file "
+          f"obligations pending, {evidence['pending_public_functions']}/610 "
+          "original public functions pending; SIMD supplemental native "
+          f"functions qualified={evidence['simd_supplement']['qualified_native_functions']}/32")
     print("PASS: all 2,975 pinned original Git blobs and 610 explicit original " 
           "public functions accounted for by owner; "
           "native mmap 18/18 sources, exported symbols and tests registered; "
