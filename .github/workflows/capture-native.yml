@@ -202,7 +202,8 @@ jobs:
                    -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO)
           fi
           cmake -S capture/tests/installed -B "$RUNNER_TEMP/capture-consumer" -G Ninja \
-            "${args[@]}" "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/capture-sdk"
+            "${args[@]}" "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/capture-sdk" \
+            "-DSaltsCore_DIR=$RUNNER_TEMP/capture-sdk/lib/cmake/SaltsCore"
           cmake --build "$RUNNER_TEMP/capture-consumer" --config Release --parallel 2
           if [ -z "$CAPTURE_CROSS" ]; then
             export PATH="$RUNNER_TEMP/capture-sdk/bin:$PATH"

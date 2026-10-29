@@ -174,6 +174,7 @@ jobs:
               --no-tests=error --timeout 120 -R "^sdk[.]simd_${lang}$"
           done
       - name: Collect actual native and installed SIMD execution evidence
+        id: collect_evidence
         shell: bash
         run: |
           set -euo pipefail
@@ -182,14 +183,36 @@ jobs:
             --installed-build "$RUNNER_TEMP/simd-installed-build" \
             --sdk-prefix "$RUNNER_TEMP/simd-sdk" \
             --profile '${{ matrix.profile }}' \
-            --output "$RUNNER_TEMP/simd-evidence/${{ matrix.profile }}"
+            --output "$RUNNER_TEMP/simd-evidence/${{ matrix.profile }}" \
+            2>&1 | tee "$RUNNER_TEMP/simd-collector-${{ matrix.profile }}.log"
           python -B tools/check_migration_evidence.py verify \
-            --evidence-dir "$RUNNER_TEMP/simd-evidence"
+            --evidence-dir "$RUNNER_TEMP/simd-evidence" \
+            2>&1 | tee -a "$RUNNER_TEMP/simd-collector-${{ matrix.profile }}.log"
       - name: Retain exact-source execution evidence for review
         uses: actions/upload-artifact@v4
         with:
           name: simd-evidence-${{ matrix.profile }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: ${{ runner.temp }}/simd-evidence/${{ matrix.profile }}
+          if-no-files-found: error
+      - name: Retain failed collector diagnostics without qualifying a receipt
+        if: failure() && steps.collect_evidence.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: simd-diagnostic-${{ matrix.profile }}-${{ github.event.pull_request.head.sha || github.sha }}
+          # The collector removes a rejected receipt, but keeps both archive
+          # snapshots and reports. Do not repair or relabel that failed bundle.
+          path: |
+            ${{ runner.temp }}/simd-evidence/${{ matrix.profile }}
+            ${{ runner.temp }}/simd-collector-${{ matrix.profile }}.log
+            ${{ runner.temp }}/simd-native-build/.cmake/api/v1/reply
+            ${{ runner.temp }}/simd-installed-build/.cmake/api/v1/reply
+            ${{ runner.temp }}/simd-native-build/CMakeCache.txt
+            ${{ runner.temp }}/simd-installed-build/CMakeCache.txt
+            ${{ runner.temp }}/simd-native-build/cmake_install.cmake
+            ${{ runner.temp }}/simd-native-build/simd/cmake_install.cmake
+            ${{ runner.temp }}/simd-native-build/CMakeFiles/rules.ninja
+          # File API replies live below .cmake; only these explicit paths enter.
+          include-hidden-files: true
           if-no-files-found: error
       - name: Record real compiler cache statistics
         if: always()
