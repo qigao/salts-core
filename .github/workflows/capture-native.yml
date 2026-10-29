@@ -12,6 +12,8 @@ on:
       - vcpkg-configuration.json
       - tools/migration/**
       - .github/workflows/capture-native.yml
+      - ".github/actions/setup-core-native/**"
+      - "crypto/native/**"
   workflow_dispatch:
 
 permissions:
@@ -23,6 +25,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # Preserve source-lock Git blob bytes from the initial checkout.
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: "false"
   PYTHONDONTWRITEBYTECODE: '1'
   ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:abort_on_error=1
   UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
@@ -66,10 +72,9 @@ jobs:
           sudo apt-get install --yes libpipewire-0.3-dev libx11-dev libxext-dev pkg-config
       - name: Canonical cached private miniaudio, libyuv and JPEG dependencies
         id: dependencies
-        # capture's exact iOS feature graph has no private vcpkg packages.
-        # Its original AVFoundation/AVAudioEngine/ReplayKit graph still builds.
-        if: matrix.cross != 'ios'
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@7bb5b556a001bc82d2922a04a718e986a7f47f54
+        # Capture iOS uses system frameworks; the default Core graph still
+        # requires its real c-ares, KCP and SIMDe base dependencies.
+        uses: ./.github/actions/setup-core-native
         with:
           token: ${{ github.token }}
           triplet: ${{ matrix.triplet }}
@@ -110,12 +115,10 @@ jobs:
           python -m unittest discover -s capture/tests -p test_source_provenance.py -v
           args=(-DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
                 -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded)
-          if [ "$CAPTURE_CROSS" != ios ]; then
-            test -n "$CAPTURE_TOOLCHAIN"
-            args+=("-DCMAKE_TOOLCHAIN_FILE=$CAPTURE_TOOLCHAIN"
-                   -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} -DVCPKG_HOST_TRIPLET=${{ matrix.host }}
-                   -DVCPKG_MANIFEST_FEATURES=capture)
-          fi
+          test -n "$CAPTURE_TOOLCHAIN"
+          args+=("-DCMAKE_TOOLCHAIN_FILE=$CAPTURE_TOOLCHAIN"
+                 -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} -DVCPKG_HOST_TRIPLET=${{ matrix.host }}
+                 -DVCPKG_MANIFEST_FEATURES=capture)
           if [ "$CAPTURE_SANITIZE" = true ]; then
             flags='-fsanitize=address,undefined -fno-omit-frame-pointer'
             args+=("-DCMAKE_C_FLAGS=$flags" "-DCMAKE_CXX_FLAGS=$flags"
@@ -182,11 +185,9 @@ jobs:
           set -euo pipefail
           args=(-DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_DEFAULT_CMP0141=NEW
                 -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded)
-          if [ "$CAPTURE_CROSS" != ios ]; then
-            test -n "$CAPTURE_TOOLCHAIN"
-            args+=("-DCMAKE_TOOLCHAIN_FILE=$CAPTURE_TOOLCHAIN" -DVCPKG_MANIFEST_MODE=OFF
-                   -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} -DVCPKG_HOST_TRIPLET=${{ matrix.host }})
-          fi
+          test -n "$CAPTURE_TOOLCHAIN"
+          args+=("-DCMAKE_TOOLCHAIN_FILE=$CAPTURE_TOOLCHAIN" -DVCPKG_MANIFEST_MODE=OFF
+                 -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} -DVCPKG_HOST_TRIPLET=${{ matrix.host }})
           if [ "$CAPTURE_SANITIZE" = true ]; then
             flags='-fsanitize=address,undefined -fno-omit-frame-pointer'
             args+=("-DCMAKE_C_FLAGS=$flags" "-DCMAKE_CXX_FLAGS=$flags"
@@ -246,7 +247,7 @@ jobs:
           source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Pinned private miniaudio input
         id: dependencies
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@7bb5b556a001bc82d2922a04a718e986a7f47f54
+        uses: ./.github/actions/setup-core-native
         with:
           token: ${{ github.token }}
           triplet: x64-linux

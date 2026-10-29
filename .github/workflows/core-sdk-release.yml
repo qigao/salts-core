@@ -71,16 +71,12 @@ jobs:
         with:
           profile: saltscore-sdk-${{ matrix.id }}
           source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Restore the exact re2c host generator and Unicode 17 data
-        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@2e214ae44a3e3244eded5db6361194576356fc9e
-        with:
-          token: ${{ github.token }}
       - name: Install required Linux native system SDKs
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libudev-dev libpipewire-0.3-dev libx11-dev libxext-dev
       - name: Canonical vcpkg and pinned private native dependencies
         id: dependencies
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@7bb5b556a001bc82d2922a04a718e986a7f47f54
+        uses: ./.github/actions/setup-core-native
         env:
           # Preserve the exact source checkout; the pinned action otherwise
           # creates its binary cache under the repository's build directory.

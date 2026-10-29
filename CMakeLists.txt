@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.21)
 project(SaltsCore VERSION 0.1.0 LANGUAGES C)
 # Pre-stable ABI epoch: 0.2 must not silently satisfy an installed 0.1 DLL/DSO.
 set(SALTSCORE_NATIVE_SOVERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
@@ -12,6 +12,11 @@ endif()
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(CTest)
+# Crypto's C++17 header tests are siblings of the other Core source tests.
+# Enable the language at the package root so all test subdirectories see it.
+if(BUILD_TESTING)
+  enable_language(CXX)
+endif()
 find_package(Threads REQUIRED)
 
 # Package root assembles canonical modules; modules own sources and installs.
@@ -33,61 +38,38 @@ if(TARGET Salts::ASN1)
 endif()
 add_subdirectory(asn1)
 
-option(SALTSCORE_BUILD_URI "Build standalone re2c-generated URI parser" OFF)
-if(SALTSCORE_BUILD_URI)
-  add_subdirectory(uri)
-endif()
-option(SALTSCORE_BUILD_CNET "Build standalone CNet with required pinned providers" OFF)
-option(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST
-  "Qualify test-only original CNet Owner with sole local static Salts::Crypto" OFF)
-if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST AND
-   (NOT BUILD_TESTING OR NOT SALTSCORE_BUILD_CNET OR NOT DEFINED CRYPTO_GMSSL_ROOT))
-  message(FATAL_ERROR
-    "Local M5 Crypto Owner requires BUILD_TESTING, CNet and the exact pinned CRYPTO_GMSSL_ROOT")
-endif()
-# The local static Crypto archive requires its pinned installed GmSSL input.
-# No source download, split provider, alternate TLS engine or compatibility alias.
-# The incumbent direct-GmSSL CNet must stay separate from a local Crypto
-# Owner. Only the explicit test-only M5 qualification may assemble both
-# targets in one CMake graph; NO executable/DSO may link both TLS engines.
-if(DEFINED CRYPTO_GMSSL_ROOT)
-  if("${CRYPTO_GMSSL_ROOT}" STREQUAL "")
-    message(FATAL_ERROR "CRYPTO_GMSSL_ROOT was supplied but is empty")
+# ASN1, Crypto, URI and CNet are fixed local modules of the Core SDK.
+# Retired inputs are errors so an old OFF or foreign prefix cannot silently
+# select a different dependency graph.
+foreach(_retired_input IN ITEMS SALTSCORE_BUILD_CNET CRYPTO_GMSSL_ROOT
+    SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
+  if(DEFINED ${_retired_input})
+    message(FATAL_ERROR "${_retired_input} was removed; Core builds local Crypto and CNet unconditionally")
   endif()
-  if(SALTSCORE_BUILD_CNET)
-    if(NOT (BUILD_TESTING AND SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST))
-      message(FATAL_ERROR
-        "Dual TLS source assembly is forbidden except for isolated M5 static Crypto Owner tests")
-    endif()
-  endif()
-  if(TARGET Salts::Crypto)
-    message(FATAL_ERROR "Duplicate Crypto owner: use exactly one static archive")
-  endif()
-  add_subdirectory(crypto)
+endforeach()
+if(TARGET Salts::Crypto)
+  message(FATAL_ERROR "Duplicate Crypto owner: use exactly one static archive")
 endif()
+add_subdirectory(crypto)
+# Keep explicit URI=ON callers compatible; disabling a mandatory dependency
+# must fail rather than omit source or silently change parsing behavior.
+if(DEFINED SALTSCORE_BUILD_URI AND NOT SALTSCORE_BUILD_URI)
+  message(FATAL_ERROR "Core CNet requires its local URI parser")
+endif()
+add_subdirectory(uri)
 option(SALTSCORE_BUILD_WEBSOCKET_PARSER "Qualify CNet-private WebSocket frame parser" OFF)
-if(SALTSCORE_BUILD_CNET AND NOT TARGET Salts::URI)
-  message(FATAL_ERROR "Salts::CNet requires SALTSCORE_BUILD_URI=ON (real re2c at build time)")
-endif()
-# The private CNet provider source helpers belong to vendor/, not cnet/.
-# Do not build vendored crypto or erasure archives in minimal/WS-only profiles.
-if(SALTSCORE_BUILD_CNET)
-  add_subdirectory(vendor)
-endif()
-if(SALTSCORE_BUILD_WEBSOCKET_PARSER OR SALTSCORE_BUILD_CNET)
-  add_subdirectory(cnet)
+add_subdirectory(vendor)
+add_subdirectory(cnet)
+
+option(SALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION
+  "Run additional test-only Crypto facade and original Owner qualification" OFF)
+if(SALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION AND NOT BUILD_TESTING)
+  message(FATAL_ERROR "Crypto facade qualification requires BUILD_TESTING")
 endif()
 
 option(SALTSCORE_BUILD_CSERDE "Build standalone C11 CSerde owner" OFF)
 option(SALTSCORE_BUILD_TINYTEST "Build standalone C11 TinyTest owner" OFF)
 option(SALTSCORE_BUILD_SIMD "Build the independent static C11 SIMD execution module" OFF)
-# TinyTest-enabled source conformance includes the original C++17 fmt tests.
-# Enable C++ at package root *before* either tests/ or sibling native-modules/
-# is configured; a sibling-only enable_language(CXX) has no visibility here.
-# The default Core/Platform SDK remains C11-only without this qualification.
-if(BUILD_TESTING AND SALTSCORE_BUILD_TINYTEST)
-  enable_language(CXX)
-endif()
 option(SALTSCORE_BUILD_UNICODE "Build original pinned Unicode 17 owner" OFF)
 option(SALTSCORE_BUILD_IDNA "Build original pinned Unicode 17 IDNA owner" OFF)
 option(SALTSCORE_NATIVE_CPP_CONFORMANCE
@@ -152,10 +134,6 @@ if(SALTSCORE_BUILD_SCTP)
 endif()
 
 # Package config/version and export assembly are global concerns.
-set(SALTSCORE_CONFIG_HAS_CRYPTO OFF)
-if(TARGET Salts::Crypto)
-  set(SALTSCORE_CONFIG_HAS_CRYPTO ON)
-endif()
 set(_saltscore_package_dir "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsCore")
 configure_package_config_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake/SaltsCoreConfig.cmake.in"

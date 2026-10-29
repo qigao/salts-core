@@ -34,8 +34,9 @@ class SDKTests(unittest.TestCase):
         exports.mkdir(parents=True)
         (exports / "SaltsCoreConfigVersion.cmake").write_text('set(PACKAGE_VERSION "0.1.0")\n')
         lines = []
-        for target in sorted(sdk.FOUNDATION | {"Salts::SIMD"}):
-            kind = "STATIC" if target == "Salts::SIMD" else "SHARED"
+        for target in sorted(sdk.FOUNDATION | sdk.DEFAULT_MODULE_TYPES.keys() | {"Salts::SIMD"}):
+            kind = sdk.DEFAULT_MODULE_TYPES.get(
+                target, "STATIC" if target == "Salts::SIMD" else "SHARED")
             relative = f"lib/{target.split('::')[1]}." + ("a" if kind == "STATIC" else "so")
             (self.prefix / relative).write_bytes(b"structural fixture only\0")
             lines += [f"add_library({target} {kind} IMPORTED)",
@@ -69,7 +70,7 @@ class SDKTests(unittest.TestCase):
             sdk.profile(path)
 
     def test_profile_cannot_drop_missing_native_modules_or_rids(self):
-        for name in ("Capture", "Playback", "Serial", "USB"):
+        for name in ("Capture", "Playback", "Serial", "USB", "Crypto", "CNet"):
             with self.subTest(target=name):
                 bad = copy.deepcopy(self.config)
                 bad["release_deferred"] = []
@@ -157,6 +158,22 @@ class SDKTests(unittest.TestCase):
         path.write_text(path.read_text().replace("Salts::SIMD STATIC", "Salts::SIMD SHARED"))
         with self.assertRaisesRegex(sdk.SDKError, "static native"):
             self.stage()
+
+    def test_default_crypto_and_cnet_cannot_be_missing_or_change_owner_kind(self):
+        path = self.prefix / "lib/cmake/SaltsCore/SaltsCoreTargets.cmake"
+        original = path.read_text()
+        for target, expected, wrong in (("Crypto", "STATIC", "SHARED"),
+                                        ("CNet", "SHARED", "STATIC")):
+            declaration = f"add_library(Salts::{target} {expected} IMPORTED)"
+            with self.subTest(target=target, mutation="absent"):
+                path.write_text(original.replace(declaration, ""))
+                with self.assertRaisesRegex(sdk.SDKError, "missing mandatory local module"):
+                    self.stage(name=target + "-missing")
+            with self.subTest(target=target, mutation="wrong owner"):
+                path.write_text(original.replace(declaration,
+                    f"add_library(Salts::{target} {wrong} IMPORTED)"))
+                with self.assertRaisesRegex(sdk.SDKError, "must retain its"):
+                    self.stage(name=target + "-wrong")
 
     def test_manifest_duplicate_key_rejected(self):
         path = self.root / "bad.json"
@@ -417,7 +434,8 @@ class SDKTests(unittest.TestCase):
         # Even after the editable debt list is cleared, this is not admission.
         manifest = {
             "rid": "linux-x64",
-            "targets": {name: "SHARED" if name in sdk.FOUNDATION else "STATIC"
+            "targets": {name: sdk.DEFAULT_MODULE_TYPES.get(
+                            name, "SHARED" if name in sdk.FOUNDATION else "STATIC")
                         for name in sdk.RELEASE_TARGET_FLOOR},
             "source": {"repository": sdk.REPOSITORY, "commit": "a" * 40,
                        "tree": "b" * 40, "clean": True},

@@ -46,7 +46,8 @@ provenance and is not an acceptable use of the staging command.
 
 `.github/workflows/core-sdk-release.yml` runs on PRs and manual candidate
 requests. It also has a separate, strictly guarded publication path for a push
-of the exact `v0.1.000` tag. Existing repository workflows are unchanged.
+of the exact `v0.1.000` tag. All active Core producer workflows restore the
+same required base dependency graph and compile the local Crypto source.
 
 | RID | Runner / target | Required candidate evidence |
 | --- | --- | --- |
@@ -65,10 +66,12 @@ Future device qualification cannot be inferred from those cross builds.
 
 The `native-migration` candidate enables SIMD, TinyTest, URI, Unicode, IDNA,
 CSerde, Process, SCTP, the private WebSocket parser, USB, Playback, Serial,
-Capture and the original Core Zstd facade. The original six Serial examples
-also compile. The remaining production CNet/Crypto integration is an explicit
-release blocker: direct-GmSSL CNet and the separate local Crypto owner cannot
-be declared a unified production graph by enabling the M5 test-only exception.
+Capture and the original Core Zstd facade. The default graph also includes
+ASN1, source-built static Crypto and production CNet, with no external GmSSL
+archive. The original six Serial examples also compile. Current-source
+production TLS, native algorithm, source-byte, physical owner and installed
+consumer qualification is mandatory; enabling the additional M5 test graph
+does not replace any production test or establish release admission.
 
 Each configured graph builds without a selected-target shortcut. Native rows
 enumerate all CTests, require the original/runtime and source-gate entries,
@@ -79,11 +82,12 @@ are configured. The final NuGet archive is also extracted and consumed on Linux.
 
 The fixed Stun ccache action has no Linux ARM64 binary, so that row builds
 without the compiler cache. Other rows use the same pinned cache action.
-Private SIMDe, miniaudio, libusb, libyuv and Zstd come through the fixed
+Private c-ares, KCP, SIMDe, miniaudio, libusb, libyuv and Zstd come through the fixed
 vcpkg/curl action and the repository's pinned registries. Linux Capture uses
 the actual PipeWire/X11 system SDKs, and libusb requires the udev development
 package. The exact re2c host tool and Unicode 17 data remain mandatory. Cache
-availability never substitutes for a build or platform gate. Android API 26
+availability never substitutes for a build or platform gate. Missing exact
+binary packages remain failures, with no provider/version fallback. Android API 26
 preserves the original Capture MediaProjection requirement.
 
 The native backend check inspects the actual compile database. In particular,

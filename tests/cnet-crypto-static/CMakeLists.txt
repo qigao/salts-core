@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Test-only original real CNet Owner in ONE executable, no second static Crypto.
-option(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST
-  "Qualify original CNet Owner in a sole static Salts::Crypto executable" OFF)
-if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
-  if(NOT BUILD_TESTING OR NOT SALTSCORE_BUILD_CNET)
-    message(FATAL_ERROR "Original CNet Crypto Owner requires BUILD_TESTING and pinned CNet graph")
+option(SALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION
+  "Run test-only CNet qualification through the bounded Crypto facade" OFF)
+if(SALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION)
+  if(NOT BUILD_TESTING OR NOT TARGET saltscore_cnet)
+    message(FATAL_ERROR "CNet Crypto qualification requires BUILD_TESTING and the actual CNet graph")
   endif()
   if(NOT DEFINED SALTSCORE_CRYPTO_TEST_FIXTURES)
     message(FATAL_ERROR "Exact pinned static Crypto TLS fixtures required")
@@ -106,7 +106,8 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
     target_compile_definitions(saltscore_cnet_crypto_static_original_owner
       PRIVATE _DEFAULT_SOURCE=1 _POSIX_C_SOURCE=200809L)
   endif()
-  # Production Salts::CNet and GmSSL::GmSSL are NOT linked here.
+  # Production Salts::CNet is NOT linked here. This remains a separate
+  # qualification image with narrower facade admission and behavior.
   if(APPLE)
     target_link_libraries(saltscore_cnet_crypto_static_original_owner PRIVATE
       "${SALTSCORE_CNET_COREFOUNDATION}"
@@ -168,7 +169,8 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
   # M6: the original CNet Owner linked once as a TEST-ONLY SHARED image.
   # The sole Salts::Crypto STATIC archive belongs exclusively to that image.
   # Two independently loaded plugins refer to this image, not separate static
-  # Crypto copies. Public Salts::CNet and its GmSSL backend remain untouched.
+  # Crypto copies. Production Salts::CNet uses the complete original native
+  # TLS implementation and is not linked into this qualification image.
   option(SALTSCORE_CNET_M6_SHARED_DSO_TEST
     "Qualify one physical STATIC Crypto owner across two CNet plugin DSOs" OFF)
   if(SALTSCORE_CNET_M6_SHARED_DSO_TEST)

@@ -13,13 +13,16 @@ def source(relative):
 class M5LocalOwnerGraph(unittest.TestCase):
     def test_exact_first_party_roots(self):
         root = source("CMakeLists.txt")
-        self.assertIn("add_subdirectory(asn1)", root)
-        self.assertIn("add_subdirectory(crypto)", root)
-        self.assertNotIn("SALTSCORE_BUILD_ASN1", root)
-        self.assertNotIn("SALTSCORE_BUILD_CRYPTO", root)
-        self.assertIn("if(DEFINED CRYPTO_GMSSL_ROOT)", root)
-        self.assertIn("if(NOT (BUILD_TESTING AND SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST))", root)
-        self.assertIn("Dual TLS source assembly is forbidden", root)
+        assembled = re.findall(r"(?m)^add_subdirectory\((asn1|crypto|uri|vendor|cnet)\)\s*$", root)
+        self.assertEqual(assembled, ["asn1", "crypto", "uri", "vendor", "cnet"])
+        for retired in ("SALTSCORE_BUILD_CNET", "CRYPTO_GMSSL_ROOT",
+                        "SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST"):
+            self.assertNotRegex(root, rf"(?mi)^\s*(?:option|set)\(\s*{retired}\b")
+            self.assertNotIn("${" + retired + "}", root)
+            self.assertIn(retired, root)  # Explicit rejection remains documented in CMake.
+        self.assertIn("if(DEFINED ${_retired_input})", root)
+        self.assertIn("${_retired_input} was removed", root)
+        self.assertIn("option(SALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION", root)
 
     def test_candidate_requires_local_unimported_single_static_modules(self):
         cmake = source("tests/cnet-crypto-static/CMakeLists.txt")
@@ -44,6 +47,13 @@ class M5LocalOwnerGraph(unittest.TestCase):
             self.assertNotIn("Salts::CNet", linked)
             self.assertNotIn("GmSSL::GmSSL", linked)
         self.assertIn("Second native Crypto owner forbidden", cmake)
+        production = source("cnet/CMakeLists.txt")
+        self.assertIn("cnet/src/cnet_tls.c", production)
+        self.assertNotIn("cnet_tls_crypto_qualification.c", production)
+        self.assertIn("SALTS_CRYPTO_NATIVE_INCLUDE_DIR", production)
+        self.assertIn("Salts::Crypto", production)
+        self.assertNotIn("GmSSL::GmSSL", production)
+        self.assertNotRegex(production, r"(?m)^\s*find_package\(\s*(?:Crypto|GmSSL)\b")
 
     def test_source_is_local_and_manifest_is_pinned(self):
         workflow = source(".github/workflows/cnet-m5-python-mtls.yml")
@@ -52,14 +62,15 @@ class M5LocalOwnerGraph(unittest.TestCase):
         for required in (
             "python3 tools/check_crypto_pr43_handoff.py",
             "python tools/check_crypto_pr43_handoff.py",
-            "crypto/tools/stage_mtls_gmssl_overlay.py",
             "crypto/tools/audit_static_crypto.py",
             "crypto/tests/sdk/python_mtls.py",
             "crypto/tests/fixtures",
-            "CRYPTO_GMSSL_ROOT",
-            "VCPKG_INSTALLED_DIR",
+            "SALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION=ON",
         ):
             self.assertIn(required, workflow)
+        for retired in ("CRYPTO_GMSSL_ROOT", "SALTSCORE_BUILD_CNET",
+                        "SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST"):
+            self.assertNotIn(retired, workflow)
 
     def test_full_native_m5_m6_differential_is_preserved(self):
         workflow = source(".github/workflows/cnet-m5-python-mtls.yml")

@@ -36,13 +36,14 @@
     "SALTSCORE_BUILD_SERIAL_EXAMPLES": "ON",
     "SALTSCORE_BUILD_CAPTURE": "ON",
     "SALTSCORE_BUILD_ZSTD": "ON",
+    "SALTSCORE_CNET_OWNER_SOURCE_TESTS": "ON",
     "SALTSCORE_NATIVE_CPP_CONFORMANCE": "ON"
   },
   "release_deferred": [
     "Complete original-source and public-function migration qualification remains required.",
     "All native modules, including Capture, Playback, Serial and USB, require six-RID capability review.",
     "Native dependency releases and runtime-library closure are not yet qualified for publication.",
-    "CNet still uses direct GmSSL; a unified production CNet/Crypto owner has not passed the existing migration gates.",
+    "Default local CNet/Crypto ownership requires current-source native, installed, sanitizer and six-RID qualification; the test-only M5/M6 images do not establish production acceptance.",
     "The original iOS Capture backend lacks six declared GPU-list/camera-control/crop API implementations; real installed linking remains required.",
     "The pinned miniaudio 0.11.22 PulseAudio connection-failure path leaks contexts; the original Capture LSan test remains failing."
   ]

@@ -13,14 +13,23 @@ on:
       - "tools/check_module_layout.py"
       - "tools/migration/**"
       - ".github/workflows/serial-native.yml"
+      - ".github/actions/setup-core-native/**"
+      - "crypto/native/**"
   workflow_dispatch:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: saltscore-serial-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
+
+env:
+  # Preserve source-lock Git blob bytes from the initial checkout.
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: "false"
 
 jobs:
   serial:
@@ -74,6 +83,10 @@ jobs:
           python tools/check_module_layout.py
           python tools/check_full_source_migration.py
           python -m unittest discover -s salts_serial/test -p test_serial_provenance.py -v
+      - name: Restore exact prerequisites for the default local Crypto and CNet graph
+        uses: ./.github/actions/setup-core-native
+        with:
+          token: ${{ github.token }}
       - name: Build the complete configured graph and all retained examples
         shell: bash
         run: |
@@ -83,7 +96,7 @@ jobs:
             args+=("-DCMAKE_C_FLAGS=$SERIAL_FLAGS" "-DCMAKE_CXX_FLAGS=$SERIAL_FLAGS")
             args+=("-DCMAKE_C_FLAGS_RELEASE=-O1 -DNDEBUG" "-DCMAKE_CXX_FLAGS_RELEASE=-O1 -DNDEBUG")
           fi
-          cmake -S . -B build-serial -G Ninja \
+          cmake -S . "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" -B build-serial -G Ninja \
             -DBUILD_TESTING=ON -DSALTSCORE_BUILD_SERIAL=ON \
             -DSALTSCORE_BUILD_TINYTEST=ON -DSALTSCORE_BUILD_SERIAL_EXAMPLES=ON \
             "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/serial-sdk" \

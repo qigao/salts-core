@@ -1,15 +1,20 @@
-# Original CNet test-only build owns direct provider references, which
-# must be discovered in this sibling CMake directory rather than relying
-# on the private imported-target scope of cnet/CMakeLists.txt.
+# Original CNet tests use the same local native Crypto implementation as
+# production, in a separate executable that never loads Salts::CNet.
+# Discover only the transport dependencies in this sibling CMake scope.
 find_package(c-ares CONFIG REQUIRED)
 find_package(kcp CONFIG REQUIRED)
-find_package(GmSSL CONFIG REQUIRED)
 
 # CNet test-only link closure: same real CNet implementation as the
 # installed shared target, compiled as a PRIVATE owner only for this test image.
 # The executable links exactly one CNet state machine, never Salts::CNet.
-if(NOT TARGET saltscore_cnet OR NOT TARGET Salts::TinyTest)
-  message(FATAL_ERROR "Need actual CNet implementation and native TinyTest")
+if(NOT TARGET saltscore_cnet OR NOT TARGET Salts::TinyTest OR
+   NOT TARGET salts_crypto OR NOT TARGET Salts::Crypto)
+  message(FATAL_ERROR "Need actual CNet, local Crypto and native TinyTest")
+endif()
+get_target_property(_core_owner_native_include salts_crypto SALTS_CRYPTO_NATIVE_INCLUDE_DIR)
+if(NOT _core_owner_native_include OR
+   NOT EXISTS "${_core_owner_native_include}/gmssl/tls.h")
+  message(FATAL_ERROR "Original CNet Owner requires local Crypto native headers")
 endif()
 # _saltscore_cnet_sources is declared by Core at the repository root.
 # Relative entries must not be interpreted relative to tests/cnet-owner;
@@ -26,6 +31,8 @@ endforeach()
 add_library(saltscore_cnet_original_test_owner STATIC
   ${_core_owner_native_sources})
 target_compile_features(saltscore_cnet_original_test_owner PUBLIC c_std_11)
+target_compile_definitions(saltscore_cnet_original_test_owner PRIVATE
+  ENABLE_TLS ENABLE_SECP256R1 ENABLE_SECP384R1 ENABLE_SHA1 ENABLE_SHA2 ENABLE_AES)
 # Match the original first-party CNet test-profile flags exactly.
 # None are installed, exported or applied to the real Salts::CNet DSO.
 target_compile_definitions(saltscore_cnet_original_test_owner PUBLIC
@@ -45,11 +52,12 @@ target_include_directories(saltscore_cnet_original_test_owner
     "${PROJECT_SOURCE_DIR}/cnet/src/wsparser"
     "${PROJECT_SOURCE_DIR}/native-io/src"
     "${PROJECT_SOURCE_DIR}/vendor/cnet/monocypher"
-    "${PROJECT_SOURCE_DIR}/vendor/cnet/reed")
+    "${PROJECT_SOURCE_DIR}/vendor/cnet/reed"
+    "${_core_owner_native_include}")
 target_link_libraries(saltscore_cnet_original_test_owner
   PUBLIC Salts::Core Salts::NativeIO Salts::Concurrency
   PRIVATE Salts::URI Salts::Platform saltscore_cnet_monocypher
-    saltscore_cnet_reed c-ares::cares kcp::kcp GmSSL::GmSSL
+    saltscore_cnet_reed c-ares::cares kcp::kcp Salts::Crypto
     $<$<PLATFORM_ID:Windows>:crypt32>)
 if(APPLE)
   target_link_libraries(saltscore_cnet_original_test_owner PRIVATE

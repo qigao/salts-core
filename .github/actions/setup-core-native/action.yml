@@ -1,0 +1,81 @@
+name: Exact Core native prerequisites
+description: Restore the host re2c generator and canonical non-crypto dependencies for the default local Core graph.
+inputs:
+  token:
+    description: Read-only GitHub Packages token.
+    required: true
+  triplet:
+    description: Target triplet; defaults to the native runner architecture.
+    default: ''
+  host-triplet:
+    description: Host-tools triplet; defaults to the native runner architecture.
+    default: ''
+  manifest-root:
+    description: Core manifest containing the required base dependencies.
+    default: .
+  features:
+    description: Additional native module features; Core dependencies are always required.
+    default: ''
+outputs:
+  toolchain_file:
+    description: Canonical CMake toolchain for the exact restored dependency graph.
+    value: ${{ steps.dependencies.outputs.toolchain_file }}
+  triplet:
+    description: Resolved target triplet.
+    value: ${{ steps.coordinates.outputs.triplet }}
+  host_triplet:
+    description: Resolved host triplet.
+    value: ${{ steps.coordinates.outputs.host_triplet }}
+runs:
+  using: composite
+  steps:
+    - name: Resolve target and host coordinates
+      id: coordinates
+      shell: bash
+      env:
+        CORE_REQUESTED_TRIPLET: ${{ inputs.triplet }}
+        CORE_REQUESTED_HOST: ${{ inputs.host-triplet }}
+      run: |
+        set -euo pipefail
+        case "$RUNNER_OS/$RUNNER_ARCH" in
+          Linux/X64) native=x64-linux ;;
+          Linux/ARM64) native=arm64-linux ;;
+          macOS/X64) native=x64-osx ;;
+          macOS/ARM64) native=arm64-osx ;;
+          Windows/X64) native=qigao-x64-windows-v145 ;;
+          *) echo "Unsupported Core dependency host: $RUNNER_OS/$RUNNER_ARCH" >&2; exit 1 ;;
+        esac
+        triplet="${CORE_REQUESTED_TRIPLET:-$native}"
+        host="${CORE_REQUESTED_HOST:-$native}"
+        echo "triplet=$triplet" >> "$GITHUB_OUTPUT"
+        echo "host_triplet=$host" >> "$GITHUB_OUTPUT"
+        echo "CORE_CI_TRIPLET=$triplet" >> "$GITHUB_ENV"
+        echo "CORE_CI_HOST_TRIPLET=$host" >> "$GITHUB_ENV"
+    - name: Verify the exact Core-owned native Crypto source bytes
+      shell: bash
+      env:
+        PYTHONDONTWRITEBYTECODE: '1'
+      run: python crypto/tools/check_local_native_source.py
+    - name: Restore exact re2c 4.6 and Unicode 17 host data
+      uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@2e214ae44a3e3244eded5db6361194576356fc9e
+      with:
+        token: ${{ inputs.token }}
+    - name: Restore exact base and module dependency packages
+      id: dependencies
+      uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@7bb5b556a001bc82d2922a04a718e986a7f47f54
+      env:
+        VCPKG_BINARY_CACHE: ${{ env.VCPKG_BINARY_CACHE || format('{0}/core-native-vcpkg-cache', runner.temp) }}
+      with:
+        token: ${{ inputs.token }}
+        triplet: ${{ steps.coordinates.outputs.triplet }}
+        host-triplet: ${{ steps.coordinates.outputs.host_triplet }}
+        manifest-root: ${{ inputs.manifest-root }}
+        features: ${{ inputs.features }}
+    - name: Expose the canonical producer toolchain
+      shell: bash
+      env:
+        CORE_RESTORED_TOOLCHAIN: ${{ steps.dependencies.outputs.toolchain_file }}
+      run: |
+        set -euo pipefail
+        test -n "$CORE_RESTORED_TOOLCHAIN"
+        echo "CORE_CI_TOOLCHAIN=$CORE_RESTORED_TOOLCHAIN" >> "$GITHUB_ENV"

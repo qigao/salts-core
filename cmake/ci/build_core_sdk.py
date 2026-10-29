@@ -76,6 +76,14 @@ def required_native_tests(rid):
         "saltscore.usb_source_provenance", "saltscore.original_zstd",
         "saltscore.zstd_native_contract", "saltscore.original_zstd_source_provenance",
         "saltscore.capture_source_provenance",
+        "crypto.algorithms.sha256_sm3_ed448_rfc8032", "crypto.algorithms.cpp17_header",
+        "crypto.asn1.crypto", "crypto.asn1.header_cpp17",
+        "crypto.x509.real_der_and_negative", "crypto.x509.migrated_saltsnet_fixture",
+        "saltscore.cnet_policy", "saltscore.cnet_tcp_loopback",
+        "saltscore.two_cnet_plugins", "saltscore.cnet_tls_ca_san",
+        "saltscore.gmssl_tls_io_abi", "saltscore.gmssl_shangmi_provider",
+        "saltscore.cnet_owner_original", "saltscore.cnet_native_crypto_owner",
+        "saltscore.cnet_native_crypto_owner_negative",
     }
     required.update("saltscore.original_concurrency." + name for name in (
         "disruptor_test", "thread_pool_test", "thread_pool_lf_test",
@@ -83,6 +91,8 @@ def required_native_tests(rid):
         "concurrency_header_cpp_test", "typed_rcu_cpp_test"))
     if rid == "windows-x64":
         required.update({"capture_windows_test", "capture_exposure_windows_test"})
+        required.update({"saltscore.cnet_owner_original_numeric_host",
+                         "saltscore.cnet_owner_numeric_host_gate_contract"})
     else:
         required.update({"capture_posix_test", "saltscore.serial_posix_pty"})
     if rid.startswith("linux-"):
@@ -119,7 +129,11 @@ def build(args):
                    "-DCMAKE_C_FLAGS_RELEASE=-O1 -g -DNDEBUG",
                    "-DCMAKE_CXX_FLAGS_RELEASE=-O1 -g -DNDEBUG"]
     build_dir, prefix = output / "build", output / "install"
-    options = [f"-D{key}={value}" for key, value in config["candidate_cmake_options"].items()]
+    configured_options = dict(config["candidate_cmake_options"])
+    # Preserve the real original Owner gate on every native candidate. Cross
+    # profiles build/link installed consumers, without claiming native runs.
+    configured_options["SALTSCORE_CNET_OWNER_SOURCE_TESTS"] = "OFF" if cross else "ON"
+    options = [f"-D{key}={value}" for key, value in configured_options.items()]
     run(["cmake", "-S", root, "-B", build_dir, *common, *options,
          "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON", "-DCMAKE_INSTALL_LIBDIR=lib",
          f"-DCMAKE_INSTALL_PREFIX={prefix}",
@@ -153,7 +167,10 @@ def build(args):
         ("foundation", "tests/installed",
          {"sdk.simd_c11", "sdk.simd_cpp17", "sdk.consumer_c", "sdk.consumer_cpp",
           "sdk.error_c11", "sdk.error_cpp17", "sdk.mpmc_c11", "sdk.mpmc_cpp17",
-          "sdk.asn1_from_core_c11", "sdk.asn1_from_core_cpp17"}),
+          "sdk.asn1_from_core_c11", "sdk.asn1_from_core_cpp17",
+          "sdk.crypto_from_core_c11", "sdk.crypto_from_core_cpp17",
+          "sdk.uri_consumer_c", "sdk.uri_consumer_cpp",
+          "sdk.cnet_consumer_c", "sdk.cnet_consumer_cpp", "sdk.abi_owner_consumer"}),
         ("fs", "tests/fs-installed", {"saltscore.fs.installed_c", "saltscore.fs.installed_cpp"}),
         ("process", "tests/process-installed",
          {"saltscore.process.installed_c", "saltscore.process.installed_cpp"}),

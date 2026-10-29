@@ -4,6 +4,13 @@ on:
   pull_request:
 permissions:
   contents: read
+  packages: read
+env:
+  # Preserve source-lock Git blob bytes from the initial checkout.
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: "false"
+
 jobs:
   sdk:
     strategy:
@@ -13,6 +20,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - name: Prove no legacy Salts/CMeta/CFlow/CSTL dependency
         shell: bash
         run: |
@@ -35,11 +45,15 @@ jobs:
           python3 -m unittest discover -s tests -p 'test_original_module_paths.py' -v
           python3 tools/check_cnet_ci_triggers.py
           python3 -m unittest tests.test_cnet_ci_triggers
+      - name: Restore exact prerequisites for the default local Crypto and CNet graph
+        uses: ./.github/actions/setup-core-native
+        with:
+          token: ${{ github.token }}
       - name: Configure, compile, test, and install
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S . -B build -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/saltscore-sdk"
+          cmake -S . "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" -B build -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/saltscore-sdk"
           cmake --build build --config Release --parallel 2
           ctest --test-dir build --output-on-failure -C Release
           cmake --install build --config Release

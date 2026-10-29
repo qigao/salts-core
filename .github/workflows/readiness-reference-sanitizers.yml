@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - ".github/workflows/readiness-reference-sanitizers.yml"
+      - ".github/actions/setup-core-native/**"
+      - "crypto/native/**"
       - "tests/readiness-reference/**"
       - "platform/src/readiness*"
       - "platform/include/salts/readiness.h"
@@ -12,6 +14,13 @@ on:
 
 permissions:
   contents: read
+  packages: read
+
+env:
+  # Preserve source-lock Git blob bytes from the initial checkout.
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: "false"
 
 jobs:
   source-parity:
@@ -28,19 +37,26 @@ jobs:
     name: Original Readiness ${{ matrix.kind }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: qigao/salts
           ref: df4c697d2f1facb6b54a3568520dd743c628aa81
           path: salts-readiness-reference
           persist-credentials: false
+      - name: Restore exact prerequisites for the default local Crypto and CNet graph
+        uses: ./.github/actions/setup-core-native
+        with:
+          token: ${{ github.token }}
       - name: Build pinned instrumented native Core shared owner
         shell: bash
         run: |
           set -euo pipefail
           test "$(git -C salts-readiness-reference rev-parse HEAD)" = df4c697d2f1facb6b54a3568520dd743c628aa81
           prefix="$RUNNER_TEMP/readiness-source-${{ matrix.kind }}"
-          cmake -S . -B build-readiness-owner-${{ matrix.kind }} -G Ninja \
+          cmake -S . "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" -B build-readiness-owner-${{ matrix.kind }} -G Ninja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_TESTING=OFF \
             -DSALTSCORE_ENABLE_EPOLL_READINESS=ON \
             "-DCMAKE_C_FLAGS=${{ matrix.flags }}" \

@@ -10,6 +10,8 @@ on:
       - "vcpkg.json"
       - "vcpkg-configuration.json"
       - ".github/workflows/playback-native.yml"
+      - ".github/actions/setup-core-native/**"
+      - "crypto/native/**"
   workflow_dispatch:
 permissions:
   contents: read
@@ -17,6 +19,12 @@ permissions:
 concurrency:
   group: saltscore-playback-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
+env:
+  # Preserve source-lock Git blob bytes from the initial checkout.
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: "false"
+
 jobs:
   playback:
     name: "Playback ${{ matrix.profile }}"
@@ -67,7 +75,7 @@ jobs:
           source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Restore the original pinned miniaudio dependency
         id: cache
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@7bb5b556a001bc82d2922a04a718e986a7f47f54
+        uses: ./.github/actions/setup-core-native
         with:
           token: ${{ github.token }}
           triplet: ${{ matrix.triplet }}

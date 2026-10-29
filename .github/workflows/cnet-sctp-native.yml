@@ -7,15 +7,26 @@ on:
       - "tools/audit_cnet_sctp_source.py"
       - "tools/check_dependency_boundaries.py"
       - ".github/workflows/cnet-sctp-native.yml"
+      - ".github/actions/setup-core-native/**"
+      - "crypto/native/**"
   push:
     paths:
       - "sctp/**"
       - "CMakeLists.txt"
       - "tools/audit_cnet_sctp_source.py"
       - ".github/workflows/cnet-sctp-native.yml"
+      - ".github/actions/setup-core-native/**"
+      - "crypto/native/**"
   workflow_dispatch:
 permissions:
   contents: read
+  packages: read
+env:
+  # Preserve source-lock Git blob bytes from the initial checkout.
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: "false"
+
 jobs:
   sctp-native:
     name: "SCTP C11 source and installed Salts::SCTP / ${{ matrix.os }}"
@@ -28,6 +39,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Original source hashes and strict single-owner boundaries
         shell: bash
@@ -36,6 +48,10 @@ jobs:
           python3 tools/audit_cnet_sctp_source.py
           python3 tools/check_dependency_boundaries.py
           python3 -m unittest discover -s tests -p 'test_dependency_boundaries.py'
+      - name: Restore exact prerequisites for the default local Crypto and CNet graph
+        uses: ./.github/actions/setup-core-native
+        with:
+          token: ${{ github.token }}
       - name: Full native C11 SCTP association and CNet conformance
         shell: bash
         run: |
@@ -47,7 +63,7 @@ jobs:
             gen=(-G Ninja)
             threads=ON
           fi
-          cmake -S . -B build-sctp "${gen[@]}" \
+          cmake -S . "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" -B build-sctp "${gen[@]}" \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
             -DSALTSCORE_BUILD_SCTP=ON \
             "-DCNET_SCTP_TEST_OWNER_THREADS=$threads" \

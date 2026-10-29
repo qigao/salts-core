@@ -16,6 +16,8 @@ on:
       - "tests/zstd-installed/**"
       - "tools/migration/**"
       - ".github/workflows/zstd-native.yml"
+      - ".github/actions/setup-core-native/**"
+      - "crypto/native/**"
   workflow_dispatch:
 
 permissions:
@@ -25,6 +27,12 @@ permissions:
 concurrency:
   group: saltscore-zstd-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
+
+env:
+  # Preserve source-lock Git blob bytes from the initial checkout.
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: "false"
 
 jobs:
   zstd:
@@ -72,7 +80,7 @@ jobs:
           source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Exact original static provider from the pinned registry
         id: cache
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@7bb5b556a001bc82d2922a04a718e986a7f47f54
+        uses: ./.github/actions/setup-core-native
         with:
           token: ${{ github.token }}
           triplet: ${{ matrix.triplet }}

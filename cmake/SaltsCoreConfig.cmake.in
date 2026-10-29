@@ -11,12 +11,10 @@ get_filename_component(ASN1_DIR
   "${CMAKE_CURRENT_LIST_DIR}/../ASN1" REALPATH)
 find_dependency(ASN1 0.1 CONFIG REQUIRED
   PATHS "${ASN1_DIR}" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
-if(@SALTSCORE_CONFIG_HAS_CRYPTO@)
-  get_filename_component(Crypto_DIR
-    "${CMAKE_CURRENT_LIST_DIR}/../Crypto" REALPATH)
-  find_dependency(Crypto 0.1 CONFIG REQUIRED
-    PATHS "${Crypto_DIR}" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
-endif()
+get_filename_component(Crypto_DIR
+  "${CMAKE_CURRENT_LIST_DIR}/../Crypto" REALPATH)
+find_dependency(Crypto 0.1 CONFIG REQUIRED
+  PATHS "${Crypto_DIR}" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
 # Reject a pre-existing legacy Salts runtime owner instead of silently accepting
 # colliding Salts:: targets from a different binary or SDK.
@@ -26,11 +24,23 @@ if(TARGET Salts::Core AND NOT _salts_core_owner STREQUAL "${CMAKE_CURRENT_LIST_D
 endif()
 include("${CMAKE_CURRENT_LIST_DIR}/SaltsCoreTargets.cmake")
 set_property(GLOBAL PROPERTY SALTS_CORE_PACKAGE_OWNER "${CMAKE_CURRENT_LIST_DIR}")
-foreach(_salts_core_required IN ITEMS Core Platform Concurrency Coroutine NativeIO ASN1)
+foreach(_salts_core_required IN ITEMS Core Platform Concurrency FS Coroutine NativeIO ASN1 Crypto URI CNet)
   if(NOT TARGET "Salts::${_salts_core_required}")
     message(FATAL_ERROR "SaltsCore SDK missing required Salts::${_salts_core_required} target")
   endif()
 endforeach()
+foreach(_salts_core_archive IN ITEMS ASN1 Crypto URI)
+  get_target_property(_salts_core_kind "Salts::${_salts_core_archive}" TYPE)
+  if(NOT _salts_core_kind STREQUAL "STATIC_LIBRARY")
+    message(FATAL_ERROR "SaltsCore requires its installed static ${_salts_core_archive} owner")
+  endif()
+endforeach()
+get_target_property(_salts_core_kind Salts::CNet TYPE)
+if(NOT _salts_core_kind STREQUAL "SHARED_LIBRARY")
+  message(FATAL_ERROR "SaltsCore requires its installed shared CNet owner")
+endif()
 unset(_salts_core_owner)
 unset(_salts_core_required)
+unset(_salts_core_archive)
+unset(_salts_core_kind)
 check_required_components(SaltsCore)

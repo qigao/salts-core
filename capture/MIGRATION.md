@@ -68,13 +68,14 @@ is not treated as the effective API. The dedicated NDK configure regression
 accepts API 26 and requires API 21 to fail the same production guard. It does
 not claim execution on an Android device.
 
-The Capture-only iOS feature has no private vcpkg packages: the original iOS
-backend uses Apple frameworks. Its workflow therefore configures the full
-iPhoneOS/arm64 source and installed-consumer graphs through CMake's real Apple
-SDK support without invoking an empty private-provider restore. All common
-public-symbol references remain required, including the six unresolved iOS
-implementations below. The unified Core SDK's iOS restore is unchanged because
-its other enabled modules have real private dependencies.
+The Capture iOS backend itself has no private vcpkg packages and uses Apple
+frameworks. The default Core graph now also builds local Crypto and CNet,
+so the Capture workflow restores the real base c-ares, KCP and SIMDe
+dependencies on iOS as on every other platform. It configures the full
+iPhoneOS/arm64 source and installed-consumer graphs through the canonical
+toolchain and CMake's real Apple SDK support. All common public-symbol
+references remain required, including the six unresolved iOS implementations
+below; dependency restoration does not resolve those missing definitions.
 
 The frozen vcpkg baseline is
 `b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01`: miniaudio is `0.11.22`, and libyuv

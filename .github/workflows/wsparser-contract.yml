@@ -8,6 +8,8 @@ on:
       - "tests/CMakeLists.txt"
       - "CMakeLists.txt"
       - ".github/workflows/wsparser-contract.yml"
+      - ".github/actions/setup-core-native/**"
+      - "crypto/native/**"
   pull_request:
     paths:
       - "cnet/src/wsparser/**"
@@ -16,8 +18,17 @@ on:
       - "tests/CMakeLists.txt"
       - "CMakeLists.txt"
       - ".github/workflows/wsparser-contract.yml"
+      - ".github/actions/setup-core-native/**"
+      - "crypto/native/**"
 permissions:
   contents: read
+  packages: read
+env:
+  # Preserve source-lock Git blob bytes from the initial checkout.
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: "false"
+
 jobs:
   frame-contract:
     strategy:
@@ -27,16 +38,23 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - name: Check standalone dependency boundaries
         shell: bash
         run: |
           python3 tools/check_dependency_boundaries.py
           python3 -m unittest discover -s tests -p test_dependency_boundaries.py
+      - name: Restore exact prerequisites for the default local Crypto and CNet graph
+        uses: ./.github/actions/setup-core-native
+        with:
+          token: ${{ github.token }}
       - name: Build and exercise opt-in frame parser
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S . -B build-ws -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DSALTSCORE_BUILD_WEBSOCKET_PARSER=ON "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/saltscore-sdk"
+          cmake -S . "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" -B build-ws -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DSALTSCORE_BUILD_WEBSOCKET_PARSER=ON "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/saltscore-sdk"
           cmake --build build-ws --config Release --parallel 2
           ctest --test-dir build-ws --output-on-failure -C Release
           cmake --install build-ws --config Release

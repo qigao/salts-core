@@ -12,6 +12,8 @@ on:
       - "tests/native-modules/**"
       - "tests/installed/**"
       - ".github/workflows/native-modules.yml"
+      - ".github/actions/setup-core-native/**"
+      - "crypto/native/**"
   pull_request:
     paths:
       - "unicode/**"
@@ -23,10 +25,18 @@ on:
       - "tests/native-modules/**"
       - "tests/installed/**"
       - ".github/workflows/native-modules.yml"
+      - ".github/actions/setup-core-native/**"
+      - "crypto/native/**"
   workflow_dispatch:
 permissions:
   contents: read
   packages: read
+
+env:
+  # Preserve source-lock Git blob bytes from the initial checkout.
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: "false"
 
 jobs:
   original-native:
@@ -40,9 +50,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - name: Restore exact re2c 4.6 Unicode 17 host generator and data
-        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@2e214ae44a3e3244eded5db6361194576356fc9e
+      - name: Restore exact Core dependencies and re2c host tools
+        uses: ./.github/actions/setup-core-native
         with:
           token: ${{ github.token }}
       - name: Build original source under sole SaltsCore targets, test and install
@@ -58,7 +69,7 @@ jobs:
           fi
           test -d "$RE2C_ROOT/share/re2c/stdlib"
           "$RE2C_ROOT/bin/re2c" --version || "$RE2C_ROOT/bin/re2c.exe" --version
-          cmake -S . -B build-native "${gen[@]}" \
+          cmake -S . "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" -B build-native "${gen[@]}" \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
             -DSALTSCORE_BUILD_TINYTEST=ON \
             -DSALTSCORE_BUILD_CSERDE=ON \

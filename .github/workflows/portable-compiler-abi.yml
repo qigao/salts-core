@@ -4,12 +4,22 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  packages: read
+env:
+  # Preserve source-lock Git blob bytes from the initial checkout.
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: "false"
+
 jobs:
   win-llvm-tinycc:
     runs-on: windows-2022
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - name: Pin llvm-mingw and TinyCC by SHA256
         shell: pwsh
         run: |
@@ -175,6 +185,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - name: Build immutable native TinyCC source
         shell: bash
         run: |
@@ -207,11 +220,15 @@ jobs:
           done
 
 
+      - name: Restore exact prerequisites for the default local Crypto and CNet graph
+        uses: ./.github/actions/setup-core-native
+        with:
+          token: ${{ github.token }}
       - name: Require real installed Salts::Platform SDK from native TinyCC
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S . -B build-sdk -G Ninja -DCMAKE_C_COMPILER=gcc \
+          cmake -S . "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" -B build-sdk -G Ninja -DCMAKE_C_COMPILER=gcc \
             -DBUILD_TESTING=OFF "-DCMAKE_INSTALL_PREFIX=$PWD/portable-installed"
           cmake --build build-sdk --parallel 2
           cmake --install build-sdk
@@ -226,7 +243,6 @@ jobs:
             -o build-portable/tcc_installed_c11
           export LD_LIBRARY_PATH="$PWD/portable-installed/lib:$(printenv LD_LIBRARY_PATH || true)"
           for i in 1 2 3 4 5; do ./build-portable/tcc_installed_c11; done
-
   macos-native-tinycc:
     strategy:
       fail-fast: false
@@ -236,6 +252,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - name: Build pinned native Darwin TinyCC
         shell: bash
         run: |
@@ -282,19 +301,24 @@ jobs:
             flags: -fsanitize=address,undefined
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Restore exact prerequisites for the default local Crypto and CNet graph
+        uses: ./.github/actions/setup-core-native
+        with:
+          token: ${{ github.token }}
       - name: Instrument actual portable TSS / timed tests
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S . -B build-sanitize -G Ninja \
+          cmake -S . "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" -B build-sanitize -G Ninja \
             -DCMAKE_C_COMPILER=${{ matrix.compiler }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.compiler == 'gcc' && 'g++' || 'clang++' }} \
             "-DCMAKE_C_FLAGS=${{ matrix.flags }} -fno-omit-frame-pointer -g -O1" \
+            "-DCMAKE_CXX_FLAGS=${{ matrix.flags }} -fno-omit-frame-pointer -g -O1" \
             -DBUILD_TESTING=ON
           cmake --build build-sanitize \
-            --target saltscore_portable_timing_test saltscore_portable_tss_test saltscore_portable_timed_mutex_test saltscore_c11_threads_test \
             --parallel 2
           ctest --test-dir build-sanitize --output-on-failure \
             --repeat until-fail:10 -R '^saltscore\.(portable_(timing|tss|timed_mutex)|c11_threads_facade)$'
-
-
-

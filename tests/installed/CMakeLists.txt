@@ -31,7 +31,7 @@ if(TARGET Salts::SIMD)
 endif()
 
 # find_package name remains SaltsCore; its ONLY imported link namespace is Salts::.
-foreach(_owner IN ITEMS Core Platform Concurrency Coroutine NativeIO ASN1)
+foreach(_owner IN ITEMS Core Platform Concurrency Coroutine NativeIO ASN1 Crypto URI CNet)
   if(NOT TARGET "Salts::${_owner}")
     message(FATAL_ERROR "Required canonical Salts::${_owner} target is absent")
   endif()
@@ -56,6 +56,21 @@ target_compile_features(asn1_from_core_cpp PRIVATE cxx_std_17)
 target_link_libraries(asn1_from_core_cpp PRIVATE Salts::ASN1)
 add_test(NAME sdk.asn1_from_core_cpp17 COMMAND asn1_from_core_cpp)
 
+# The same installed SDK owns the native Crypto archive. These original
+# consumers exercise SM3/SHA256/Ed448 and TLS-provider lifecycle contracts.
+get_target_property(_crypto_kind Salts::Crypto TYPE)
+if(NOT _crypto_kind STREQUAL "STATIC_LIBRARY")
+  message(FATAL_ERROR "SaltsCore must import its single static Crypto owner")
+endif()
+add_executable(crypto_from_core_c ../../crypto/tests/owner/consumer.c)
+target_compile_features(crypto_from_core_c PRIVATE c_std_11)
+target_link_libraries(crypto_from_core_c PRIVATE Salts::Crypto)
+add_test(NAME sdk.crypto_from_core_c11 COMMAND crypto_from_core_c)
+add_executable(crypto_from_core_cpp ../../crypto/tests/owner/consumer.cpp)
+target_compile_features(crypto_from_core_cpp PRIVATE cxx_std_17)
+target_link_libraries(crypto_from_core_cpp PRIVATE Salts::Crypto)
+add_test(NAME sdk.crypto_from_core_cpp17 COMMAND crypto_from_core_cpp)
+
 # Obsolete names are forbidden, never provided as aliases.
 set(_forbidden_ns "SaltsCore")
 foreach(_owner IN ITEMS Core Platform Concurrency Coroutine NativeIO)
@@ -76,45 +91,45 @@ target_link_libraries(consumer_cpp PRIVATE
   Salts::Core Salts::Platform Salts::Concurrency Salts::Coroutine Salts::NativeIO)
 add_test(NAME sdk.consumer_cpp COMMAND consumer_cpp)
 
-if(TARGET Salts::URI)
-  add_executable(uri_consumer_c uri_consumer.c)
-  target_compile_features(uri_consumer_c PRIVATE c_std_11)
-  target_link_libraries(uri_consumer_c PRIVATE Salts::URI)
-  add_test(NAME sdk.uri_consumer_c COMMAND uri_consumer_c)
+add_executable(uri_consumer_c uri_consumer.c)
+target_compile_features(uri_consumer_c PRIVATE c_std_11)
+target_link_libraries(uri_consumer_c PRIVATE Salts::URI)
+add_test(NAME sdk.uri_consumer_c COMMAND uri_consumer_c)
 
-  add_executable(uri_consumer_cpp uri_consumer.cpp)
-  target_compile_features(uri_consumer_cpp PRIVATE cxx_std_17)
-  target_link_libraries(uri_consumer_cpp PRIVATE Salts::URI)
-  add_test(NAME sdk.uri_consumer_cpp COMMAND uri_consumer_cpp)
+add_executable(uri_consumer_cpp uri_consumer.cpp)
+target_compile_features(uri_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(uri_consumer_cpp PRIVATE Salts::URI)
+add_test(NAME sdk.uri_consumer_cpp COMMAND uri_consumer_cpp)
+
+# CNet is mandatory in the local Core SDK; an absent target cannot skip these
+# real installed C/C++ and single-runtime ownership consumers.
+get_target_property(_cnet_kind Salts::CNet TYPE)
+if(NOT _cnet_kind STREQUAL "SHARED_LIBRARY")
+  message(FATAL_ERROR "SaltsCore must import its single shared CNet owner")
 endif()
+add_executable(cnet_consumer_c cnet_consumer.c)
+target_compile_features(cnet_consumer_c PRIVATE c_std_11)
+target_link_libraries(cnet_consumer_c PRIVATE Salts::CNet)
+add_test(NAME sdk.cnet_consumer_c COMMAND cnet_consumer_c)
 
-# Only present when an exact CNet provider SDK was actually configured and
-# installed. The baseline Core installation must work with CNet disabled.
-if(TARGET Salts::CNet)
-  add_executable(cnet_consumer_c cnet_consumer.c)
-  target_compile_features(cnet_consumer_c PRIVATE c_std_11)
-  target_link_libraries(cnet_consumer_c PRIVATE Salts::CNet)
-  add_test(NAME sdk.cnet_consumer_c COMMAND cnet_consumer_c)
+add_executable(cnet_consumer_cpp cnet_consumer.cpp)
+target_compile_features(cnet_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(cnet_consumer_cpp PRIVATE Salts::CNet)
+add_test(NAME sdk.cnet_consumer_cpp COMMAND cnet_consumer_cpp)
 
-  add_executable(cnet_consumer_cpp cnet_consumer.cpp)
-  target_compile_features(cnet_consumer_cpp PRIVATE cxx_std_17)
-  target_link_libraries(cnet_consumer_cpp PRIVATE Salts::CNet)
-  add_test(NAME sdk.cnet_consumer_cpp COMMAND cnet_consumer_cpp)
-
-  # Independent installed SDK build: EXE and plugin both import one Core/Platform
-  # runtime while CNet is simultaneously loaded. No source-build references.
-  add_library(owner_probe_installed SHARED ../runtime_owner_module.c)
-  target_compile_features(owner_probe_installed PRIVATE c_std_11)
-  set_target_properties(owner_probe_installed PROPERTIES
-    C_STANDARD_REQUIRED ON C_EXTENSIONS OFF WINDOWS_EXPORT_ALL_SYMBOLS ON)
-  target_link_libraries(owner_probe_installed PRIVATE
-    Salts::Core Salts::Platform)
-  add_executable(abi_owner_consumer abi_owner_consumer.c)
-  target_compile_features(abi_owner_consumer PRIVATE c_std_11)
-  target_link_libraries(abi_owner_consumer PRIVATE
-    Salts::CNet Salts::Core Salts::Platform owner_probe_installed)
-  add_test(NAME sdk.abi_owner_consumer COMMAND abi_owner_consumer)
-endif()
+# Independent installed SDK build: EXE and plugin both import one Core/Platform
+# runtime while CNet is simultaneously loaded. No source-build references.
+add_library(owner_probe_installed SHARED ../runtime_owner_module.c)
+target_compile_features(owner_probe_installed PRIVATE c_std_11)
+set_target_properties(owner_probe_installed PROPERTIES
+  C_STANDARD_REQUIRED ON C_EXTENSIONS OFF WINDOWS_EXPORT_ALL_SYMBOLS ON)
+target_link_libraries(owner_probe_installed PRIVATE
+  Salts::Core Salts::Platform)
+add_executable(abi_owner_consumer abi_owner_consumer.c)
+target_compile_features(abi_owner_consumer PRIVATE c_std_11)
+target_link_libraries(abi_owner_consumer PRIVATE
+  Salts::CNet Salts::Core Salts::Platform owner_probe_installed)
+add_test(NAME sdk.abi_owner_consumer COMMAND abi_owner_consumer)
 
 # Canonical original tn_base64_* ABI: installed C11 and C++17 clients each
 # link the *same* Salts::Core DSO. No second codec/library or build-tree include.

@@ -34,6 +34,10 @@ RELEASE_TARGET_FLOOR = frozenset("Salts::" + name for name in (
     "ASN1", "Crypto", "CNet", "SCTP", "Serial", "USB", "Capture", "Playback"))
 FOUNDATION = frozenset("Salts::" + name for name in (
     "Core", "Platform", "Concurrency", "Coroutine", "NativeIO", "FS"))
+DEFAULT_MODULE_TYPES = {
+    "Salts::ASN1": "STATIC", "Salts::Crypto": "STATIC",
+    "Salts::URI": "STATIC", "Salts::CNet": "SHARED",
+}
 # This implementation checks archive structure and runs controlled candidate
 # builds. It does not yet verify retained, source-bound CI qualification for
 # every payload, a clean machine's complete runtime-library closure, or a real
@@ -256,6 +260,9 @@ def exported_targets(files, read):
                 binary_owners.add(owner)
     require(FOUNDATION.issubset(targets), "SDK is missing mandatory shared foundation targets")
     require(all(targets[t] == "SHARED" for t in FOUNDATION), "native foundation must have one shared owner")
+    for target, kind in DEFAULT_MODULE_TYPES.items():
+        require(target in targets, f"SDK is missing mandatory local module: {target}")
+        require(targets[target] == kind, f"{target} must retain its {kind} native owner")
     if "Salts::SIMD" in targets:
         require(targets["Salts::SIMD"] == "STATIC", "SIMD must be the static native module")
     require(not any(t in targets for t in ("Salts::CMeta", "Salts::CFlow", "Salts::CSTL")),

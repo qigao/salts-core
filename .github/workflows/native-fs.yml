@@ -10,9 +10,18 @@ on:
       - "tests/fs-installed/**"
       - "tools/check_dependency_boundaries.py"
       - ".github/workflows/native-fs.yml"
+      - ".github/actions/setup-core-native/**"
+      - "crypto/native/**"
   workflow_dispatch:
 permissions:
   contents: read
+  packages: read
+env:
+  # Preserve source-lock Git blob bytes from the initial checkout.
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: "false"
+
 jobs:
   native-fs:
     name: "Native rooted FS and installed C11 C++17 / ${{ matrix.os }}"
@@ -25,6 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: CMeta-free owner and no legacy C interfaces
         shell: bash
@@ -35,12 +45,16 @@ jobs:
             echo "Retired CMeta/Salts native API is forbidden in Core FS" >&2
             exit 1
           fi
+      - name: Restore exact prerequisites for the default local Crypto and CNet graph
+        uses: ./.github/actions/setup-core-native
+        with:
+          token: ${{ github.token }}
       - name: Native full C11 FS build and owner tests
         shell: bash
         run: |
           set -euo pipefail
           if [[ "$RUNNER_OS" == Windows ]]; then gen=(-G 'Visual Studio 18 2026' -A x64); else gen=(-G Ninja); fi
-          cmake -S . -B build-fs "${gen[@]}" -DBUILD_TESTING=ON \
+          cmake -S . "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" -B build-fs "${gen[@]}" -DBUILD_TESTING=ON \
             -DSALTSCORE_BUILD_FS=ON -DCMAKE_BUILD_TYPE=Release \
             "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/fs-native-sdk"
           cmake --build build-fs --config Release --parallel 2

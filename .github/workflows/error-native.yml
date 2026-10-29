@@ -17,14 +17,23 @@ on:
       - "tests/installed/**"
       - "tools/migration/original-*.json"
       - ".github/workflows/error-native.yml"
+      - ".github/actions/setup-core-native/**"
+      - "crypto/native/**"
   workflow_dispatch:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: saltscore-error-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
+
+env:
+  # Preserve source-lock Git blob bytes from the initial checkout.
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: "false"
 
 jobs:
   error:
@@ -69,6 +78,10 @@ jobs:
         with:
           profile: saltscore-error-${{ matrix.profile }}
           source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Restore exact prerequisites for the default local Crypto and CNet graph
+        uses: ./.github/actions/setup-core-native
+        with:
+          token: ${{ github.token }}
       - name: Configure and build the complete native graph
         shell: bash
         run: |
@@ -77,7 +90,7 @@ jobs:
           if [[ -n "$ERROR_FLAGS" ]]; then
             args+=("-DCMAKE_C_FLAGS=$ERROR_FLAGS" "-DCMAKE_CXX_FLAGS=$ERROR_FLAGS")
           fi
-          cmake -S . -B build-error -G Ninja \
+          cmake -S . "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" -B build-error -G Ninja \
             -DBUILD_TESTING=ON -DSALTSCORE_BUILD_TINYTEST=ON \
             "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/error-sdk" \
             -DCMAKE_POLICY_DEFAULT_CMP0141=NEW \

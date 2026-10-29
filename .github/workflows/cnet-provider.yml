@@ -1,4 +1,4 @@
-name: SaltsCore CNet pinned-provider qualification
+name: SaltsCore default local Crypto and CNet qualification
 on:
   pull_request:
     paths:
@@ -36,6 +36,14 @@ on:
       - "vcpkg-configuration.json"
       - "cmake/ci/github-packages.py"
       - ".github/workflows/cnet-provider.yml"
+      - ".github/actions/setup-core-native/**"
+      - "crypto/**"
+      - "crypto/CMakeLists.txt"
+      - "crypto/src/**"
+      - "crypto/include/**"
+      - "crypto/native/**"
+      - "asn1/**"
+      - "vendor/gmssl-extensions/**"
       - "tests/installed/cnet_consumer.*"
       - "tests/test_gmssl_*.c"
       - "tests/test_cnet_tcp_loopback.c"
@@ -47,15 +55,23 @@ on:
 permissions:
   contents: read
   packages: read
+env:
+  # Preserve source-lock Git blob bytes from the initial checkout.
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: "false"
+
 jobs:
   linux-cnet:
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     env:
-      VCPKG_MANIFEST_FEATURES: cnet
       VCPKG_DEFAULT_TRIPLET: x64-linux
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - name: Install C11 build tools and host re2c
         shell: bash
         run: |
@@ -64,39 +80,20 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             ninja-build pkg-config nasm re2c autoconf automake libtool \
             curl zip unzip tar
-      - name: Bootstrap canonical vcpkg scripts (no NuGet, no Mono)
-        shell: bash
-        run: |
-          set -euo pipefail
-          root="$RUNNER_TEMP/saltscore-vcpkg"
-          mkdir -p "$root"
-          git -C "$root" init -q
-          git -C "$root" remote add origin https://github.com/microsoft/vcpkg.git
-          git -C "$root" fetch --no-tags origin 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
-          git -C "$root" checkout --detach FETCH_HEAD
-          git -C "$root" fetch --no-tags origin b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
-          test "$(git -C "$root" rev-parse HEAD)" = 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
-          git -C "$root" cat-file -e "b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01:versions/baseline.json"
-          "$root/bootstrap-vcpkg.sh" -disableMetrics
-          "$root/vcpkg" version
-          echo "VCPKG_ROOT=$root" >> "$GITHUB_ENV"
-      - name: Restore local ABI binary cache
-        uses: actions/cache@v4
+      - name: Restore exact prerequisites for the default local Crypto and CNet graph
+        uses: ./.github/actions/setup-core-native
         with:
-          path: build/vcpkg-binary-cache
-          key: saltscore-cnet-x64-linux-v8-04a9d8e5-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
-      - name: Configure explicit CNet provider graph
+          token: ${{ github.token }}
+      - name: Configure the default local Crypto and CNet graph
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p build/vcpkg-binary-cache
-          echo "VCPKG_BINARY_SOURCES=clear;files,$GITHUB_WORKSPACE/build/vcpkg-binary-cache,readwrite" >> "$GITHUB_ENV"
-          export VCPKG_BINARY_SOURCES="clear;files,$GITHUB_WORKSPACE/build/vcpkg-binary-cache,readwrite"
           cmake -S . -B build-cnet -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_TARGET_TRIPLET=x64-linux -DVCPKG_MANIFEST_FEATURES=cnet \
-            -DSALTSCORE_BUILD_URI=ON -DSALTSCORE_BUILD_CNET=ON \
+            -DCMAKE_TOOLCHAIN_FILE="$CORE_CI_TOOLCHAIN" \
+            "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" \
+            "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" \
+            -DSALTSCORE_BUILD_URI=ON \
             -DSALTSCORE_BUILD_TINYTEST=ON -DSALTSCORE_CNET_OWNER_SOURCE_TESTS=ON \
             "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/saltscore-sdk"
           cmake --build build-cnet --parallel 2
@@ -114,12 +111,14 @@ jobs:
           # Exact required pinned-provider gates, in addition to all CTests.
           ctest --test-dir build-cnet --output-on-failure -C Release \
             -R '^saltscore[.]gmssl_(tls_io_abi|shangmi_provider)$' --no-tests=error
+          ctest --test-dir build-cnet --output-on-failure -C Release \
+            -R '^saltscore[.]cnet_native_crypto_owner$' --no-tests=error
           cmake --install build-cnet --config Release
       - name: Real installed CNet C11/C++17 consumer
         shell: bash
         run: |
           set -euo pipefail
-          export LD_LIBRARY_PATH="$RUNNER_TEMP/saltscore-sdk/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:${LD_LIBRARY_PATH:-}"
+          export LD_LIBRARY_PATH="$RUNNER_TEMP/saltscore-sdk/lib:${LD_LIBRARY_PATH:-}"
           cmake -S tests/installed -B build-installed-cnet -G Ninja \
             -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/saltscore-sdk"
           cmake --build build-installed-cnet --parallel 2
@@ -149,7 +148,7 @@ jobs:
           test ! -e "$relocated"
           mv "$RUNNER_TEMP/saltscore-sdk" "$relocated"
           test ! -e "$RUNNER_TEMP/saltscore-sdk"
-          export LD_LIBRARY_PATH="$relocated/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:${LD_LIBRARY_PATH:-}"
+          export LD_LIBRARY_PATH="$relocated/lib:${LD_LIBRARY_PATH:-}"
           cmake -S tests/installed -B build-relocated-cnet -G Ninja \
             -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$relocated"
           cmake --build build-relocated-cnet --parallel 2
@@ -167,10 +166,11 @@ jobs:
     name: macOS pinned CNet provider + live TLS
     runs-on: macos-15
     timeout-minutes: 60
-    env:
-      VCPKG_MANIFEST_FEATURES: cnet
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - name: Install pinned provider build prerequisites
         shell: bash
         run: |
@@ -178,52 +178,27 @@ jobs:
           for formula in ninja re2c nasm pkgconf autoconf automake libtool; do
             brew list --versions "$formula" >/dev/null 2>&1 || brew install "$formula"
           done
-      - name: Bootstrap canonical vcpkg scripts (no NuGet or Mono)
-        shell: bash
-        run: |
-          set -euo pipefail
-          case "$(uname -m)" in
-            arm64) triplet=arm64-osx ;;
-            x86_64) triplet=x64-osx ;;
-            *) echo "unsupported macOS vcpkg architecture" >&2; exit 1 ;;
-          esac
-          echo "VCPKG_TARGET_TRIPLET=$triplet" >> "$GITHUB_ENV"
-          root="$RUNNER_TEMP/saltscore-vcpkg"
-          mkdir -p "$root"
-          git -C "$root" init -q
-          git -C "$root" remote add origin https://github.com/microsoft/vcpkg.git
-          git -C "$root" fetch --no-tags origin 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
-          git -C "$root" checkout --detach FETCH_HEAD
-          git -C "$root" fetch --no-tags origin b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
-          test "$(git -C "$root" rev-parse HEAD)" = 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
-          git -C "$root" cat-file -e "b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01:versions/baseline.json"
-          "$root/bootstrap-vcpkg.sh" -disableMetrics
-          "$root/vcpkg" version
-          echo "VCPKG_ROOT=$root" >> "$GITHUB_ENV"
-      - name: Restore local files-only ABI package cache
-        uses: actions/cache@v4
+      - name: Restore exact prerequisites for the default local Crypto and CNet graph
+        uses: ./.github/actions/setup-core-native
         with:
-          path: build/vcpkg-binary-cache
-          key: saltscore-cnet-macos-v8-04a9d8e5-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          token: ${{ github.token }}
       - name: Configure, build and execute real macOS CNet
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p build/vcpkg-binary-cache
-          export VCPKG_BINARY_SOURCES="clear;files,$GITHUB_WORKSPACE/build/vcpkg-binary-cache,readwrite"
           cmake -S . -B build-cnet -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_TARGET_TRIPLET="$VCPKG_TARGET_TRIPLET" \
-            -DVCPKG_MANIFEST_FEATURES=cnet \
-            -DSALTSCORE_BUILD_URI=ON -DSALTSCORE_BUILD_CNET=ON \
+            -DCMAKE_TOOLCHAIN_FILE="$CORE_CI_TOOLCHAIN" \
+            "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" \
+            "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" \
+            -DSALTSCORE_BUILD_URI=ON \
             -DSALTSCORE_BUILD_TINYTEST=ON -DSALTSCORE_CNET_OWNER_SOURCE_TESTS=ON \
             "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/saltscore-sdk"
           cmake --build build-cnet --parallel 2
           ctest --test-dir build-cnet --output-on-failure -C Release --timeout 65 --no-tests=error
           for check in saltscore.cnet_tcp_loopback saltscore.cnet_tls_ca_san \
                        saltscore.gmssl_tls_io_abi saltscore.gmssl_shangmi_provider \
-                       saltscore.cnet_owner_original; do
+                       saltscore.cnet_owner_original saltscore.cnet_native_crypto_owner; do
             ctest --test-dir build-cnet -C Release --output-on-failure \
               -R "^$check$" --no-tests=error
           done
@@ -235,7 +210,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export DYLD_LIBRARY_PATH="$RUNNER_TEMP/saltscore-sdk/lib:$GITHUB_WORKSPACE/vcpkg_installed/$VCPKG_TARGET_TRIPLET/lib:${DYLD_LIBRARY_PATH:-}"
+          export DYLD_LIBRARY_PATH="$RUNNER_TEMP/saltscore-sdk/lib:${DYLD_LIBRARY_PATH:-}"
           cmake -S tests/installed -B build-installed-cnet -G Ninja \
             -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/saltscore-sdk"
           cmake --build build-installed-cnet --parallel 2
@@ -263,7 +238,7 @@ jobs:
           test ! -e "$relocated"
           mv "$RUNNER_TEMP/saltscore-sdk" "$relocated"
           test ! -e "$RUNNER_TEMP/saltscore-sdk"
-          export DYLD_LIBRARY_PATH="$relocated/lib:$GITHUB_WORKSPACE/vcpkg_installed/$VCPKG_TARGET_TRIPLET/lib:${DYLD_LIBRARY_PATH:-}"
+          export DYLD_LIBRARY_PATH="$relocated/lib:${DYLD_LIBRARY_PATH:-}"
           cmake -S tests/installed -B build-relocated-cnet -G Ninja \
             -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$relocated"
           cmake --build build-relocated-cnet --parallel 2
@@ -281,78 +256,42 @@ jobs:
     name: Windows MSVC pinned CNet provider + IOCP TLS
     runs-on: windows-2025
     timeout-minutes: 65
-    env:
-      VCPKG_MANIFEST_FEATURES: cnet
-      VCPKG_DEFAULT_TRIPLET: x64-windows
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Restore validated re2c from GitHub Packages via curl
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          python cmake/ci/github-packages.py re2c "$env:RUNNER_TEMP/qigao-re2c-binary"
-          if ($LASTEXITCODE -ne 0) { throw "curl-only re2c restore failed" }
-      - name: Bootstrap canonical vcpkg scripts without NuGet or Mono
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $root = Join-Path $env:RUNNER_TEMP 'saltscore-vcpkg'
-          New-Item -ItemType Directory -Force -Path $root | Out-Null
-          git -C $root init -q
-          git -C $root remote add origin https://github.com/microsoft/vcpkg.git
-          git -C $root fetch --no-tags origin 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
-          if ($LASTEXITCODE -ne 0) { throw "pinned vcpkg scripts fetch failed" }
-          git -C $root checkout --detach FETCH_HEAD
-          git -C $root fetch --no-tags origin b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
-          if ($LASTEXITCODE -ne 0) { throw "pinned vcpkg baseline fetch failed" }
-          $actual = (git -C $root rev-parse HEAD).Trim()
-          if ($actual -ne '04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4') { throw "unexpected vcpkg scripts revision" }
-          git -C $root cat-file -e "b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01:versions/baseline.json"
-          if ($LASTEXITCODE -ne 0) { throw "builtin baseline absent" }
-          & (Join-Path $root 'bootstrap-vcpkg.bat') -disableMetrics
-          if ($LASTEXITCODE -ne 0) { throw "vcpkg bootstrap failed" }
-          & (Join-Path $root 'vcpkg.exe') version
-          if ($LASTEXITCODE -ne 0) { throw "vcpkg tool unavailable" }
-          Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_ROOT=$root"
-      - name: Restore local Windows files-only ABI cache
-        uses: actions/cache@v4
+      - name: Restore exact prerequisites for the default local Crypto and CNet graph
+        uses: ./.github/actions/setup-core-native
         with:
-          path: build/vcpkg-binary-cache
-          key: saltscore-cnet-x64-windows-v8-04a9d8e5-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
-      - name: Build full pinned CNet and run real IOCP TCP/TLS tests
+          token: ${{ github.token }}
+      - name: Build full local-Crypto CNet and run real IOCP TCP/TLS tests
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $cache = Join-Path $env:GITHUB_WORKSPACE 'build/vcpkg-binary-cache'
-          New-Item -ItemType Directory -Force -Path $cache | Out-Null
-          $cache = $cache.Replace('\', '/')
-          $env:VCPKG_BINARY_SOURCES = "clear;files,$cache,readwrite"
-          $toolchain = Join-Path $env:VCPKG_ROOT 'scripts/buildsystems/vcpkg.cmake'
+          $toolchain = $env:CORE_CI_TOOLCHAIN
           $cmakeArgs = @('-S', '.', '-B', 'build-cnet', '-G', 'Visual Studio 18 2026',
                     '-A', 'x64', '-DBUILD_TESTING=ON',
                     "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
-                    '-DVCPKG_TARGET_TRIPLET=x64-windows',
-                    '-DVCPKG_MANIFEST_FEATURES=cnet',
-                    '-DSALTSCORE_BUILD_URI=ON', '-DSALTSCORE_BUILD_CNET=ON',
+                    "-DVCPKG_TARGET_TRIPLET=$env:CORE_CI_TRIPLET",
+                    "-DVCPKG_HOST_TRIPLET=$env:CORE_CI_HOST_TRIPLET",
+                    '-DSALTSCORE_BUILD_URI=ON',
                     '-DSALTSCORE_BUILD_TINYTEST=ON', '-DSALTSCORE_CNET_OWNER_SOURCE_TESTS=ON',
                     "-DCMAKE_INSTALL_PREFIX=$env:RUNNER_TEMP/saltscore-sdk")
           & cmake @cmakeArgs
           if ($LASTEXITCODE -ne 0) { throw "Windows CNet provider configure failed" }
           cmake --build build-cnet --config Release --parallel 2
           if ($LASTEXITCODE -ne 0) { throw "Windows CNet compilation failed" }
-          $vcpkgBin = Join-Path $env:GITHUB_WORKSPACE 'vcpkg_installed/x64-windows/bin'
           $buildBin = Join-Path $env:GITHUB_WORKSPACE 'build-cnet/bin/Release'
-          $env:PATH = "$vcpkgBin;$buildBin;$env:PATH"
+          $env:PATH = "$buildBin;$env:PATH"
           ctest --test-dir build-cnet -C Release --output-on-failure --timeout 65 --no-tests=error
           if ($LASTEXITCODE -ne 0) { throw "Windows CNet native CTest failed" }
           foreach ($test in @('saltscore.cnet_tcp_loopback', 'saltscore.cnet_tls_ca_san',
                               'saltscore.gmssl_tls_io_abi', 'saltscore.gmssl_shangmi_provider',
-                              'saltscore.cnet_owner_original')) {
+                              'saltscore.cnet_owner_original', 'saltscore.cnet_native_crypto_owner')) {
             ctest --test-dir build-cnet -C Release --output-on-failure -R "^$test$" --no-tests=error
             if ($LASTEXITCODE -ne 0) { throw "required Windows gate failed: $test" }
           }
@@ -365,9 +304,8 @@ jobs:
           # TinyTest --filter selects only the original numeric 127.0.0.1
           # resolver -> IOCP connect -> OPEN case; never a fake peer or retry.
           # A failed iteration stops immediately, preserving terminal cause.
-          $vcpkgBin = Join-Path $env:GITHUB_WORKSPACE 'vcpkg_installed/x64-windows/bin'
           $buildBin = Join-Path $env:GITHUB_WORKSPACE 'build-cnet/bin/Release'
-          $env:PATH = "$vcpkgBin;$buildBin;$env:PATH"
+          $env:PATH = "$buildBin;$env:PATH"
           & ctest --test-dir build-cnet -C Release --output-on-failure --no-tests=error --timeout 18 -R '^saltscore[.]cnet_owner_numeric_host_gate_contract$'
           if ($LASTEXITCODE -ne 0) { throw 'Issue #64 fail-closed numeric-host selection contract failed' }
           # Run all original cases in their real TinyTest order and in fresh
@@ -385,8 +323,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $prefix = Join-Path $env:RUNNER_TEMP 'saltscore-sdk'
-          $vcpkgBin = Join-Path $env:GITHUB_WORKSPACE 'vcpkg_installed/x64-windows/bin'
-          $env:PATH = "$prefix/bin;$vcpkgBin;$env:PATH"
+          $env:PATH = "$prefix/bin;$env:PATH"
           $cmakeArgs = @('-S', 'tests/installed', '-B', 'build-installed-cnet',
                          '-G', 'Visual Studio 18 2026', '-A', 'x64',
                          "-DCMAKE_PREFIX_PATH=$prefix")
@@ -403,7 +340,6 @@ jobs:
           if (-not (Select-String -Path "$prefix/lib/cmake/SaltsCore/SaltsCoreTargets.cmake" -SimpleMatch 'Salts::CNet' -Quiet)) {
             throw "missing installed CNet CMake target"
           }
-
       - name: Audit installed PE DLL exports and consumer imports
         shell: pwsh
         run: |
@@ -427,8 +363,7 @@ jobs:
           if (Test-Path $relocated) { throw 'relocated SDK prefix already exists' }
           Move-Item -Path $old -Destination $relocated
           if (Test-Path $old) { throw 'original SDK prefix must be absent' }
-          $providerBin = Join-Path $env:GITHUB_WORKSPACE 'vcpkg_installed/x64-windows/bin'
-          $env:PATH = "$relocated/bin;$providerBin;$env:PATH"
+          $env:PATH = "$relocated/bin;$env:PATH"
           $args = @('-S', 'tests/installed', '-B', 'build-relocated-cnet',
                     '-G', 'Visual Studio 18 2026', '-A', 'x64',
                     "-DCMAKE_PREFIX_PATH=$relocated")

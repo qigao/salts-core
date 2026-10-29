@@ -11,6 +11,8 @@ on:
       - "tools/crypto_pr43_retirement_manifest.json"
       - "tests/test_crypto_pr43_handoff.py"
       - ".github/workflows/first-party-asn1.yml"
+      - ".github/actions/setup-core-native/**"
+      - "crypto/native/**"
       - "tools/check_dependency_boundaries.py"
       - "tests/test_dependency_boundaries.py"
   pull_request:
@@ -24,11 +26,20 @@ on:
       - "tools/crypto_pr43_retirement_manifest.json"
       - "tests/test_crypto_pr43_handoff.py"
       - ".github/workflows/first-party-asn1.yml"
+      - ".github/actions/setup-core-native/**"
+      - "crypto/native/**"
       - "tools/check_dependency_boundaries.py"
       - "tests/test_dependency_boundaries.py"
 
 permissions:
   contents: read
+  packages: read
+
+env:
+  # Preserve source-lock Git blob bytes from the initial checkout.
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: "false"
 
 jobs:
   native-asn1:
@@ -40,6 +51,9 @@ jobs:
     name: First-party ASN1 / installed C11+C++17 (${{ matrix.os }})
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - name: Verify every root source module owns a CMake target
         shell: bash
         run: python3 tools/check_module_layout.py
@@ -50,6 +64,10 @@ jobs:
           python3 tools/check_crypto_module_ownership.py
           python3 tools/check_crypto_pr43_handoff.py
           python3 -m unittest discover -s tests -p 'test_crypto_pr43_handoff.py' -v
+      - name: Restore exact prerequisites for the default local Crypto and CNet graph
+        uses: ./.github/actions/setup-core-native
+        with:
+          token: ${{ github.token }}
       - name: Compile SaltsCore local ASN1 without an external Crypto SDK
         shell: bash
         run: |
@@ -58,10 +76,9 @@ jobs:
           if command -v cygpath >/dev/null; then
             prefix="$(cygpath -m "$prefix")"
           fi
-          cmake -S . -B build-asn1 \
+          cmake -S . "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" -B build-asn1 \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTING=OFF \
-            -DSALTSCORE_BUILD_CNET=OFF \
             "-DCMAKE_INSTALL_PREFIX=$prefix"
           cmake --build build-asn1 --config Release --parallel 3
           cmake --install build-asn1 --config Release

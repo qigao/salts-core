@@ -6,37 +6,64 @@
     "capture": {
       "description": "Original native audio, video and screen capture backends",
       "dependencies": [
-        {"name": "miniaudio", "platform": "!ios"},
-        {"name": "libyuv", "platform": "windows | android | linux"},
-        {"name": "libjpeg-turbo", "platform": "windows"},
-        {"name": "pkgconf", "host": true, "platform": "linux"}
+        {
+          "name": "miniaudio",
+          "platform": "!ios"
+        },
+        {
+          "name": "libyuv",
+          "platform": "windows | android | linux"
+        },
+        {
+          "name": "libjpeg-turbo",
+          "platform": "windows"
+        },
+        {
+          "name": "pkgconf",
+          "host": true,
+          "platform": "linux"
+        }
       ]
     },
     "zstd": {
       "description": "Pinned private static Zstd provider for the original Core compression API",
-      "dependencies": ["zstd"]
+      "dependencies": [
+        "zstd"
+      ]
     },
     "playback": {
       "description": "Private miniaudio implementation for native PCM playback",
-      "dependencies": ["miniaudio"]
+      "dependencies": [
+        "miniaudio"
+      ]
     },
     "usb": {
       "description": "Private libusb provider for the native USB module",
-      "dependencies": [{"name": "pkgconf", "host": true}, "libusb"]
+      "dependencies": [
+        {
+          "name": "pkgconf",
+          "host": true
+        },
+        "libusb"
+      ]
     },
     "simd": {
       "description": "Private SIMDe implementation headers for the independent SIMD module",
-      "dependencies": ["simde"]
+      "dependencies": [
+        "simde"
+      ]
     },
     "cnet": {
-      "description": "Explicit provider-backed C11 CNet transport, not part of base Core",
-      "dependencies": [
-        { "name": "pkgconf", "host": true },
-        "simde",
-        "c-ares",
-        "kcp",
-        "gmssl"
-      ]
+      "description": "Compatibility feature: CNet is always built with local Crypto; networking dependencies belong to the base SDK"
     }
-  }
+  },
+  "dependencies": [
+    {
+      "name": "pkgconf",
+      "host": true
+    },
+    "simde",
+    "c-ares",
+    "kcp"
+  ]
 }

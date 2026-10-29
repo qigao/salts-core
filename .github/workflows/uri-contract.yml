@@ -12,6 +12,8 @@ on:
       - "tests/installed/uri_consumer.*"
       - "tests/installed/CMakeLists.txt"
       - ".github/workflows/uri-contract.yml"
+      - ".github/actions/setup-core-native/**"
+      - "crypto/native/**"
   pull_request:
     paths:
       - "uri/src/**"
@@ -24,25 +26,41 @@ on:
       - "tests/installed/CMakeLists.txt"
       - ".github/workflows/uri-contract.yml"
 
+      - ".github/actions/setup-core-native/**"
+      - "crypto/native/**"
 permissions:
   contents: read
+  packages: read
+
+env:
+  # Preserve source-lock Git blob bytes from the initial checkout.
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: "false"
 
 jobs:
   uri:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - name: Install host code generator
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y re2c
           re2c --version
+      - name: Restore exact prerequisites for the default local Crypto and CNet graph
+        uses: ./.github/actions/setup-core-native
+        with:
+          token: ${{ github.token }}
       - name: Configure, build and test generated URI parser
         shell: bash
         run: |
           set -euo pipefail
           python3 tools/check_dependency_boundaries.py
-          cmake -S . -B build-uri -DBUILD_TESTING=ON -DSALTSCORE_BUILD_URI=ON -DCMAKE_BUILD_TYPE=Release "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/uri-sdk"
+          cmake -S . "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" -B build-uri -DBUILD_TESTING=ON -DSALTSCORE_BUILD_URI=ON -DCMAKE_BUILD_TYPE=Release "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/uri-sdk"
           cmake --build build-uri --config Release --parallel 2
           ctest --test-dir build-uri -C Release --output-on-failure
           cmake --install build-uri --config Release

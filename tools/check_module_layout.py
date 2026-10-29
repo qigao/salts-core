@@ -92,25 +92,37 @@ for module, target in (("asn1", "Salts::ASN1"), ("crypto", "Salts::Crypto")):
     cmake = local.read_text(encoding="utf-8")
     if f"add_library({target} ALIAS " not in cmake:
         raise SystemExit(f"missing native first-party target: {target}")
-# ASN1 is a root default; Crypto requires an explicit pinned installed
-# provider path (not a new boolean switch). Refuse stale build flags.
-if not re.search(r"(?m)^add_subdirectory\(asn1\)\s*$", source):
-    raise SystemExit("first-party ASN1 must always be assembled")
-crypto_segment = source.split("if(DEFINED CRYPTO_GMSSL_ROOT)", 1)
-if len(crypto_segment) != 2 or not (
-    "if(SALTSCORE_BUILD_CNET)" in crypto_segment[1].split("add_subdirectory(crypto)", 1)[0]
-    and "if(NOT (BUILD_TESTING AND SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST))"
-        in crypto_segment[1].split("add_subdirectory(crypto)", 1)[0]
-    and "add_subdirectory(crypto)" in crypto_segment[1]
-    and "if(TARGET Salts::Crypto)" in crypto_segment[1].split("add_subdirectory(crypto)", 1)[0]
-):
-    raise SystemExit("local Crypto must require pinned provider and reject duplicate CNet TLS")
-for suffix in ("ASN1", "CRYPTO"):
-    retired = "SALTSCORE_BUILD_" + suffix
-    for path in (ROOT / "CMakeLists.txt",
-                 ROOT / ".github/workflows/first-party-asn1.yml"):
-        if retired in path.read_text(encoding="utf-8"):
-            raise SystemExit(f"retired build switch remains in {path}: {retired}")
+# These are production defaults. Qualification flags may add test images, but
+# cannot choose a different TLS implementation or admit an external prefix.
+default_order = ("asn1", "crypto", "uri", "vendor", "cnet")
+positions = []
+for module in default_order:
+    match = re.search(rf"(?m)^add_subdirectory\({module}\)\s*$", source)
+    if match is None:
+        raise SystemExit(f"default local module must always be assembled: {module}")
+    positions.append(match.start())
+if positions != sorted(positions):
+    raise SystemExit("default local owner order must be ASN1, Crypto, URI, vendor, CNet")
+for module, target in (("asn1", "Salts::ASN1"), ("crypto", "Salts::Crypto")):
+    if f"if(TARGET {target})" not in source[:source.index(f"add_subdirectory({module})")]:
+        raise SystemExit(f"default assembly must reject a pre-existing owner: {target}")
+for retired in ("SALTSCORE_BUILD_ASN1", "SALTSCORE_BUILD_CRYPTO", "SALTSCORE_BUILD_CNET",
+                "SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST", "CRYPTO_GMSSL_ROOT"):
+    if re.search(rf"(?mi)^\s*(?:option|set)\s*\(\s*{retired}\b", source):
+        raise SystemExit(f"retired build entry remains active: {retired}")
+    if "${" + retired + "}" in source:
+        raise SystemExit(f"retired build entry still selects the native graph: {retired}")
+crypto_cmake = (ROOT / "crypto/CMakeLists.txt").read_text(encoding="utf-8")
+cnet_cmake = (ROOT / "cnet/CMakeLists.txt").read_text(encoding="utf-8")
+for name, cmake in (("Crypto", crypto_cmake), ("CNet", cnet_cmake)):
+    if re.search(r"(?mi)^\s*find_package\s*\(\s*(?:GmSSL|Crypto)\b", cmake):
+        raise SystemExit(f"{name} still imports an external TLS owner")
+    if "${CRYPTO_GMSSL_ROOT}" in cmake:
+        raise SystemExit(f"{name} still consumes the retired external prefix")
+if not (ROOT / "crypto/native/gmssl/CMakeLists.txt").is_file():
+    raise SystemExit("missing private local native Crypto implementation")
+if "Salts::Crypto" not in cnet_cmake or "GmSSL::GmSSL" in cnet_cmake:
+    raise SystemExit("production CNet must link the sole local Salts::Crypto owner")
 
 for module in MODULES:
     # Only package assembly belongs to the root; no module binary is made

@@ -147,8 +147,8 @@ if(TARGET saltscore_wsparser)
   add_test(NAME saltscore.wsparser COMMAND saltscore_wsparser_test)
 endif()
 
-# Compile the actual provider-free CNet policy sources on every platform even
-# when CNet/TLS itself is disabled. These are test-only, never SDK exports.
+# Compile the actual provider-free CNet policy sources in isolated unit tests.
+# These are test-only, never SDK exports.
 add_executable(saltscore_cnet_policy_test
   test_cnet_policy.c
   ../cnet/src/cnet_destination_policy.c
@@ -168,15 +168,8 @@ if(MSVC)
 endif()
 add_test(NAME saltscore.cnet_policy COMMAND saltscore_cnet_policy_test)
 
-# Run real pinned-provider ABI and ShangMi KATs only when the optional
-# transport provider graph was actually configured. No fake TLS fallback.
-# The real CNet target lives in the sibling cnet/ subdirectory.
-# Imported provider targets are directory-scoped. Tests that directly link
-# the original GmSSL API explicitly discover the same pinned installed
-# dependency in their own CMake scope; no second source/backend is built.
-if(TARGET Salts::CNet)
-  find_package(GmSSL CONFIG REQUIRED)
-endif()
+# Native ABI and ShangMi tests use the source-built Salts::Crypto archive.
+# No external provider package or second implementation is assembled here.
 
 if(TARGET Salts::CNet)
   # A separate loadable module checks process-global pool and thread identity
@@ -214,6 +207,7 @@ if(TARGET Salts::CNet)
       C_STANDARD_REQUIRED ON C_EXTENSIONS OFF WINDOWS_EXPORT_ALL_SYMBOLS ON)
     target_link_libraries(saltscore_runtime_plugin_${_plugin} PRIVATE
       Salts::CNet)
+    saltscore_cnet_owner_link_map(saltscore_runtime_plugin_${_plugin})
   endforeach()
   add_executable(saltscore_two_plugins_test test_runtime_plugins.c)
   target_compile_features(saltscore_two_plugins_test PRIVATE c_std_11)
@@ -221,6 +215,7 @@ if(TARGET Salts::CNet)
     C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
   target_link_libraries(saltscore_two_plugins_test PRIVATE
     Salts::Core Salts::Platform ${CMAKE_DL_LIBS})
+  saltscore_cnet_owner_link_map(saltscore_two_plugins_test)
   add_dependencies(saltscore_two_plugins_test
     saltscore_runtime_plugin_a saltscore_runtime_plugin_b)
   add_test(NAME saltscore.two_cnet_plugins
@@ -235,7 +230,11 @@ if(TARGET Salts::CNet)
   target_compile_features(saltscore_gmssl_tls_io_abi_test PRIVATE c_std_11)
   set_target_properties(saltscore_gmssl_tls_io_abi_test PROPERTIES
     C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
-  target_link_libraries(saltscore_gmssl_tls_io_abi_test PRIVATE GmSSL::GmSSL)
+  target_link_libraries(saltscore_gmssl_tls_io_abi_test PRIVATE Salts::Crypto)
+  target_include_directories(saltscore_gmssl_tls_io_abi_test PRIVATE
+    "$<TARGET_PROPERTY:salts_crypto,SALTS_CRYPTO_NATIVE_INCLUDE_DIR>")
+  target_compile_definitions(saltscore_gmssl_tls_io_abi_test PRIVATE
+    ENABLE_TLS ENABLE_SECP256R1 ENABLE_SECP384R1 ENABLE_SHA1 ENABLE_SHA2 ENABLE_AES)
   add_test(NAME saltscore.gmssl_tls_io_abi COMMAND saltscore_gmssl_tls_io_abi_test)
 
   add_executable(saltscore_gmssl_shangmi_provider_test
@@ -243,7 +242,11 @@ if(TARGET Salts::CNet)
   target_compile_features(saltscore_gmssl_shangmi_provider_test PRIVATE c_std_11)
   set_target_properties(saltscore_gmssl_shangmi_provider_test PROPERTIES
     C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
-  target_link_libraries(saltscore_gmssl_shangmi_provider_test PRIVATE GmSSL::GmSSL)
+  target_link_libraries(saltscore_gmssl_shangmi_provider_test PRIVATE Salts::Crypto)
+  target_include_directories(saltscore_gmssl_shangmi_provider_test PRIVATE
+    "$<TARGET_PROPERTY:salts_crypto,SALTS_CRYPTO_NATIVE_INCLUDE_DIR>")
+  target_compile_definitions(saltscore_gmssl_shangmi_provider_test PRIVATE
+    ENABLE_TLS ENABLE_SECP256R1 ENABLE_SECP384R1 ENABLE_SHA1 ENABLE_SHA2 ENABLE_AES)
   add_test(NAME saltscore.gmssl_shangmi_provider
     COMMAND saltscore_gmssl_shangmi_provider_test)
 endif()
@@ -331,7 +334,7 @@ add_test(NAME saltscore.clock_atomic_owner COMMAND saltscore_clock_atomic_owner_
 set_tests_properties(saltscore.clock_atomic_owner PROPERTIES TIMEOUT 30)
 
 # Test-only native Crypto Owner, never part of the production CNet target.
-if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
+if(SALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION)
   add_subdirectory(cnet-crypto-static)
 endif()
 
@@ -548,6 +551,14 @@ set_tests_properties(saltscore.original_native_mmap PROPERTIES TIMEOUT 30)
 # Do NOT run --require-complete here and fake success: the independent
 # final admission remains RED until every function/test is qualified.
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME crypto.native.source_integrity
+  COMMAND "${Python3_EXECUTABLE}" -B
+          "${PROJECT_SOURCE_DIR}/crypto/tools/check_local_native_source.py")
+set_tests_properties(crypto.native.source_integrity PROPERTIES TIMEOUT 30)
+add_test(NAME crypto.native.source_negative
+  COMMAND "${Python3_EXECUTABLE}" -B -m unittest discover
+          -s "${PROJECT_SOURCE_DIR}/tests" -p test_local_native_crypto_source.py -v)
+set_tests_properties(crypto.native.source_negative PROPERTIES TIMEOUT 30)
 add_test(NAME saltscore.all_original_source_provenance
   COMMAND "${Python3_EXECUTABLE}"
           "${PROJECT_SOURCE_DIR}/tools/check_full_source_migration.py")

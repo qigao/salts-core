@@ -6,14 +6,21 @@
     "base_master": "57e03d9ebefc3b9348764edaddb834862e669a45",
     "original_file_count": 18
   },
-  "policy": "Source provenance only. Byte-exact 17/18; the original root-only module checker was deliberately adapted for salts-core. GmSSL-backed test sources are historical and are NOT third-party-free native production TLS.",
+  "policy": "Source provenance only. Preserve all 18 historical inputs: 16 byte exact, one root module-checker adaptation, and one explicitly reviewed local-build adaptation. The original CMake source remains byte exact in its snapshot; the pinned reviewed diff must reconstruct the active local build. No file presence or test-only M5/M6 image constitutes native production TLS or final migration acceptance.",
   "files": [
     {
       "original": "crypto/CMakeLists.txt",
       "source_blob_sha": "230dacdd80e5cb5f336a2ab0627728ba31135864",
       "destination": "crypto/CMakeLists.txt",
-      "destination_blob_sha": "230dacdd80e5cb5f336a2ab0627728ba31135864",
-      "kind": "byte_exact"
+      "destination_blob_sha": "8461cb7d7a97e08a6cbfe4f821b670d29e98e35e",
+      "kind": "local_build_adapted",
+      "adaptation": {
+        "original_snapshot": "crypto/tests/migration/CMakeLists.original.txt",
+        "original_snapshot_blob_sha": "230dacdd80e5cb5f336a2ab0627728ba31135864",
+        "reviewed_diff": "crypto/tests/migration/CMakeLists.local-native.patch",
+        "reviewed_diff_blob_sha": "d38ec05d4db650789977e74c88cdeedecaa0aa90",
+        "scope": "Replace the external GmSSL prefix/archive merge with source-locked private native OBJECT files in the sole static Crypto archive; preserve public APIs, original source tests, PIC, dependencies and installed ownership."
+      }
     },
     {
       "original": "crypto/docs/m5-cnet-policy-mapping.md",

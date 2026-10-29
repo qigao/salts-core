@@ -9,9 +9,18 @@ on:
       - "tests/test_process.c"
       - "tests/process-installed/**"
       - ".github/workflows/native-process.yml"
+      - ".github/actions/setup-core-native/**"
+      - "crypto/native/**"
   workflow_dispatch:
 permissions:
   contents: read
+  packages: read
+env:
+  # Preserve source-lock Git blob bytes from the initial checkout.
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: "false"
+
 jobs:
   native-process:
     name: "Native Process and installed C11 C++17 / ${{ matrix.os }}"
@@ -24,6 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Reject old Process, vstr/tstr and CMeta dependency
         shell: bash
@@ -32,12 +42,16 @@ jobs:
           python3 tools/check_dependency_boundaries.py
           if grep -nE 'cmeta_process|tstr_|vstr_|SALTS_C_API|#include "cmeta_|#include "platform.h"' \
             process/src/process.c process/include/salts/process.h; then exit 1; fi
+      - name: Restore exact prerequisites for the default local Crypto and CNet graph
+        uses: ./.github/actions/setup-core-native
+        with:
+          token: ${{ github.token }}
       - name: Compile real native child process owner and execute
         shell: bash
         run: |
           set -euo pipefail
           if [[ "$RUNNER_OS" == Windows ]]; then gen=(-G 'Visual Studio 18 2026' -A x64); else gen=(-G Ninja); fi
-          cmake -S . -B build-process "${gen[@]}" -DBUILD_TESTING=ON \
+          cmake -S . "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" -B build-process "${gen[@]}" -DBUILD_TESTING=ON \
             -DSALTSCORE_BUILD_PROCESS=ON -DCMAKE_BUILD_TYPE=Release \
             "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/process-native-sdk"
           cmake --build build-process --config Release --parallel 2
