@@ -2,6 +2,7 @@ name: SaltsCore CNet pinned-provider qualification
 on:
   pull_request:
     paths:
+      - ".github/actions/setup-ccache/**"
       - "cnet/CMakeLists.txt"
       - "core/CMakeLists.txt"
       - "platform/CMakeLists.txt"
@@ -65,42 +66,36 @@ jobs:
       VCPKG_DEFAULT_TRIPLET: x64-linux
     steps:
       - uses: actions/checkout@v4
+      - name: Restore SHA256-pinned compiler ccache
+        id: ccache
+        uses: ./.github/actions/setup-ccache
+        with:
+          profile: saltscore-${{ github.job }}-${{ strategy.job-index }}
+          source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Restore exact re2c from shared vcpkg-cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@7bb5b556a001bc82d2922a04a718e986a7f47f54
+        with:
+          token: ${{ github.token }}
       - name: Install C11 build tools and host re2c
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            ninja-build pkg-config nasm re2c autoconf automake libtool \
+            ninja-build pkg-config nasm autoconf automake libtool \
             curl zip unzip tar
-      - name: Bootstrap canonical vcpkg scripts (no NuGet, no Mono)
-        shell: bash
-        run: |
-          set -euo pipefail
-          root="$RUNNER_TEMP/saltscore-vcpkg"
-          mkdir -p "$root"
-          git -C "$root" init -q
-          git -C "$root" remote add origin https://github.com/microsoft/vcpkg.git
-          git -C "$root" fetch --no-tags origin 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
-          git -C "$root" checkout --detach FETCH_HEAD
-          git -C "$root" fetch --no-tags origin b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
-          test "$(git -C "$root" rev-parse HEAD)" = 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
-          git -C "$root" cat-file -e "b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01:versions/baseline.json"
-          "$root/bootstrap-vcpkg.sh" -disableMetrics
-          "$root/vcpkg" version
-          echo "VCPKG_ROOT=$root" >> "$GITHUB_ENV"
-      - name: Restore local ABI binary cache
-        uses: actions/cache@v4
+      - name: Restore immutable vcpkg ABI packages (curl-only)
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@7bb5b556a001bc82d2922a04a718e986a7f47f54
         with:
-          path: build/vcpkg-binary-cache
-          key: saltscore-cnet-x64-linux-v8-04a9d8e5-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          mode: read
+          triplet: x64-linux
+          host-triplet: x64-linux
+          manifest-root: .
+          features: cnet
       - name: Configure explicit CNet provider graph
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p build/vcpkg-binary-cache
-          echo "VCPKG_BINARY_SOURCES=clear;files,$GITHUB_WORKSPACE/build/vcpkg-binary-cache,readwrite" >> "$GITHUB_ENV"
-          export VCPKG_BINARY_SOURCES="clear;files,$GITHUB_WORKSPACE/build/vcpkg-binary-cache,readwrite"
           cmake -S . -B build-cnet -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
@@ -171,6 +166,10 @@ jobs:
           name: saltscore-abi-relocation-linux
           path: build/abi-relocation-linux.json
           if-no-files-found: ignore
+      - name: ccache compilation statistics
+        if: ${{ always() && steps.ccache.outcome == 'success' }}
+        shell: bash
+        run: ccache --show-stats
 
   macos-cnet:
     concurrency:
@@ -184,46 +183,38 @@ jobs:
       VCPKG_MANIFEST_FEATURES: cnet
     steps:
       - uses: actions/checkout@v4
+      - name: Restore SHA256-pinned compiler ccache
+        id: ccache
+        uses: ./.github/actions/setup-ccache
+        with:
+          profile: saltscore-${{ github.job }}-${{ strategy.job-index }}
+          source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Restore exact re2c from shared vcpkg-cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@7bb5b556a001bc82d2922a04a718e986a7f47f54
+        with:
+          token: ${{ github.token }}
       - name: Install pinned provider build prerequisites
         shell: bash
         run: |
           set -euo pipefail
-          for formula in ninja re2c nasm pkgconf autoconf automake libtool; do
+          for formula in ninja nasm pkgconf autoconf automake libtool; do
             brew list --versions "$formula" >/dev/null 2>&1 || brew install "$formula"
           done
-      - name: Bootstrap canonical vcpkg scripts (no NuGet or Mono)
-        shell: bash
-        run: |
-          set -euo pipefail
-          case "$(uname -m)" in
-            arm64) triplet=arm64-osx ;;
-            x86_64) triplet=x64-osx ;;
-            *) echo "unsupported macOS vcpkg architecture" >&2; exit 1 ;;
-          esac
-          echo "VCPKG_TARGET_TRIPLET=$triplet" >> "$GITHUB_ENV"
-          root="$RUNNER_TEMP/saltscore-vcpkg"
-          mkdir -p "$root"
-          git -C "$root" init -q
-          git -C "$root" remote add origin https://github.com/microsoft/vcpkg.git
-          git -C "$root" fetch --no-tags origin 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
-          git -C "$root" checkout --detach FETCH_HEAD
-          git -C "$root" fetch --no-tags origin b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
-          test "$(git -C "$root" rev-parse HEAD)" = 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
-          git -C "$root" cat-file -e "b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01:versions/baseline.json"
-          "$root/bootstrap-vcpkg.sh" -disableMetrics
-          "$root/vcpkg" version
-          echo "VCPKG_ROOT=$root" >> "$GITHUB_ENV"
-      - name: Restore local files-only ABI package cache
-        uses: actions/cache@v4
+      - name: Restore immutable vcpkg ABI packages (curl-only)
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@7bb5b556a001bc82d2922a04a718e986a7f47f54
         with:
-          path: build/vcpkg-binary-cache
-          key: saltscore-cnet-macos-v8-04a9d8e5-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          mode: read
+          triplet: ${{ runner.arch == 'ARM64' && 'arm64-osx' || 'x64-osx' }}
+          host-triplet: ${{ runner.arch == 'ARM64' && 'arm64-osx' || 'x64-osx' }}
+          manifest-root: .
+          features: cnet
+      - name: Export exact macOS vcpkg triplet
+        shell: bash
+        run: echo "VCPKG_TARGET_TRIPLET=${{ runner.arch == 'ARM64' && 'arm64-osx' || 'x64-osx' }}" >> "$GITHUB_ENV"
       - name: Configure, build and execute real macOS CNet
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p build/vcpkg-binary-cache
-          export VCPKG_BINARY_SOURCES="clear;files,$GITHUB_WORKSPACE/build/vcpkg-binary-cache,readwrite"
           cmake -S . -B build-cnet -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
@@ -289,6 +280,10 @@ jobs:
           name: saltscore-abi-relocation-macos
           path: build/abi-relocation-macos.json
           if-no-files-found: ignore
+      - name: ccache compilation statistics
+        if: ${{ always() && steps.ccache.outcome == 'success' }}
+        shell: bash
+        run: ccache --show-stats
 
   windows-cnet:
     concurrency:
@@ -303,55 +298,36 @@ jobs:
       VCPKG_DEFAULT_TRIPLET: x64-windows
     steps:
       - uses: actions/checkout@v4
+      - name: Enable MSVC for Ninja + ccache
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+      - name: Restore SHA256-pinned compiler ccache
+        id: ccache
+        uses: ./.github/actions/setup-ccache
+        with:
+          profile: saltscore-${{ github.job }}-${{ strategy.job-index }}
+          source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Restore exact re2c from shared vcpkg-cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@7bb5b556a001bc82d2922a04a718e986a7f47f54
+        with:
+          token: ${{ github.token }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Restore validated re2c from GitHub Packages via curl
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          python cmake/ci/github-packages.py re2c "$env:RUNNER_TEMP/qigao-re2c-binary"
-          if ($LASTEXITCODE -ne 0) { throw "curl-only re2c restore failed" }
-      - name: Bootstrap canonical vcpkg scripts without NuGet or Mono
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $root = Join-Path $env:RUNNER_TEMP 'saltscore-vcpkg'
-          New-Item -ItemType Directory -Force -Path $root | Out-Null
-          git -C $root init -q
-          git -C $root remote add origin https://github.com/microsoft/vcpkg.git
-          git -C $root fetch --no-tags origin 04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4
-          if ($LASTEXITCODE -ne 0) { throw "pinned vcpkg scripts fetch failed" }
-          git -C $root checkout --detach FETCH_HEAD
-          git -C $root fetch --no-tags origin b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
-          if ($LASTEXITCODE -ne 0) { throw "pinned vcpkg baseline fetch failed" }
-          $actual = (git -C $root rev-parse HEAD).Trim()
-          if ($actual -ne '04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4') { throw "unexpected vcpkg scripts revision" }
-          git -C $root cat-file -e "b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01:versions/baseline.json"
-          if ($LASTEXITCODE -ne 0) { throw "builtin baseline absent" }
-          & (Join-Path $root 'bootstrap-vcpkg.bat') -disableMetrics
-          if ($LASTEXITCODE -ne 0) { throw "vcpkg bootstrap failed" }
-          & (Join-Path $root 'vcpkg.exe') version
-          if ($LASTEXITCODE -ne 0) { throw "vcpkg tool unavailable" }
-          Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_ROOT=$root"
-      - name: Restore local Windows files-only ABI cache
-        uses: actions/cache@v4
+      - name: Restore immutable vcpkg ABI packages (curl-only)
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@7bb5b556a001bc82d2922a04a718e986a7f47f54
         with:
-          path: build/vcpkg-binary-cache
-          key: saltscore-cnet-x64-windows-v8-04a9d8e5-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          mode: read
+          triplet: x64-windows
+          host-triplet: x64-windows
+          manifest-root: .
+          features: cnet
       - name: Build full pinned CNet and run real IOCP TCP/TLS tests
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $cache = Join-Path $env:GITHUB_WORKSPACE 'build/vcpkg-binary-cache'
-          New-Item -ItemType Directory -Force -Path $cache | Out-Null
-          $cache = $cache.Replace('\', '/')
-          $env:VCPKG_BINARY_SOURCES = "clear;files,$cache,readwrite"
           $toolchain = Join-Path $env:VCPKG_ROOT 'scripts/buildsystems/vcpkg.cmake'
-          $cmakeArgs = @('-S', '.', '-B', 'build-cnet', '-G', 'Visual Studio 18 2026',
-                    '-A', 'x64', '-DBUILD_TESTING=ON',
+          $cmakeArgs = @('-S', '.', '-B', 'build-cnet', '-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release', '-DBUILD_TESTING=ON',
                     "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
                     '-DVCPKG_TARGET_TRIPLET=x64-windows',
                     '-DVCPKG_MANIFEST_FEATURES=cnet',
@@ -399,7 +375,7 @@ jobs:
           $vcpkgBin = Join-Path $env:GITHUB_WORKSPACE 'vcpkg_installed/x64-windows/bin'
           $env:PATH = "$prefix/bin;$vcpkgBin;$env:PATH"
           $cmakeArgs = @('-S', 'tests/installed', '-B', 'build-installed-cnet',
-                         '-G', 'Visual Studio 18 2026', '-A', 'x64',
+                         '-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release',
                          "-DCMAKE_PREFIX_PATH=$prefix")
           & cmake @cmakeArgs
           if ($LASTEXITCODE -ne 0) { throw "installed CNet consumer configure failed" }
@@ -441,7 +417,7 @@ jobs:
           $providerBin = Join-Path $env:GITHUB_WORKSPACE 'vcpkg_installed/x64-windows/bin'
           $env:PATH = "$relocated/bin;$providerBin;$env:PATH"
           $args = @('-S', 'tests/installed', '-B', 'build-relocated-cnet',
-                    '-G', 'Visual Studio 18 2026', '-A', 'x64',
+                    '-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release',
                     "-DCMAKE_PREFIX_PATH=$relocated")
           & cmake @args
           if ($LASTEXITCODE -ne 0) { throw 'relocated SDK CMake configure failed' }
@@ -457,3 +433,8 @@ jobs:
           name: saltscore-abi-relocation-windows
           path: build/abi-relocation-windows.json
           if-no-files-found: ignore
+      - name: ccache compilation statistics
+        if: ${{ always() && steps.ccache.outcome == 'success' }}
+        shell: bash
+        run: ccache --show-stats
+

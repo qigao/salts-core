@@ -4,6 +4,7 @@ on:
     branches:
       - master
     paths:
+      - ".github/actions/setup-ccache/**"
       - "cnet/src/wsparser/**"
       - "cnet/CMakeLists.txt"
       - "tests/test_wsparser.c"
@@ -12,6 +13,7 @@ on:
       - ".github/workflows/wsparser-contract.yml"
   pull_request:
     paths:
+      - ".github/actions/setup-ccache/**"
       - "cnet/src/wsparser/**"
       - "cnet/CMakeLists.txt"
       - "tests/test_wsparser.c"
@@ -39,6 +41,15 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Enable MSVC for Ninja + ccache
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+      - name: Restore SHA256-pinned compiler ccache
+        id: ccache
+        uses: ./.github/actions/setup-ccache
+        with:
+          profile: saltscore-${{ github.job }}-${{ strategy.job-index }}
+          source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Check standalone dependency boundaries
         shell: bash
         run: |
@@ -65,3 +76,8 @@ jobs:
           cmake -S tests/installed -B build-installed -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/saltscore-sdk"
           cmake --build build-installed --config Release --parallel 2
           ctest --test-dir build-installed --output-on-failure -C Release
+      - name: ccache compilation statistics
+        if: ${{ always() && steps.ccache.outcome == 'success' }}
+        shell: bash
+        run: ccache --show-stats
+
