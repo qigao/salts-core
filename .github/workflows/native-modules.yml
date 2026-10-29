@@ -2,6 +2,8 @@ name: SaltsCore Unicode17 IDNA CSerde TinyTest native conformance
 
 on:
   push:
+    branches:
+      - master
     paths:
       - "unicode/**"
       - "idna/**"
@@ -28,12 +30,22 @@ permissions:
   contents: read
   packages: read
 
+concurrency:
+  group: saltscore-fifo-workflows
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   original-native:
+    concurrency:
+      group: saltscore-fifo-runners
+      cancel-in-progress: false
+      queue: max
     name: "Core-only native source + installed C11/C++17 / ${{ matrix.os }}"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 75
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, windows-2025, macos-15]

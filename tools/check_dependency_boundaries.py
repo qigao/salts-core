@@ -13,7 +13,7 @@ import re
 SCANNED_EXTENSIONS = {".c", ".cc", ".cpp", ".h", ".hpp", ".m", ".mm", ".cmake"}
 IGNORED_DIRECTORIES = {".git", ".github", "vendor", "third_party", "build", "out", "tools", "docs", "_build", "_installed", "_sdk", "CMakeFiles"}
 PATTERNS = {
-    "forbidden high-level Salts target": re.compile(r"\bSalts::(?!Core\b|Platform\b|Concurrency\b|Coroutine\b|NativeIO\b|URI\b|CNet\b|Unicode\b|IDNA\b|CSerde\b|TinyTest\b|SCTP\b|SCTPWire\b|FS\b|Process\b|Crypto\b)[A-Za-z_0-9]+"),
+    "forbidden high-level Salts target": re.compile(r"\bSalts::(?!Core\b|Platform\b|Concurrency\b|Coroutine\b|NativeIO\b|URI\b|CNet\b|Unicode\b|IDNA\b|CSerde\b|TinyTest\b|SCTP\b|SCTPWire\b|FS\b|Process\b|Crypto\b|ASN1\b)[A-Za-z_0-9]+"),
     "forbidden alternate target namespace": re.compile(r"\b(?:SaltsCore|SaltsCrypto|Crypto)::[A-Za-z_0-9]+"),
     "legacy package lookup": re.compile(r"\b(?:find_package|find_dependency)\s*\(\s*Salts(?:Utils)?(?:\s|\))", re.IGNORECASE),
     "CMeta/CFlow/CSTL include": re.compile(r'^\s*#\s*include\s*[<"](?:cmeta/|cflow/|cstl(?:/|\.h))'),
@@ -30,6 +30,56 @@ STATIC_CRYPTO_DENIED_TARGET_GUARD = (
     "Salts::TLS Salts::TLSCipherBIO Salts::CryptoProvider",
     "Crypto::TLS Crypto::TLSCipherBIO Crypto::Provider)",
 )
+
+
+# Exact, fully fatal historical negative guards in source-owned tests.
+# Never exempt an entire test file or a production target reference.
+TEST_ONLY_NEGATIVE_ASSERTIONS = {
+    Path("asn1/tests/installed/CMakeLists.txt"): (
+        (
+            "foreach(_forbidden IN ITEMS Salts::Crypto Salts::CMeta Salts::Core",
+            "GmSSL::GmSSL Crypto::ASN1 SaltsNet::Asn1Parser)",
+            "if(TARGET \"${_forbidden}\")",
+            "message(FATAL_ERROR \"Standalone ASN.1 unexpectedly brought in ${_forbidden}\")",
+            "endif()",
+            "endforeach()",
+        ),
+    ),
+    Path("crypto/tests/asn1/installed/CMakeLists.txt"): (
+        (
+            "if(TARGET SaltsCore::ASN1 OR TARGET Crypto::ASN1)",
+            "message(FATAL_ERROR \"Separate/legacy ASN.1 target forbidden\")",
+            "endif()",
+        ),
+    ),
+    Path("crypto/tests/mobile/CMakeLists.txt"): (
+        (
+            "foreach(_split IN ITEMS Salts::TLS Salts::CryptoProvider Crypto::Crypto)",
+            "if(TARGET ${_split})",
+            "message(FATAL_ERROR \"Unacceptable split/alias target ${_split}\")",
+            "endif()",
+            "endforeach()",
+        ),
+    ),
+    Path("crypto/tests/owner/CMakeLists.txt"): (
+        (
+            "foreach(_split IN ITEMS Salts::TLS Salts::TLSHost Salts::TLSCipherBIO Salts::CryptoProvider Crypto::ASN1)",
+            "if(TARGET \"${_split}\")",
+            "message(FATAL_ERROR \"Separate native Crypto target forbidden: ${_split}\")",
+            "endif()",
+            "endforeach()",
+        ),
+    ),
+    Path("crypto/tests/sdk/CMakeLists.txt"): (
+        (
+            "foreach(_split IN ITEMS Salts::TLS Salts::TLSHost Salts::TLSCipherBIO Salts::CryptoProvider Crypto::ASN1)",
+            "if(TARGET \"${_split}\")",
+            "message(FATAL_ERROR \"Unexpected separate crypto target: ${_split}\")",
+            "endif()",
+            "endforeach()",
+        ),
+    ),
+}
 
 
 def check_repository(root: Path) -> list[str]:
@@ -52,8 +102,24 @@ def check_repository(root: Path) -> list[str]:
                 if tuple(line.strip() for line in lines[offset:offset + 3]) == (
                         STATIC_CRYPTO_DENIED_TARGET_GUARD):
                     denied_guard_indices.update((offset + 1, offset + 2))
+        # Exempt only byte-identical, complete fail-closed negative assertions
+        # in known test CMake files. Real target links outside the guard still
+        # fail, even within those exact files and in disabled CMake branches.
+        for block in TEST_ONLY_NEGATIVE_ASSERTIONS.get(relative, ()):
+            width = len(block)
+            for offset in range(len(lines) - width + 1):
+                if tuple(part.strip() for part in lines[offset:offset + width]) == block:
+                    denied_guard_indices.update(range(offset, offset + width))
         for index, line in enumerate(lines):
             if index in denied_guard_indices:
+                continue
+            stripped = line.lstrip()
+            # Comment-only source text is not a dependency. This does NOT
+            # skip #include, #if 0, or a real CMake target_link_libraries.
+            if path.name == "CMakeLists.txt" or path.suffix == ".cmake":
+                if stripped.startswith("#"):
+                    continue
+            elif stripped.startswith(("//", "/*", "* ")):
                 continue
             lineno = index + 1
             # Build and source files must not refer to any legacy module even in

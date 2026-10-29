@@ -13,12 +13,22 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: saltscore-fifo-workflows
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   original-readiness:
+    concurrency:
+      group: saltscore-fifo-runners
+      cancel-in-progress: false
+      queue: max
     name: ${{ matrix.os }} original Readiness epoll=${{ matrix.epoll }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         include:
