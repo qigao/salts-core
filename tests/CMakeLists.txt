@@ -318,3 +318,212 @@ set_tests_properties(saltscore.clock_atomic_owner PROPERTIES TIMEOUT 30)
 if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
   add_subdirectory(cnet-crypto-static)
 endif()
+
+# Restore original tstr/vstr/memory-pool behavior, not just public headers.
+add_executable(saltscore_original_string_parity_test test_original_string_parity.c)
+target_compile_features(saltscore_original_string_parity_test PRIVATE c_std_11)
+set_target_properties(saltscore_original_string_parity_test PROPERTIES
+  C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+target_link_libraries(saltscore_original_string_parity_test PRIVATE Salts::Core)
+add_test(NAME saltscore.original_utils_string_parity
+  COMMAND saltscore_original_string_parity_test)
+set_tests_properties(saltscore.original_utils_string_parity PROPERTIES TIMEOUT 20)
+
+# Literal copy of the original TinyTest tstr v2 contract from Salts utils.
+# Optional TinyTest profile runs source-parity expectations; never a stub.
+if(TARGET Salts::TinyTest)
+  add_executable(saltscore_original_tstr_v2_contract test_tstr_v2_contract.c)
+  target_compile_features(saltscore_original_tstr_v2_contract PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_tstr_v2_contract PRIVATE
+    Salts::Core Salts::TinyTest)
+  add_test(NAME saltscore.original_tstr_v2_contract
+    COMMAND saltscore_original_tstr_v2_contract)
+endif()
+
+# Original object_pool source and TinyTest contract, not a new allocator
+# provider. The C11 smoke test also runs when TinyTest is disabled.
+add_executable(saltscore_original_object_pool_smoke test_original_object_pool_smoke.c)
+target_compile_features(saltscore_original_object_pool_smoke PRIVATE c_std_11)
+target_link_libraries(saltscore_original_object_pool_smoke PRIVATE Salts::Core)
+add_test(NAME saltscore.original_object_pool_smoke
+  COMMAND saltscore_original_object_pool_smoke)
+if(TARGET Salts::TinyTest)
+  add_executable(saltscore_original_object_pool_contract test_object_pool.c)
+  target_compile_features(saltscore_original_object_pool_contract PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_object_pool_contract PRIVATE
+    Salts::Core Salts::TinyTest)
+  add_test(NAME saltscore.original_object_pool_contract
+    COMMAND saltscore_original_object_pool_contract)
+  set_tests_properties(saltscore.original_object_pool_contract PROPERTIES TIMEOUT 45)
+endif()
+
+# The original single-owner priority queue: FIFO within a priority and
+# critical/high/normal/low ordering, with strict bounded storage.
+add_executable(saltscore_original_priority_queue_smoke test_original_priority_queue_smoke.c)
+target_compile_features(saltscore_original_priority_queue_smoke PRIVATE c_std_11)
+target_link_libraries(saltscore_original_priority_queue_smoke PRIVATE Salts::Core)
+add_test(NAME saltscore.original_priority_queue_smoke COMMAND saltscore_original_priority_queue_smoke)
+if(TARGET Salts::TinyTest)
+  add_executable(saltscore_original_priority_queue_contract test_bucket_priority_queue.c)
+  target_compile_features(saltscore_original_priority_queue_contract PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_priority_queue_contract PRIVATE
+    Salts::Core Salts::TinyTest)
+  add_test(NAME saltscore.original_priority_queue_contract
+    COMMAND saltscore_original_priority_queue_contract)
+endif()
+
+# Original native SPSC ring and bounded multi-priority SPSC queue. Their
+# behavior is exercised by the original TinyTest suites, not a mock backend.
+if(TARGET Salts::TinyTest)
+  add_executable(saltscore_original_ring_spsc_test test_ring_buffer_spsc.c)
+  target_compile_features(saltscore_original_ring_spsc_test PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_ring_spsc_test PRIVATE Salts::Concurrency Salts::TinyTest)
+  add_test(NAME saltscore.original_ring_spsc COMMAND saltscore_original_ring_spsc_test)
+
+  add_executable(saltscore_original_bucket_spsc_test test_bucket_priority_queue_spsc.c)
+  target_compile_features(saltscore_original_bucket_spsc_test PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_bucket_spsc_test PRIVATE
+    Salts::Concurrency Salts::TinyTest)
+  add_test(NAME saltscore.original_bucket_priority_spsc
+    COMMAND saltscore_original_bucket_spsc_test)
+  set_tests_properties(saltscore.original_bucket_priority_spsc PROPERTIES TIMEOUT 50)
+endif()
+
+add_executable(saltscore_original_spsc_smoke test_original_spsc_smoke.c)
+target_compile_features(saltscore_original_spsc_smoke PRIVATE c_std_11)
+target_link_libraries(saltscore_original_spsc_smoke PRIVATE Salts::Concurrency)
+add_test(NAME saltscore.original_spsc_smoke COMMAND saltscore_original_spsc_smoke)
+
+# Original 8-case formatter lexer TinyTest suite plus dependency-free C11 smoke.
+add_executable(saltscore_fmt_lexer_smoke test_fmt_lexer_smoke.c)
+target_compile_features(saltscore_fmt_lexer_smoke PRIVATE c_std_11)
+target_link_libraries(saltscore_fmt_lexer_smoke PRIVATE Salts::Core)
+add_test(NAME saltscore.original_fmt_lexer_smoke COMMAND saltscore_fmt_lexer_smoke)
+if(TARGET Salts::TinyTest)
+  add_executable(saltscore_original_fmt_lexer_test test_fmt_re2c.c)
+  target_compile_features(saltscore_original_fmt_lexer_test PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_fmt_lexer_test PRIVATE Salts::Core Salts::TinyTest)
+  add_test(NAME saltscore.original_fmt_lexer_contract COMMAND saltscore_original_fmt_lexer_test)
+endif()
+
+# Original formatter implementation: typed C11 and C++17 metadata, bounded
+# rendering, invalid specifier rejection, time formatting, dynamic tstr and views.
+if(TARGET Salts::TinyTest)
+  add_executable(saltscore_original_fmt_test test_fmt.c)
+  target_compile_features(saltscore_original_fmt_test PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_fmt_test PRIVATE Salts::Core Salts::TinyTest)
+  add_test(NAME saltscore.original_fmt_c11 COMMAND saltscore_original_fmt_test)
+
+  add_executable(saltscore_original_fmt_cpp_test test_fmt_cpp.cpp)
+  target_compile_features(saltscore_original_fmt_cpp_test PRIVATE cxx_std_17)
+  target_link_libraries(saltscore_original_fmt_cpp_test PRIVATE Salts::Core Salts::TinyTest)
+  add_test(NAME saltscore.original_fmt_cpp17 COMMAND saltscore_original_fmt_cpp_test)
+
+  add_executable(saltscore_original_fmt_view_test test_fmt_vstr_pattern.c)
+  target_compile_features(saltscore_original_fmt_view_test PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_fmt_view_test PRIVATE Salts::Core Salts::TinyTest)
+  add_test(NAME saltscore.original_fmt_bounded_vstr COMMAND saltscore_original_fmt_view_test)
+endif()
+# Always-on no-framework formatter contract (also when TinyTest is OFF).
+add_executable(saltscore_fmt_smoke test_fmt_smoke.c)
+target_compile_features(saltscore_fmt_smoke PRIVATE c_std_11)
+target_link_libraries(saltscore_fmt_smoke PRIVATE Salts::Core)
+add_test(NAME saltscore.original_fmt_smoke COMMAND saltscore_fmt_smoke)
+
+# Original log pattern lexer tokens, C11 parser/format ownership.
+add_executable(saltscore_log_pattern_lexer_test test_log_pattern_lexer.c)
+target_compile_features(saltscore_log_pattern_lexer_test PRIVATE c_std_11)
+target_link_libraries(saltscore_log_pattern_lexer_test PRIVATE Salts::Core)
+add_test(NAME saltscore.original_log_pattern_lexer
+  COMMAND saltscore_log_pattern_lexer_test)
+
+# Original async logger: the original TinyTest and native callback exercise
+# real Disruptor/FS providers, thread drain, shutdown, not a logger mock.
+add_executable(saltscore_tlog_smoke test_tlog_smoke.c)
+target_compile_features(saltscore_tlog_smoke PRIVATE c_std_11)
+target_link_libraries(saltscore_tlog_smoke PRIVATE Salts::Core)
+add_test(NAME saltscore.original_tlog_smoke COMMAND saltscore_tlog_smoke)
+set_tests_properties(saltscore.original_tlog_smoke PROPERTIES TIMEOUT 40)
+if(TARGET Salts::TinyTest)
+  foreach(_tlog_suite IN ITEMS tlog tlog_vstr_abi tlog_header_collision)
+    add_executable(saltscore_original_${_tlog_suite}_test test_${_tlog_suite}.c)
+    target_compile_features(saltscore_original_${_tlog_suite}_test PRIVATE c_std_11)
+    target_link_libraries(saltscore_original_${_tlog_suite}_test PRIVATE
+      Salts::Core Salts::TinyTest)
+    add_test(NAME saltscore.original_${_tlog_suite}
+      COMMAND saltscore_original_${_tlog_suite}_test)
+    set_tests_properties(saltscore.original_${_tlog_suite} PROPERTIES TIMEOUT 120)
+  endforeach()
+  add_executable(saltscore_original_tlog_cpp_test test_tlog_cpp.cpp)
+  target_compile_features(saltscore_original_tlog_cpp_test PRIVATE cxx_std_17)
+  target_link_libraries(saltscore_original_tlog_cpp_test PRIVATE Salts::Core Salts::TinyTest)
+  add_test(NAME saltscore.original_tlog_cpp COMMAND saltscore_original_tlog_cpp_test)
+  set_tests_properties(saltscore.original_tlog_cpp PROPERTIES TIMEOUT 120)
+endif()
+
+# Original RFC 4122/9562 UUID v4/v7 and canonical parse/format.
+add_executable(saltscore_uuid_smoke test_uuid_smoke.c)
+target_compile_features(saltscore_uuid_smoke PRIVATE c_std_11)
+target_link_libraries(saltscore_uuid_smoke PRIVATE Salts::Core)
+add_test(NAME saltscore.original_uuid_smoke COMMAND saltscore_uuid_smoke)
+if(TARGET Salts::TinyTest)
+  add_executable(saltscore_original_uuid_test test_cmeta_uuid.c)
+  target_compile_features(saltscore_original_uuid_test PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_uuid_test PRIVATE Salts::Core Salts::TinyTest)
+  add_test(NAME saltscore.original_uuid_c11 COMMAND saltscore_original_uuid_test)
+  add_executable(saltscore_original_uuid_cpp_test test_cmeta_uuid_cpp.cpp)
+  target_compile_features(saltscore_original_uuid_cpp_test PRIVATE cxx_std_17)
+  target_link_libraries(saltscore_original_uuid_cpp_test PRIVATE Salts::Core Salts::TinyTest)
+  add_test(NAME saltscore.original_uuid_cpp17 COMMAND saltscore_original_uuid_cpp_test)
+endif()
+
+# Restore the original single-owner, hard-capped byte accumulator. This is not
+# the borrowed-only salts_core_bytes_view/slice contract.
+add_executable(saltscore_cmeta_bytes_smoke test_cmeta_bytes_smoke.c)
+target_compile_features(saltscore_cmeta_bytes_smoke PRIVATE c_std_11)
+target_link_libraries(saltscore_cmeta_bytes_smoke PRIVATE Salts::Core)
+add_test(NAME saltscore.original_bytes_accumulator_smoke COMMAND saltscore_cmeta_bytes_smoke)
+if(TARGET Salts::TinyTest)
+  add_executable(saltscore_original_bytes_accumulator test_cmeta_bytes.c)
+  target_compile_features(saltscore_original_bytes_accumulator PRIVATE c_std_11)
+  target_link_libraries(saltscore_original_bytes_accumulator PRIVATE
+    Salts::Core Salts::TinyTest)
+  add_test(NAME saltscore.original_bytes_accumulator_contract
+    COMMAND saltscore_original_bytes_accumulator)
+endif()
+
+# Original seven-function bounded byte scan contract. This is the canonical
+# portable C11 implementation; SIMD throughput parity is tracked separately.
+add_executable(saltscore_simd_scan_contract test_simd_scan_contract.c)
+target_compile_features(saltscore_simd_scan_contract PRIVATE c_std_11)
+target_link_libraries(saltscore_simd_scan_contract PRIVATE Salts::Core)
+add_test(NAME saltscore.original_simd_scan_contract COMMAND saltscore_simd_scan_contract)
+
+
+# Actual original qigao/salts utils native memory mapping, not a mock
+# and not a CMeta/CFlow runtime. Real file page / range / write / group.
+add_executable(saltscore_original_native_mmap_test test_original_native_mmap.c)
+target_compile_features(saltscore_original_native_mmap_test PRIVATE c_std_11)
+set_target_properties(saltscore_original_native_mmap_test PROPERTIES
+  C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+target_link_libraries(saltscore_original_native_mmap_test PRIVATE Salts::Core)
+add_test(NAME saltscore.original_native_mmap
+  COMMAND saltscore_original_native_mmap_test)
+set_tests_properties(saltscore.original_native_mmap PROPERTIES TIMEOUT 30)
+
+# The complete 1554+1421 Git Blob provenance contract is a non-waivable
+# structural gate: unresolved original native paths remain explicit debt.
+# Do NOT run --require-complete here and fake success: the independent
+# final admission remains RED until every function/test is qualified.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME saltscore.all_original_source_provenance
+  COMMAND "${Python3_EXECUTABLE}"
+          "${PROJECT_SOURCE_DIR}/tools/check_full_source_migration.py")
+set_tests_properties(saltscore.all_original_source_provenance
+  PROPERTIES TIMEOUT 45)
+add_test(NAME saltscore.all_original_source_negative
+  COMMAND "${Python3_EXECUTABLE}" -m unittest discover
+          -s "${PROJECT_SOURCE_DIR}/tests"
+          -p "test_full_source_migration.py" -v)
+set_tests_properties(saltscore.all_original_source_negative
+  PROPERTIES TIMEOUT 45)

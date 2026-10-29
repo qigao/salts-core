@@ -160,3 +160,103 @@ foreach(_lang IN ITEMS c cpp)
   target_link_libraries(c11_threads_installed_${_lang} PRIVATE Salts::Platform)
   add_test(NAME sdk.c11_threads_${_lang} COMMAND c11_threads_installed_${_lang})
 endforeach()
+
+# Module-local original tstr/vstr/memory-pool installed contract: consumers
+# must link the one existing Salts::Core DSO, not any build-tree SDS archive.
+add_executable(original_utils_string_consumer_c original_utils_string_consumer.c)
+target_compile_features(original_utils_string_consumer_c PRIVATE c_std_11)
+target_link_libraries(original_utils_string_consumer_c PRIVATE Salts::Core)
+add_test(NAME sdk.original_utils_string_c11 COMMAND original_utils_string_consumer_c)
+
+add_executable(original_utils_string_consumer_cpp original_utils_string_consumer.cpp)
+target_compile_features(original_utils_string_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(original_utils_string_consumer_cpp PRIVATE Salts::Core)
+add_test(NAME sdk.original_utils_string_cpp17 COMMAND original_utils_string_consumer_cpp)
+
+# Installed-only SPSC consumers must link to one canonical Concurrency owner.
+add_executable(spsc_consumer_c spsc_consumer.c)
+target_compile_features(spsc_consumer_c PRIVATE c_std_11)
+target_link_libraries(spsc_consumer_c PRIVATE Salts::Concurrency)
+add_test(NAME sdk.spsc_c11 COMMAND spsc_consumer_c)
+add_executable(spsc_consumer_cpp spsc_consumer.cpp)
+target_compile_features(spsc_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(spsc_consumer_cpp PRIVATE Salts::Concurrency)
+add_test(NAME sdk.spsc_cpp17 COMMAND spsc_consumer_cpp)
+
+# Original formatter-lexer API must resolve from an installed Salts::Core DSO.
+add_executable(fmt_lexer_consumer_c fmt_lexer_consumer.c)
+target_compile_features(fmt_lexer_consumer_c PRIVATE c_std_11)
+target_link_libraries(fmt_lexer_consumer_c PRIVATE Salts::Core)
+add_test(NAME sdk.fmt_lexer_c11 COMMAND fmt_lexer_consumer_c)
+add_executable(fmt_lexer_consumer_cpp fmt_lexer_consumer.cpp)
+target_compile_features(fmt_lexer_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(fmt_lexer_consumer_cpp PRIVATE Salts::Core)
+add_test(NAME sdk.fmt_lexer_cpp17 COMMAND fmt_lexer_consumer_cpp)
+
+# Installed formatter type tags, enum metadata and C11/C++17 wrappers.
+add_executable(fmt_consumer_c fmt_consumer.c)
+target_compile_features(fmt_consumer_c PRIVATE c_std_11)
+target_link_libraries(fmt_consumer_c PRIVATE Salts::Core)
+add_test(NAME sdk.fmt_c11 COMMAND fmt_consumer_c)
+add_executable(fmt_consumer_cpp fmt_consumer.cpp)
+target_compile_features(fmt_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(fmt_consumer_cpp PRIVATE Salts::Core)
+add_test(NAME sdk.fmt_cpp17 COMMAND fmt_consumer_cpp)
+
+add_executable(log_pattern_consumer_c log_pattern_consumer.c)
+target_compile_features(log_pattern_consumer_c PRIVATE c_std_11)
+target_link_libraries(log_pattern_consumer_c PRIVATE Salts::Core)
+add_test(NAME sdk.log_pattern_c11 COMMAND log_pattern_consumer_c)
+add_executable(log_pattern_consumer_cpp log_pattern_consumer.cpp)
+target_compile_features(log_pattern_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(log_pattern_consumer_cpp PRIVATE Salts::Core)
+add_test(NAME sdk.log_pattern_cpp17 COMMAND log_pattern_consumer_cpp)
+
+add_executable(tlog_consumer_c tlog_consumer.c)
+target_compile_features(tlog_consumer_c PRIVATE c_std_11)
+target_link_libraries(tlog_consumer_c PRIVATE Salts::Core)
+add_test(NAME sdk.tlog_c11 COMMAND tlog_consumer_c)
+add_executable(tlog_consumer_cpp tlog_consumer.cpp)
+target_compile_features(tlog_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(tlog_consumer_cpp PRIVATE Salts::Core)
+add_test(NAME sdk.tlog_cpp17 COMMAND tlog_consumer_cpp)
+
+add_executable(uuid_consumer_c uuid_consumer.c)
+target_compile_features(uuid_consumer_c PRIVATE c_std_11)
+target_link_libraries(uuid_consumer_c PRIVATE Salts::Core)
+add_test(NAME sdk.original_uuid_c11 COMMAND uuid_consumer_c)
+add_executable(uuid_consumer_cpp uuid_consumer.cpp)
+target_compile_features(uuid_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(uuid_consumer_cpp PRIVATE Salts::Core)
+add_test(NAME sdk.original_uuid_cpp17 COMMAND uuid_consumer_cpp)
+
+add_executable(bytes_accumulator_consumer_c cmeta_bytes_consumer.c)
+target_compile_features(bytes_accumulator_consumer_c PRIVATE c_std_11)
+target_link_libraries(bytes_accumulator_consumer_c PRIVATE Salts::Core)
+add_test(NAME sdk.original_bytes_accumulator_c11 COMMAND bytes_accumulator_consumer_c)
+add_executable(bytes_accumulator_consumer_cpp cmeta_bytes_consumer.cpp)
+target_compile_features(bytes_accumulator_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(bytes_accumulator_consumer_cpp PRIVATE Salts::Core)
+add_test(NAME sdk.original_bytes_accumulator_cpp17 COMMAND bytes_accumulator_consumer_cpp)
+
+add_executable(simd_scan_consumer_c simd_scan_consumer.c)
+target_compile_features(simd_scan_consumer_c PRIVATE c_std_11)
+target_link_libraries(simd_scan_consumer_c PRIVATE Salts::Core)
+add_test(NAME sdk.original_simd_scan_c11 COMMAND simd_scan_consumer_c)
+add_executable(simd_scan_consumer_cpp simd_scan_consumer.cpp)
+target_compile_features(simd_scan_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(simd_scan_consumer_cpp PRIVATE Salts::Core)
+add_test(NAME sdk.original_simd_scan_cpp17 COMMAND simd_scan_consumer_cpp)
+
+
+# Independently installed original native mmap API, one Salts::Core shared
+# owner. ABI and runtime are exercised by both C11 and C++17 consumers.
+add_executable(original_mmap_consumer_c original_mmap_consumer.c)
+target_compile_features(original_mmap_consumer_c PRIVATE c_std_11)
+target_link_libraries(original_mmap_consumer_c PRIVATE Salts::Core)
+add_test(NAME sdk.original_native_mmap_c11 COMMAND original_mmap_consumer_c)
+
+add_executable(original_mmap_consumer_cpp original_mmap_consumer.cpp)
+target_compile_features(original_mmap_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(original_mmap_consumer_cpp PRIVATE Salts::Core)
+add_test(NAME sdk.original_native_mmap_cpp17 COMMAND original_mmap_consumer_cpp)

@@ -15,11 +15,16 @@ include(CTest)
 find_package(Threads REQUIRED)
 
 # Package root assembles canonical modules; modules own sources and installs.
+# Original logging uses existing FS and Concurrency implementations;
+# compile those single owners first, without a second logger provider.
 add_subdirectory(platform)
-add_subdirectory(core)
 add_subdirectory(concurrency)
+add_subdirectory(fs)
+add_subdirectory(core)
 add_subdirectory(coroutine)
 add_subdirectory(native-io)
+# Original formal concurrency/ownership models, source-owned and retained.
+add_subdirectory(verification)
 
 option(SALTSCORE_BUILD_URI "Build standalone re2c-generated URI parser" OFF)
 if(SALTSCORE_BUILD_URI)
@@ -46,6 +51,13 @@ endif()
 
 option(SALTSCORE_BUILD_CSERDE "Build standalone C11 CSerde owner" OFF)
 option(SALTSCORE_BUILD_TINYTEST "Build standalone C11 TinyTest owner" OFF)
+# TinyTest-enabled source conformance includes the original C++17 fmt tests.
+# Enable C++ at package root *before* either tests/ or sibling native-modules/
+# is configured; a sibling-only enable_language(CXX) has no visibility here.
+# The default Core/Platform SDK remains C11-only without this qualification.
+if(BUILD_TESTING AND SALTSCORE_BUILD_TINYTEST)
+  enable_language(CXX)
+endif()
 option(SALTSCORE_BUILD_UNICODE "Build original pinned Unicode 17 owner" OFF)
 option(SALTSCORE_BUILD_IDNA "Build original pinned Unicode 17 IDNA owner" OFF)
 option(SALTSCORE_NATIVE_CPP_CONFORMANCE
@@ -65,9 +77,10 @@ endif()
 if(SALTSCORE_BUILD_IDNA)
   add_subdirectory(idna)
 endif()
-option(SALTSCORE_BUILD_FS "Build standalone native FS owner" OFF)
-if(SALTSCORE_BUILD_FS)
-  add_subdirectory(fs)
+# Salts::FS is an unconditional Core logger dependency, not a fallback.
+# A caller cannot silently disable the real file sink while preserving TLog.
+if(DEFINED SALTSCORE_BUILD_FS AND NOT SALTSCORE_BUILD_FS)
+  message(FATAL_ERROR "Restored Core/TLog requires canonical Salts::FS")
 endif()
 option(SALTSCORE_BUILD_PROCESS "Build standalone Process owner" OFF)
 if(SALTSCORE_BUILD_PROCESS)

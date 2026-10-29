@@ -1,0 +1,1961 @@
+{
+  "schema_version": 1,
+  "historical_baseline": {
+    "repository": "qigao/salts",
+    "ref": "codex/finish-1181-session",
+    "utils_tree_sha": "9c5b53d7194d142a89be576c3314ee4bfd569a37",
+    "file_count": 175,
+    "directories": [
+      "benchmarks",
+      "examples",
+      "fuzz",
+      "include",
+      "parser",
+      "src",
+      "tests",
+      "verification"
+    ]
+  },
+  "initial_comparison": {
+    "repository": "qigao/salts-core",
+    "head_sha": "102fe337819cf9bec1b3149689078d5141ec4a82",
+    "rule": "basename and exact Git blob SHA only; does not prove functional parity; cross-repo moves have not been verified",
+    "counts": {
+      "name_match_unverified": 47,
+      "unmapped": 113,
+      "byte_identical_unverified": 15
+    }
+  },
+  "files": [
+    {
+      "original": "CMakeLists.txt",
+      "source_blob_sha": "7f9e1796430e9286e4a29f937915c41e6358d4df",
+      "size_bytes": 3525,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "CMakeLists.txt",
+          "blob_sha": "e7557344bc149b25211c2489e16965e5a6f70ea7"
+        },
+        {
+          "path": "cnet/CMakeLists.txt",
+          "blob_sha": "8f5bb492c25b4aecdac48d05b29622dd953c2d97"
+        },
+        {
+          "path": "concurrency/CMakeLists.txt",
+          "blob_sha": "e8ffd7a027e303b3ec14c92f3bfe99cfd20596c3"
+        },
+        {
+          "path": "core/CMakeLists.txt",
+          "blob_sha": "2495821ef4ec374fa247d51799aeffc16307beb4"
+        },
+        {
+          "path": "core/parser/CMakeLists.txt",
+          "blob_sha": "88a2f981bed3607c2223969776df0e1b89d9e5b3"
+        },
+        {
+          "path": "coroutine/CMakeLists.txt",
+          "blob_sha": "e9c119bc2105099e2329409cba9d2f64725d39cf"
+        },
+        {
+          "path": "cserde/CMakeLists.txt",
+          "blob_sha": "d756f360f22f85e3bbf2420893a3d1e5f0031c44"
+        }
+      ]
+    },
+    {
+      "original": "CRYPTO.md",
+      "source_blob_sha": "668a0d59e6632f08d2832810dc27d06e17432fdb",
+      "size_bytes": 12122,
+      "owner_proposal": "qigao/crypto",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "benchmarks/CMakeLists.txt",
+      "source_blob_sha": "fb93c91da8ab47317bfff19d9d010f0ccbf862f4",
+      "size_bytes": 779,
+      "owner_proposal": "Core/Concurrency benchmark",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "CMakeLists.txt",
+          "blob_sha": "e7557344bc149b25211c2489e16965e5a6f70ea7"
+        },
+        {
+          "path": "cnet/CMakeLists.txt",
+          "blob_sha": "8f5bb492c25b4aecdac48d05b29622dd953c2d97"
+        },
+        {
+          "path": "concurrency/CMakeLists.txt",
+          "blob_sha": "e8ffd7a027e303b3ec14c92f3bfe99cfd20596c3"
+        },
+        {
+          "path": "core/CMakeLists.txt",
+          "blob_sha": "2495821ef4ec374fa247d51799aeffc16307beb4"
+        },
+        {
+          "path": "core/parser/CMakeLists.txt",
+          "blob_sha": "88a2f981bed3607c2223969776df0e1b89d9e5b3"
+        },
+        {
+          "path": "coroutine/CMakeLists.txt",
+          "blob_sha": "e9c119bc2105099e2329409cba9d2f64725d39cf"
+        },
+        {
+          "path": "cserde/CMakeLists.txt",
+          "blob_sha": "d756f360f22f85e3bbf2420893a3d1e5f0031c44"
+        }
+      ]
+    },
+    {
+      "original": "benchmarks/bench_bucket_priority_queue.c",
+      "source_blob_sha": "6b56500d20872663147eadc05a586b5030184091",
+      "size_bytes": 8592,
+      "owner_proposal": "Core/Concurrency benchmark",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "benchmarks/bench_bytes.c",
+      "source_blob_sha": "5a99e351660569f8ff1333d75988594f295199b5",
+      "size_bytes": 3820,
+      "owner_proposal": "Core/Concurrency benchmark",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "benchmarks/bench_cmeta_ring.c",
+      "source_blob_sha": "8d642947662480cba18cfb0de3bfc24115cd8f0d",
+      "size_bytes": 7456,
+      "owner_proposal": "Core/Concurrency benchmark",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "benchmarks/bench_disruptor.c",
+      "source_blob_sha": "6aa62f24f95952a0a1aa3601044d5ba5f347fd85",
+      "size_bytes": 8705,
+      "owner_proposal": "Core/Concurrency benchmark",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "benchmarks/bench_memory_containers.c",
+      "source_blob_sha": "da2cccc63c86b7ad2c9ffecc1b0ced5b97d184d1",
+      "size_bytes": 17803,
+      "owner_proposal": "Core/Concurrency benchmark",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "benchmarks/bench_priority_queue_comparison.c",
+      "source_blob_sha": "b636780d7a0b374cf0c7153c45a2459965d4190e",
+      "size_bytes": 11697,
+      "owner_proposal": "Core/Concurrency benchmark",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "benchmarks/bench_ring_comparison.c",
+      "source_blob_sha": "8401a544374bfe613bb58527171732e7cd313527",
+      "size_bytes": 8012,
+      "owner_proposal": "Core/Concurrency benchmark",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "benchmarks/bench_tlog.c",
+      "source_blob_sha": "f9a555aec2e6786a4e4a3447f4a5dbbf5cc6c795",
+      "size_bytes": 3601,
+      "owner_proposal": "Core/Concurrency benchmark",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "benchmarks/test_fmt_bench.c",
+      "source_blob_sha": "9514ea9f3a0a6da315d5f8159c7575792be27e1a",
+      "size_bytes": 5923,
+      "owner_proposal": "Core/Concurrency benchmark",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "benchmarks/test_str_bench.c",
+      "source_blob_sha": "72f0142dfe222b344a8506aee5e42f1200773460",
+      "size_bytes": 9205,
+      "owner_proposal": "Core/Concurrency benchmark",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "examples/CMakeLists.txt",
+      "source_blob_sha": "dba5c1411e5f62ab1f45fc2a9c7fcd0400236ff0",
+      "size_bytes": 539,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "CMakeLists.txt",
+          "blob_sha": "e7557344bc149b25211c2489e16965e5a6f70ea7"
+        },
+        {
+          "path": "cnet/CMakeLists.txt",
+          "blob_sha": "8f5bb492c25b4aecdac48d05b29622dd953c2d97"
+        },
+        {
+          "path": "concurrency/CMakeLists.txt",
+          "blob_sha": "e8ffd7a027e303b3ec14c92f3bfe99cfd20596c3"
+        },
+        {
+          "path": "core/CMakeLists.txt",
+          "blob_sha": "2495821ef4ec374fa247d51799aeffc16307beb4"
+        },
+        {
+          "path": "core/parser/CMakeLists.txt",
+          "blob_sha": "88a2f981bed3607c2223969776df0e1b89d9e5b3"
+        },
+        {
+          "path": "coroutine/CMakeLists.txt",
+          "blob_sha": "e9c119bc2105099e2329409cba9d2f64725d39cf"
+        },
+        {
+          "path": "cserde/CMakeLists.txt",
+          "blob_sha": "d756f360f22f85e3bbf2420893a3d1e5f0031c44"
+        }
+      ]
+    },
+    {
+      "original": "examples/cpp_test.cpp",
+      "source_blob_sha": "fd4f1fb43dc71e94a22148b209a3307edea0f02a",
+      "size_bytes": 3667,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "examples/fs_example.c",
+      "source_blob_sha": "2f364c0d7418dc9bad26783eb68f015106b882be",
+      "size_bytes": 8362,
+      "owner_proposal": "Salts::FS",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "examples/openssl_algorithms.c",
+      "source_blob_sha": "ab8a7f3d30ca11bed393a0d2553446e9cd8b4aac",
+      "size_bytes": 7420,
+      "owner_proposal": "qigao/crypto",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "examples/test_spec.cpp",
+      "source_blob_sha": "eb52945c0e5f1330b07d1ef14342523116bbdab7",
+      "size_bytes": 616,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "fuzz/CMakeLists.txt",
+      "source_blob_sha": "c1ebb1287ce34f25ffde187b18fdbad7c419b181",
+      "size_bytes": 1115,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "CMakeLists.txt",
+          "blob_sha": "e7557344bc149b25211c2489e16965e5a6f70ea7"
+        },
+        {
+          "path": "cnet/CMakeLists.txt",
+          "blob_sha": "8f5bb492c25b4aecdac48d05b29622dd953c2d97"
+        },
+        {
+          "path": "concurrency/CMakeLists.txt",
+          "blob_sha": "e8ffd7a027e303b3ec14c92f3bfe99cfd20596c3"
+        },
+        {
+          "path": "core/CMakeLists.txt",
+          "blob_sha": "2495821ef4ec374fa247d51799aeffc16307beb4"
+        },
+        {
+          "path": "core/parser/CMakeLists.txt",
+          "blob_sha": "88a2f981bed3607c2223969776df0e1b89d9e5b3"
+        },
+        {
+          "path": "coroutine/CMakeLists.txt",
+          "blob_sha": "e9c119bc2105099e2329409cba9d2f64725d39cf"
+        },
+        {
+          "path": "cserde/CMakeLists.txt",
+          "blob_sha": "d756f360f22f85e3bbf2420893a3d1e5f0031c44"
+        }
+      ]
+    },
+    {
+      "original": "fuzz/README.md",
+      "source_blob_sha": "9d82733d5786f18161c723b8d23193b822034835",
+      "size_bytes": 763,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "README.md",
+          "blob_sha": "d6f4a47aea2226dda24132b27a382eef433a2505"
+        },
+        {
+          "path": "idna/README.md",
+          "blob_sha": "71eac855779b929d872a9ded612ea54cdbe7143a"
+        },
+        {
+          "path": "sctp/README.md",
+          "blob_sha": "b86723a642239c265bf7227e833679bd1fc454d4"
+        },
+        {
+          "path": "tests/cnet-owner/README.md",
+          "blob_sha": "87682098d54073ee36427e863e99bb52aa6e863d"
+        },
+        {
+          "path": "tests/readiness-reference/README.md",
+          "blob_sha": "0f64efd0d1849a3dd8b15360625d5903cf84762e"
+        },
+        {
+          "path": "tinytest/README.md",
+          "blob_sha": "462096c25046381fa66c23adbf369d8e37aa777d"
+        },
+        {
+          "path": "unicode/README.md",
+          "blob_sha": "3f2d974939f7ae53e561ce450dfc4de0b6113255"
+        }
+      ]
+    },
+    {
+      "original": "fuzz/cmeta_sm2_verify_fuzz.c",
+      "source_blob_sha": "5e2332f438707ec80d1dc55d512429c4abda078d",
+      "size_bytes": 3714,
+      "owner_proposal": "qigao/crypto",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "fuzz/cmeta_sm4_gcm_fuzz.c",
+      "source_blob_sha": "c2e4709d47054fdf13d670270da92a6f69155e28",
+      "size_bytes": 1858,
+      "owner_proposal": "qigao/crypto",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "fuzz/corpus/sm2_verify/known-answer",
+      "source_blob_sha": "7692e7d41c0d5325106466f355bc7b8c2ec69472",
+      "size_bytes": 2,
+      "owner_proposal": "qigao/crypto",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "fuzz/corpus/sm2_verify/malformed-der",
+      "source_blob_sha": "355c75c480117af39e13c3485869fb7691b3b304",
+      "size_bytes": 41,
+      "owner_proposal": "qigao/crypto",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "fuzz/corpus/sm4_gcm/rfc8998-layout",
+      "source_blob_sha": "cdc6e78a82513d2b7862f31fef495371cdae8e7e",
+      "size_bytes": 85,
+      "owner_proposal": "qigao/crypto",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "include/ac_automaton.h",
+      "source_blob_sha": "95b772360387ec0a371446e45fb461d0efcbc855",
+      "size_bytes": 3759,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "include/base64_utils.h",
+      "source_blob_sha": "1dc4eb7996175a347f1ce899254da354245d5658",
+      "size_bytes": 1971,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/include/base64_utils.h",
+          "blob_sha": "6103855b061b65c439ed8d0f5c1d7a18d520d274"
+        }
+      ]
+    },
+    {
+      "original": "include/bucket_priority_queue.h",
+      "source_blob_sha": "9e902e4a631f5f39eeafbb8eccc0b9d291a11208",
+      "size_bytes": 3397,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/include/bucket_priority_queue.h",
+          "blob_sha": "652e45656258bdb6940ad2e3b8b42e993c1ad265"
+        }
+      ]
+    },
+    {
+      "original": "include/bucket_priority_queue_mpmc.h",
+      "source_blob_sha": "6179fb4e16f407e00a2ab2bc57e258134f389ae6",
+      "size_bytes": 3150,
+      "owner_proposal": "Salts::Concurrency",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "include/bucket_priority_queue_spsc.h",
+      "source_blob_sha": "58df223c837d8801c3d795d042d97efefcd55a63",
+      "size_bytes": 4119,
+      "owner_proposal": "Salts::Concurrency",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "concurrency/include/bucket_priority_queue_spsc.h",
+          "blob_sha": "1bdd2513c67ec15a6dbcebbbe84b5b6fc78bf2ae"
+        }
+      ]
+    },
+    {
+      "original": "include/cmeta_api.h",
+      "source_blob_sha": "2c929d521ba0558ee25d476784d19aadd747a1c8",
+      "size_bytes": 551,
+      "owner_proposal": "Salts::Core",
+      "status": "byte_identical_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/include/cmeta_api.h",
+          "blob_sha": "2c929d521ba0558ee25d476784d19aadd747a1c8"
+        }
+      ]
+    },
+    {
+      "original": "include/cmeta_buffer.h",
+      "source_blob_sha": "5870998ea9a7d1373701fb9207d7b41ccc288e7c",
+      "size_bytes": 9303,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/include/cmeta_buffer.h",
+          "blob_sha": "08a142d529cf41da73ece242afc58cfd05757aea"
+        }
+      ]
+    },
+    {
+      "original": "include/cmeta_bytes.h",
+      "source_blob_sha": "b5759f185aef75762108aabf3e20748868ded6ce",
+      "size_bytes": 4545,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "include/cmeta_cmeta_data.h",
+      "source_blob_sha": "35b03f83cd986c5a5e1e4acdfb4a7b9336ce0534",
+      "size_bytes": 9246,
+      "owner_proposal": "qigao/salts (CMeta)",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "include/cmeta_cmeta_fixed_width.h",
+      "source_blob_sha": "46d7295cd620317a96e2599143c98037916863af",
+      "size_bytes": 4728,
+      "owner_proposal": "qigao/salts (CMeta)",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "include/cmeta_crypto.h",
+      "source_blob_sha": "65ce9039ac2d6d83a258257b3d769d031d9fa5cb",
+      "size_bytes": 18973,
+      "owner_proposal": "qigao/crypto",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "include/cmeta_error.h",
+      "source_blob_sha": "1b1950be783a3a5bd6559a8f81df8131f189eba2",
+      "size_bytes": 3926,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "include/cmeta_fs.h",
+      "source_blob_sha": "8efc085c72217fee17ee74650ac6bd7f2088089f",
+      "size_bytes": 21573,
+      "owner_proposal": "Salts::FS",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "include/cmeta_mdns.h",
+      "source_blob_sha": "683481f4c526896a803198e5f9aebfa79e351535",
+      "size_bytes": 3029,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "include/cmeta_mmap.h",
+      "source_blob_sha": "ba7aecd588492814ebca196d66023dfc9f24801c",
+      "size_bytes": 10087,
+      "owner_proposal": "Salts::FS",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "include/cmeta_process.h",
+      "source_blob_sha": "647457c72008b7d1119abd8bbff8c103985f2989",
+      "size_bytes": 7630,
+      "owner_proposal": "Salts::Process/Coroutine",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "include/cmeta_simd_scan.h",
+      "source_blob_sha": "a389bf2fdae15cb78769d2956b320709d1a876cb",
+      "size_bytes": 1232,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "include/cmeta_thread.h",
+      "source_blob_sha": "a72d39fd9125cd0180371b53b85d38d2702eeed9",
+      "size_bytes": 523,
+      "owner_proposal": "Salts::Platform",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "include/cmeta_uuid.h",
+      "source_blob_sha": "ec225aeda0089829010ac8a6cb866f018ee7c9ef",
+      "size_bytes": 2395,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/include/cmeta_uuid.h",
+          "blob_sha": "e9da41047ca8b59436baed9b5091de2b2862c2c9"
+        }
+      ]
+    },
+    {
+      "original": "include/cmeta_zstd.h",
+      "source_blob_sha": "1ba1bb1b251a3ccadd15851a9e12b77f654c2cbb",
+      "size_bytes": 3703,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "include/disruptor.h",
+      "source_blob_sha": "05fb2cd00fb801eab4d454b06037aca5e24c130c",
+      "size_bytes": 135,
+      "owner_proposal": "Salts::Concurrency",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "concurrency/include/salts/disruptor.h",
+          "blob_sha": "76fa42fc4ee212035e2ad65922c46f0611bdd45c"
+        }
+      ]
+    },
+    {
+      "original": "include/enum_utils.h",
+      "source_blob_sha": "93ba81cfed289e8fb5dd6ec474f0c5566c6c17b1",
+      "size_bytes": 3830,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "include/fmt.h",
+      "source_blob_sha": "0906707557db6dc2039b911653983d7d73a97621",
+      "size_bytes": 21726,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/include/fmt.h",
+          "blob_sha": "86a0ecdcfac1dfa71cb2e9ef31b2381c91c6910f"
+        }
+      ]
+    },
+    {
+      "original": "include/levenshtein_automaton.h",
+      "source_blob_sha": "160831ad1b3a352ac0199443ab5bff5fa36e22c4",
+      "size_bytes": 2420,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "include/memory_pool.h",
+      "source_blob_sha": "64510644b7eb57f3aef25ec3ef9fbdbec21af1cd",
+      "size_bytes": 5547,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/include/memory_pool.h",
+          "blob_sha": "25943f3c7275069992ecf84d685e7d3c3eae2e26"
+        }
+      ]
+    },
+    {
+      "original": "include/object_pool.h",
+      "source_blob_sha": "0303fcd3f19d9658ab205d268f4b200c0f0ca0e6",
+      "size_bytes": 9218,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/include/object_pool.h",
+          "blob_sha": "4a289734b76f3d76155126f737ae85317c4f99f1"
+        }
+      ]
+    },
+    {
+      "original": "include/platform.h",
+      "source_blob_sha": "a60fb0c660b9700d697b3462c17b8c26f96e10c5",
+      "size_bytes": 9920,
+      "owner_proposal": "Salts::Platform",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "include/re.h",
+      "source_blob_sha": "2b99ec662352677b21aceddfc13dea6d624df15f",
+      "size_bytes": 3872,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "include/ring_buffer.h",
+      "source_blob_sha": "083cdcd0a78142eca934f1cc53e07475f93492c2",
+      "size_bytes": 2537,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/include/ring_buffer.h",
+          "blob_sha": "6f85a078f5722df9d2bb86ab07114c985721708b"
+        }
+      ]
+    },
+    {
+      "original": "include/ring_buffer_spsc.h",
+      "source_blob_sha": "cf15aa87387cff04b0369a85dc8e2612a57f3e1d",
+      "size_bytes": 3047,
+      "owner_proposal": "Salts::Concurrency",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "concurrency/include/ring_buffer_spsc.h",
+          "blob_sha": "44ceecbd1f0dfcf1a19fdafb0e5b82e3558c9a86"
+        }
+      ]
+    },
+    {
+      "original": "include/str.h",
+      "source_blob_sha": "0e1972b8876c93be34610d6b335c3033c78559f4",
+      "size_bytes": 2191,
+      "owner_proposal": "Salts::Core",
+      "status": "byte_identical_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/include/str.h",
+          "blob_sha": "0e1972b8876c93be34610d6b335c3033c78559f4"
+        }
+      ]
+    },
+    {
+      "original": "include/tlog.h",
+      "source_blob_sha": "8dff585fbb60c50a7474f88263d0dfb0ba808057",
+      "size_bytes": 23161,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/include/tlog.h",
+          "blob_sha": "41b70fd1a0db8e852849c3fcccb1b813c4fd81aa"
+        }
+      ]
+    },
+    {
+      "original": "include/tlog_helper.h",
+      "source_blob_sha": "74ad49b73ce31e768503210813a9ee217e2fffbe",
+      "size_bytes": 8613,
+      "owner_proposal": "Salts::Core",
+      "status": "byte_identical_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/include/tlog_helper.h",
+          "blob_sha": "74ad49b73ce31e768503210813a9ee217e2fffbe"
+        }
+      ]
+    },
+    {
+      "original": "include/tstr.h",
+      "source_blob_sha": "c67b3f9b108d3c0be2c468494d1e818fad7ad970",
+      "size_bytes": 12377,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/include/tstr.h",
+          "blob_sha": "75f40ab0c2e44fa718d8239c282f952cf553d346"
+        }
+      ]
+    },
+    {
+      "original": "include/vstr.h",
+      "source_blob_sha": "2ea73f248f9e44a409c03ef59d625a009d571972",
+      "size_bytes": 6356,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/include/vstr.h",
+          "blob_sha": "64a18209c676e5b58d746767e3eab6caabae5d95"
+        }
+      ]
+    },
+    {
+      "original": "parser/CMakeLists.txt",
+      "source_blob_sha": "80359cfcd3d80170a946b706d0d4dc28702bce4f",
+      "size_bytes": 2325,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "CMakeLists.txt",
+          "blob_sha": "e7557344bc149b25211c2489e16965e5a6f70ea7"
+        },
+        {
+          "path": "cnet/CMakeLists.txt",
+          "blob_sha": "8f5bb492c25b4aecdac48d05b29622dd953c2d97"
+        },
+        {
+          "path": "concurrency/CMakeLists.txt",
+          "blob_sha": "e8ffd7a027e303b3ec14c92f3bfe99cfd20596c3"
+        },
+        {
+          "path": "core/CMakeLists.txt",
+          "blob_sha": "2495821ef4ec374fa247d51799aeffc16307beb4"
+        },
+        {
+          "path": "core/parser/CMakeLists.txt",
+          "blob_sha": "88a2f981bed3607c2223969776df0e1b89d9e5b3"
+        },
+        {
+          "path": "coroutine/CMakeLists.txt",
+          "blob_sha": "e9c119bc2105099e2329409cba9d2f64725d39cf"
+        },
+        {
+          "path": "cserde/CMakeLists.txt",
+          "blob_sha": "d756f360f22f85e3bbf2420893a3d1e5f0031c44"
+        }
+      ]
+    },
+    {
+      "original": "parser/fmt_lexer.h",
+      "source_blob_sha": "30d0584d3358bdf394dee129134a4aceacc53686",
+      "size_bytes": 1671,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/parser/fmt_lexer.h",
+          "blob_sha": "7b520f11a1fc5e9bb79c9397e2284bc14c8e9277"
+        }
+      ]
+    },
+    {
+      "original": "parser/fmt_lexer.re",
+      "source_blob_sha": "803a9895523ea822486a66bc4ddb1821b220bd92",
+      "size_bytes": 3074,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/parser/fmt_lexer.re",
+          "blob_sha": "319c4ec555b32b5632ace219e6f883381d883a7b"
+        }
+      ]
+    },
+    {
+      "original": "parser/log_pattern_lexer.h",
+      "source_blob_sha": "3d14f8bb4032c07715fd332a4e474fb81fb02c3b",
+      "size_bytes": 1236,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/parser/log_pattern_lexer.h",
+          "blob_sha": "a49447dc40e9632546bd0cbf79106513ca5f83fb"
+        }
+      ]
+    },
+    {
+      "original": "parser/log_pattern_lexer.re",
+      "source_blob_sha": "843eaf4dc8fe0d2b8a805d2b9a92da4dae91bdbb",
+      "size_bytes": 2851,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/parser/log_pattern_lexer.re",
+          "blob_sha": "ade51152991f257ba071e2c3e2b0609e2b9a5fe8"
+        }
+      ]
+    },
+    {
+      "original": "src/ac_automaton.c",
+      "source_blob_sha": "8e9e3b7e08d9a8a0d98f54dee3118c5b42bc8e57",
+      "size_bytes": 19134,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "src/base64_utils.c",
+      "source_blob_sha": "f89262d4ccf40c728b7eaecad53273510ff37e1b",
+      "size_bytes": 3811,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/src/base64_utils.c",
+          "blob_sha": "45dca940f698414250131cbd21c9123fc66445c6"
+        }
+      ]
+    },
+    {
+      "original": "src/bucket_priority_queue.c",
+      "source_blob_sha": "b797195b50f2ed271107a7adace1bddadf73d9bc",
+      "size_bytes": 11009,
+      "owner_proposal": "Salts::Core",
+      "status": "byte_identical_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/src/bucket_priority_queue.c",
+          "blob_sha": "b797195b50f2ed271107a7adace1bddadf73d9bc"
+        }
+      ]
+    },
+    {
+      "original": "src/bucket_priority_queue_mpmc.c",
+      "source_blob_sha": "ff8e503abbafff7cb952e8c6575c7f6cbb6e1605",
+      "size_bytes": 8006,
+      "owner_proposal": "Salts::Concurrency",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "src/bucket_priority_queue_spsc.c",
+      "source_blob_sha": "db9f846906a114fb1d29a23ffd3140ce09d184ae",
+      "size_bytes": 9710,
+      "owner_proposal": "Salts::Concurrency",
+      "status": "byte_identical_unverified",
+      "destination_candidates": [
+        {
+          "path": "concurrency/src/bucket_priority_queue_spsc.c",
+          "blob_sha": "db9f846906a114fb1d29a23ffd3140ce09d184ae"
+        }
+      ]
+    },
+    {
+      "original": "src/cmeta_buffer.c",
+      "source_blob_sha": "c5575d0f61c1a1bf88afa52d29f901fd66c6926a",
+      "size_bytes": 37256,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/src/cmeta_buffer.c",
+          "blob_sha": "25d6a1d5919e051607dcb33e03fc09604ed06b79"
+        }
+      ]
+    },
+    {
+      "original": "src/cmeta_bytes.c",
+      "source_blob_sha": "165c22921f1e7afb15b6c59228803736207a42d6",
+      "size_bytes": 5026,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "src/cmeta_cmeta_data.c",
+      "source_blob_sha": "b284422c544b834a18cde3d4bb45918e091ea57b",
+      "size_bytes": 9878,
+      "owner_proposal": "qigao/salts (CMeta)",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "src/cmeta_crypto.c",
+      "source_blob_sha": "fb82a80178fdde77f174692437cf6d8a8b7038b2",
+      "size_bytes": 44868,
+      "owner_proposal": "qigao/crypto",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "src/cmeta_error.c",
+      "source_blob_sha": "d489ef242ffea3612b32be896f229f6f2828b706",
+      "size_bytes": 7433,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "src/cmeta_fs.c",
+      "source_blob_sha": "ed46155d4e7a613a58254ce045458f213c55aa03",
+      "size_bytes": 34730,
+      "owner_proposal": "Salts::FS",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "src/cmeta_fs_root.c",
+      "source_blob_sha": "811fce37a90d738e75d4690c8f53aea598b8d8c8",
+      "size_bytes": 42265,
+      "owner_proposal": "Salts::FS",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "src/cmeta_mmap.c",
+      "source_blob_sha": "04e87de7bc565d77261e2de66c84380b85a0ac15",
+      "size_bytes": 17205,
+      "owner_proposal": "Salts::FS",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "src/cmeta_process.c",
+      "source_blob_sha": "16936d98e0fa5ed833557687a3552f650a6d97c7",
+      "size_bytes": 59195,
+      "owner_proposal": "Salts::Process/Coroutine",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "src/cmeta_simd_scan.c",
+      "source_blob_sha": "95fbad640535af631be4cf6e47228d4885fe20ce",
+      "size_bytes": 4987,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "src/cmeta_thread.c",
+      "source_blob_sha": "508c6ef29d730f61219083bab9cfcfef3e7a85d0",
+      "size_bytes": 331,
+      "owner_proposal": "Salts::Platform",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "src/cmeta_uuid.c",
+      "source_blob_sha": "33ae88eb463ee592571233034f65824d45b89d65",
+      "size_bytes": 3474,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/src/cmeta_uuid.c",
+          "blob_sha": "d6cfa898f61c7ce850d3915d46d9d5ab1a7202ec"
+        }
+      ]
+    },
+    {
+      "original": "src/cmeta_zstd.c",
+      "source_blob_sha": "0e8492245e917d7ecae88d654e25b0ca96df4f3b",
+      "size_bytes": 3921,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "src/cstl_status_internal.h",
+      "source_blob_sha": "5614216c9425b6c2ee573b99c5fb47ec2a6fb2d3",
+      "size_bytes": 550,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "src/fmt.c",
+      "source_blob_sha": "694534215813e98f16e522d15622f29ea4b53d53",
+      "size_bytes": 22524,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/src/fmt.c",
+          "blob_sha": "84a87865333da167a0d198c5eb9d77837c871eed"
+        }
+      ]
+    },
+    {
+      "original": "src/levenshtein_automaton.c",
+      "source_blob_sha": "ff177a726e624e32a54f3a7dd2b282b71cbe128e",
+      "size_bytes": 9430,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "src/memory_pool.c",
+      "source_blob_sha": "b308ea7fde9005de95ff5c8b6e6256ea426e0de9",
+      "size_bytes": 2189,
+      "owner_proposal": "Salts::Core",
+      "status": "byte_identical_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/src/memory_pool.c",
+          "blob_sha": "b308ea7fde9005de95ff5c8b6e6256ea426e0de9"
+        }
+      ]
+    },
+    {
+      "original": "src/object_pool.c",
+      "source_blob_sha": "c82eac707f5ad402130b65d6b7c7401ae7da6149",
+      "size_bytes": 9560,
+      "owner_proposal": "Salts::Core",
+      "status": "byte_identical_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/src/object_pool.c",
+          "blob_sha": "c82eac707f5ad402130b65d6b7c7401ae7da6149"
+        }
+      ]
+    },
+    {
+      "original": "src/platform.c",
+      "source_blob_sha": "472a0ca73ff5b0183f335e1c2b10298c53c2e3c3",
+      "size_bytes": 30462,
+      "owner_proposal": "Salts::Platform",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "src/re.c",
+      "source_blob_sha": "33468540fe02a2adcc7fd7a5303eb990d1521a31",
+      "size_bytes": 31774,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "src/re_scan.h",
+      "source_blob_sha": "616b381ecae509b54b9f96f90c1309a189462981",
+      "size_bytes": 1498,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "src/ring_buffer.c",
+      "source_blob_sha": "d4bbf54323bef0ea6cc85926f27566436efdd1ab",
+      "size_bytes": 3604,
+      "owner_proposal": "Salts::Core",
+      "status": "byte_identical_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/src/ring_buffer.c",
+          "blob_sha": "d4bbf54323bef0ea6cc85926f27566436efdd1ab"
+        }
+      ]
+    },
+    {
+      "original": "src/ring_buffer_spsc.c",
+      "source_blob_sha": "70d3eee363b0a8374fef3c5197cc8d20efd7d010",
+      "size_bytes": 969,
+      "owner_proposal": "Salts::Concurrency",
+      "status": "byte_identical_unverified",
+      "destination_candidates": [
+        {
+          "path": "concurrency/src/ring_buffer_spsc.c",
+          "blob_sha": "70d3eee363b0a8374fef3c5197cc8d20efd7d010"
+        }
+      ]
+    },
+    {
+      "original": "src/tlog.c",
+      "source_blob_sha": "7f3781d262a7a5e432362c03351c1ca51c0a3ac4",
+      "size_bytes": 48866,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/src/tlog.c",
+          "blob_sha": "2208ec5e71da9f29f56d0faea61ef0d0f8f98eb1"
+        }
+      ]
+    },
+    {
+      "original": "src/tstr.c",
+      "source_blob_sha": "1595cd2fbb15b48db883f50f1e565451a4242595",
+      "size_bytes": 17455,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/src/tstr.c",
+          "blob_sha": "a5928f11d9ec5c5fc7b169bf58b03fe8e485045c"
+        }
+      ]
+    },
+    {
+      "original": "src/vstr.c",
+      "source_blob_sha": "ca3315e05d08f6f1793381854abcc62fe9c53b6a",
+      "size_bytes": 21771,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "core/src/vstr.c",
+          "blob_sha": "e0514eb4e58b894ee273cb0cc62d985f79c0d4a4"
+        }
+      ]
+    },
+    {
+      "original": "tests/CMakeLists.txt",
+      "source_blob_sha": "ad3abea752b2ca7f985c6b67017bd9b3e48e4b06",
+      "size_bytes": 10303,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "CMakeLists.txt",
+          "blob_sha": "e7557344bc149b25211c2489e16965e5a6f70ea7"
+        },
+        {
+          "path": "cnet/CMakeLists.txt",
+          "blob_sha": "8f5bb492c25b4aecdac48d05b29622dd953c2d97"
+        },
+        {
+          "path": "concurrency/CMakeLists.txt",
+          "blob_sha": "e8ffd7a027e303b3ec14c92f3bfe99cfd20596c3"
+        },
+        {
+          "path": "core/CMakeLists.txt",
+          "blob_sha": "2495821ef4ec374fa247d51799aeffc16307beb4"
+        },
+        {
+          "path": "core/parser/CMakeLists.txt",
+          "blob_sha": "88a2f981bed3607c2223969776df0e1b89d9e5b3"
+        },
+        {
+          "path": "coroutine/CMakeLists.txt",
+          "blob_sha": "e9c119bc2105099e2329409cba9d2f64725d39cf"
+        },
+        {
+          "path": "cserde/CMakeLists.txt",
+          "blob_sha": "d756f360f22f85e3bbf2420893a3d1e5f0031c44"
+        }
+      ]
+    },
+    {
+      "original": "tests/cmeta_cmeta_data_peer.c",
+      "source_blob_sha": "3b8fe56621f548d924d130b8128a94d795dbaa36",
+      "size_bytes": 568,
+      "owner_proposal": "qigao/salts (CMeta)",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/cmeta_crypto_test_hooks.h",
+      "source_blob_sha": "4a1edf4ee6b5df4f6b0631529d9477606e4eb90b",
+      "size_bytes": 207,
+      "owner_proposal": "qigao/crypto",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/cmeta_fs_fsync_fault.c",
+      "source_blob_sha": "21969a3c7513c0c566c7ab39d675461cd0037f9c",
+      "size_bytes": 500,
+      "owner_proposal": "Salts::FS",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/cmeta_str_meta_peer.c",
+      "source_blob_sha": "9aab12af91831499b19ec290266c778d6949d1b0",
+      "size_bytes": 96,
+      "owner_proposal": "qigao/salts (CMeta)",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/crypto_install_consumer/CMakeLists.txt",
+      "source_blob_sha": "3bdc24c6384fcea1c503ee64d0157ae151d1007b",
+      "size_bytes": 866,
+      "owner_proposal": "qigao/crypto",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "CMakeLists.txt",
+          "blob_sha": "e7557344bc149b25211c2489e16965e5a6f70ea7"
+        },
+        {
+          "path": "cnet/CMakeLists.txt",
+          "blob_sha": "8f5bb492c25b4aecdac48d05b29622dd953c2d97"
+        },
+        {
+          "path": "concurrency/CMakeLists.txt",
+          "blob_sha": "e8ffd7a027e303b3ec14c92f3bfe99cfd20596c3"
+        },
+        {
+          "path": "core/CMakeLists.txt",
+          "blob_sha": "2495821ef4ec374fa247d51799aeffc16307beb4"
+        },
+        {
+          "path": "core/parser/CMakeLists.txt",
+          "blob_sha": "88a2f981bed3607c2223969776df0e1b89d9e5b3"
+        },
+        {
+          "path": "coroutine/CMakeLists.txt",
+          "blob_sha": "e9c119bc2105099e2329409cba9d2f64725d39cf"
+        },
+        {
+          "path": "cserde/CMakeLists.txt",
+          "blob_sha": "d756f360f22f85e3bbf2420893a3d1e5f0031c44"
+        }
+      ]
+    },
+    {
+      "original": "tests/crypto_install_consumer/crypto_test_vectors.h",
+      "source_blob_sha": "f49e4f57627e1c0d58f5dd0ceb041b6cd9dc2d6d",
+      "size_bytes": 3019,
+      "owner_proposal": "qigao/crypto",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/crypto_install_consumer/main.c",
+      "source_blob_sha": "241ed455bcb3758e234c5299b40fa9250614e566",
+      "size_bytes": 5951,
+      "owner_proposal": "qigao/crypto",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "sctp/tests/installed/main.c",
+          "blob_sha": "8f63ee561c43bd854e6c30dc6b51d8c289f0ef05"
+        },
+        {
+          "path": "unicode/test/install_consumer/main.c",
+          "blob_sha": "0b9dd1f67d93343fd5db609fc6f6c163ec383044"
+        }
+      ]
+    },
+    {
+      "original": "tests/crypto_install_consumer/main.cpp",
+      "source_blob_sha": "f5c3753e9720a855edab8a66243be05e855e633d",
+      "size_bytes": 3362,
+      "owner_proposal": "qigao/crypto",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "unicode/test/install_consumer/main.cpp",
+          "blob_sha": "a6cf78e4470bb86845005a382d3afd254a797644"
+        }
+      ]
+    },
+    {
+      "original": "tests/static_owner_exports_test.c",
+      "source_blob_sha": "f7281d16afa57003771b6e973a7226b615c36ce4",
+      "size_bytes": 2727,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_base64_utils.c",
+      "source_blob_sha": "49f5583edfb100c4f57b6137cb9f9c82e915e670",
+      "size_bytes": 2151,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "tests/test_base64_utils.c",
+          "blob_sha": "9d29e002f1e9fe1d351a409be04974e571c5096a"
+        }
+      ]
+    },
+    {
+      "original": "tests/test_bucket_priority_queue.c",
+      "source_blob_sha": "7e3e995ad68e1d81351a9abbb2044670743c1101",
+      "size_bytes": 4657,
+      "owner_proposal": "Salts::Core",
+      "status": "byte_identical_unverified",
+      "destination_candidates": [
+        {
+          "path": "tests/test_bucket_priority_queue.c",
+          "blob_sha": "7e3e995ad68e1d81351a9abbb2044670743c1101"
+        }
+      ]
+    },
+    {
+      "original": "tests/test_bucket_priority_queue_mpmc.c",
+      "source_blob_sha": "5d1498d3f0fd13a9d0619914c644baaaf0bd077e",
+      "size_bytes": 6409,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_bucket_priority_queue_spsc.c",
+      "source_blob_sha": "6c9aafda5054ed414c1dec91180a66e23d9744f3",
+      "size_bytes": 8463,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "tests/test_bucket_priority_queue_spsc.c",
+          "blob_sha": "5a79023014e533f5b8a408ef00014c1d7070ebc3"
+        }
+      ]
+    },
+    {
+      "original": "tests/test_cmeta_atomic.c",
+      "source_blob_sha": "974c688c54c3ef68a0889300359aaddc87006900",
+      "size_bytes": 4978,
+      "owner_proposal": "Salts::Platform",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_cmeta_buffer.c",
+      "source_blob_sha": "73a78c705b13392da98b62b148988250f58ac777",
+      "size_bytes": 13881,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_cmeta_bytes.c",
+      "source_blob_sha": "ea4f127a066ed944e21a8a2330518cc9e9075968",
+      "size_bytes": 6224,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_cmeta_cmeta_data.c",
+      "source_blob_sha": "c533e82c003cea76deb0f3400f603bc5092d5981",
+      "size_bytes": 27985,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_cmeta_cmeta_data_cpp.cpp",
+      "source_blob_sha": "b621fe00aefc3599689eb109ef9e02cf1393f3d2",
+      "size_bytes": 5346,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_cmeta_crypto.c",
+      "source_blob_sha": "ab5cd63ef4e03595f1e638dfbda5c00bf7e3c5f9",
+      "size_bytes": 22661,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_cmeta_crypto_cpp.cpp",
+      "source_blob_sha": "c2d7e279fea5004c309c6c3c8a704ced3c634059",
+      "size_bytes": 4186,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_cmeta_crypto_fault.c",
+      "source_blob_sha": "6e6a0278adeebf3eeaaa0a0ede6c183196461f59",
+      "size_bytes": 5415,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_cmeta_ec.c",
+      "source_blob_sha": "748ef4c5e33bbb530fc2dde363ec9cd0f70b213f",
+      "size_bytes": 5867,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_cmeta_error.c",
+      "source_blob_sha": "b8b407a8bb5d0850c9e9645cf5e5fba3295d12ca",
+      "size_bytes": 6344,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_cmeta_fs.c",
+      "source_blob_sha": "2de9169b61be78c66649f59286993828836a0a0a",
+      "size_bytes": 22039,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_cmeta_fs_replace_fault.c",
+      "source_blob_sha": "380a239d42a42ac3d098d0f4974577c8e3272f43",
+      "size_bytes": 5215,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_cmeta_fs_root.c",
+      "source_blob_sha": "db0669e832915b03b8b6711a5781ee178199aa73",
+      "size_bytes": 19761,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_cmeta_process.c",
+      "source_blob_sha": "f897a77c0cb98cb5089eea45e9be60218cc3ba83",
+      "size_bytes": 27085,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_cmeta_ring.c",
+      "source_blob_sha": "3cecb100ba4a1ffad98ef23f94157b7018c9eb5b",
+      "size_bytes": 4960,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_cmeta_sm2.c",
+      "source_blob_sha": "6fef7e10284427e4305a700910c0a10169893760",
+      "size_bytes": 12421,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_cmeta_sm4_gcm.c",
+      "source_blob_sha": "45432a054fe55d5a50be9ead37c8804cbb4a0954",
+      "size_bytes": 12573,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_cmeta_str.c",
+      "source_blob_sha": "05001398cd527c8652c2f710b49d4e2de9ca71bf",
+      "size_bytes": 21333,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_cmeta_str_meta.c",
+      "source_blob_sha": "b70c3b5acb337f069697e12daa0c366ffb97de1e",
+      "size_bytes": 3200,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_cmeta_str_meta_cpp.cpp",
+      "source_blob_sha": "1946c6d1aaa75eb52a335476355dd1db5fb6dc3a",
+      "size_bytes": 1270,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_cmeta_uuid.c",
+      "source_blob_sha": "db783d848ab9acf0d71cc5df55b5a34051ddae54",
+      "size_bytes": 3167,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "tests/test_cmeta_uuid.c",
+          "blob_sha": "3d5f953ecad0f423e07240cb5a193a04c9d78e96"
+        }
+      ]
+    },
+    {
+      "original": "tests/test_cmeta_uuid_cpp.cpp",
+      "source_blob_sha": "dbfd9da401e1aed51b6c7cf5613ff254fcf5dad7",
+      "size_bytes": 528,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "tests/test_cmeta_uuid_cpp.cpp",
+          "blob_sha": "40fe5369d5cf8618e77aef063c5e3d46fbf792e9"
+        }
+      ]
+    },
+    {
+      "original": "tests/test_cmeta_zstd.c",
+      "source_blob_sha": "9c6a63129b29bea8dc32dfd5cf6bd583231477ee",
+      "size_bytes": 5452,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_coro.c",
+      "source_blob_sha": "b866199ef5c441bbf6475b3e816aad68dba87901",
+      "size_bytes": 13944,
+      "owner_proposal": "Salts::Process/Coroutine",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_enum_utils.c",
+      "source_blob_sha": "c8464c7c225e1601a9048476db17785730053952",
+      "size_bytes": 2293,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_execution_compat.c",
+      "source_blob_sha": "b0db610ddbd9006a8984e9a45047cc69a94f6e8f",
+      "size_bytes": 785,
+      "owner_proposal": "Salts::Process/Coroutine",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_fmt.c",
+      "source_blob_sha": "f7c4f017daf7a51b147ebaed4c720951fcc819de",
+      "size_bytes": 22777,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "tests/test_fmt.c",
+          "blob_sha": "b58749281fe732a8ed50801354d099494148c3ef"
+        }
+      ]
+    },
+    {
+      "original": "tests/test_fmt_cpp.cpp",
+      "source_blob_sha": "d50512fd84e5bc70ef35298cf8d01e2b2f50bd99",
+      "size_bytes": 2966,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "tests/test_fmt_cpp.cpp",
+          "blob_sha": "edfc94a070e077c592933b1d46ad3f3f06c7df13"
+        }
+      ]
+    },
+    {
+      "original": "tests/test_fmt_re2c.c",
+      "source_blob_sha": "7508634150fca023c91a92f67a46f6e02db332a6",
+      "size_bytes": 4247,
+      "owner_proposal": "Salts::Core",
+      "status": "byte_identical_unverified",
+      "destination_candidates": [
+        {
+          "path": "tests/test_fmt_re2c.c",
+          "blob_sha": "7508634150fca023c91a92f67a46f6e02db332a6"
+        }
+      ]
+    },
+    {
+      "original": "tests/test_fmt_surface_contract.c",
+      "source_blob_sha": "c9a7ebfc66c9f0dbca28be71e5504797bcc076fc",
+      "size_bytes": 1509,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_fmt_surface_contract.cpp",
+      "source_blob_sha": "ba945159e0b4b85b3e9a7c7855c61ba177097bc7",
+      "size_bytes": 1528,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_fmt_vstr_pattern.c",
+      "source_blob_sha": "eaf39e8ac0f66a5d515f025864f14a515a17dd29",
+      "size_bytes": 926,
+      "owner_proposal": "Salts::Core",
+      "status": "byte_identical_unverified",
+      "destination_candidates": [
+        {
+          "path": "tests/test_fmt_vstr_pattern.c",
+          "blob_sha": "eaf39e8ac0f66a5d515f025864f14a515a17dd29"
+        }
+      ]
+    },
+    {
+      "original": "tests/test_memory_pool.c",
+      "source_blob_sha": "ec928ca383cb07f061ca6cdc1903ced38058b815",
+      "size_bytes": 2000,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_mmap.c",
+      "source_blob_sha": "56dda3ed12541512ecbb46a2cfe40a249e86182c",
+      "size_bytes": 5399,
+      "owner_proposal": "Salts::FS",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_mmap_group.c",
+      "source_blob_sha": "58093c3e26acf5ab312376819cdf05699e39e4bc",
+      "size_bytes": 2626,
+      "owner_proposal": "Salts::FS",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_mutex.c",
+      "source_blob_sha": "3f214f31bb3e89eb1cf83dec6e845c102f816f1d",
+      "size_bytes": 1728,
+      "owner_proposal": "Salts::Platform",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_native_timer.c",
+      "source_blob_sha": "283fa3ee44f7c45322aaf3992cd670f80387ffab",
+      "size_bytes": 1945,
+      "owner_proposal": "Salts::Platform",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_object_pool.c",
+      "source_blob_sha": "d5ee80e91e1a8a41db9fa4000443dac68e5f6a0b",
+      "size_bytes": 20932,
+      "owner_proposal": "Salts::Core",
+      "status": "byte_identical_unverified",
+      "destination_candidates": [
+        {
+          "path": "tests/test_object_pool.c",
+          "blob_sha": "d5ee80e91e1a8a41db9fa4000443dac68e5f6a0b"
+        }
+      ]
+    },
+    {
+      "original": "tests/test_platform.c",
+      "source_blob_sha": "0bb8954d6b5e78f0df160a8b7919fe684c6efc3a",
+      "size_bytes": 1254,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "tests/test_platform.c",
+          "blob_sha": "b55029ea1a2e0597201b027db6f0e1442099bb40"
+        }
+      ]
+    },
+    {
+      "original": "tests/test_platform_build_state_contract.c",
+      "source_blob_sha": "e40095744908e5df43f9a4916275de3d79b7ad12",
+      "size_bytes": 724,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_platform_header_cpp.cpp",
+      "source_blob_sha": "3220cbadbb738350b6ea8cbd5cc8b77513f92cf0",
+      "size_bytes": 463,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_re.c",
+      "source_blob_sha": "a4fef94edb32f4225c001550a6d15f86bb455225",
+      "size_bytes": 9536,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_ring_buffer_spsc.c",
+      "source_blob_sha": "ae73e79a4e5184091b2b95a87dad9a99a8eb5c5f",
+      "size_bytes": 2553,
+      "owner_proposal": "Salts::Core",
+      "status": "byte_identical_unverified",
+      "destination_candidates": [
+        {
+          "path": "tests/test_ring_buffer_spsc.c",
+          "blob_sha": "ae73e79a4e5184091b2b95a87dad9a99a8eb5c5f"
+        }
+      ]
+    },
+    {
+      "original": "tests/test_string_automata.c",
+      "source_blob_sha": "a6bddb7f9c06a0e0dfe3d6838064e47fe4dc849c",
+      "size_bytes": 9961,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_string_header_names.c",
+      "source_blob_sha": "5c30cabe25289d8f66e43644c3e90150aad5b804",
+      "size_bytes": 520,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_tlog.c",
+      "source_blob_sha": "6b08ef37da2c9f35616058f4db8a66a9f0fff3cb",
+      "size_bytes": 25391,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "tests/test_tlog.c",
+          "blob_sha": "45a111aad0605c224868373fd7c4d60ad7dcf97a"
+        }
+      ]
+    },
+    {
+      "original": "tests/test_tlog_cpp.cpp",
+      "source_blob_sha": "f5e293fe5ec21e72a1ba54a91c88b1c45ef8a0ef",
+      "size_bytes": 2073,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "tests/test_tlog_cpp.cpp",
+          "blob_sha": "363667c115c84e5f16a346a4737fcfeb60ee4072"
+        }
+      ]
+    },
+    {
+      "original": "tests/test_tlog_header_collision.c",
+      "source_blob_sha": "17ba52b1d73e80b8a3441241801a1f97630466e3",
+      "size_bytes": 2474,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "tests/test_tlog_header_collision.c",
+          "blob_sha": "7dd1311327e778380aa9e97645eb5c9659f28be6"
+        }
+      ]
+    },
+    {
+      "original": "tests/test_tlog_header_collision.cpp",
+      "source_blob_sha": "c87bc599b52ae72fe27bb653b000b90ed39c38d7",
+      "size_bytes": 2388,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_tlog_surface_contract.c",
+      "source_blob_sha": "4000b7e56bf1396f27f53082fe2883a3aafa44e1",
+      "size_bytes": 1848,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_tlog_surface_contract_cpp.cpp",
+      "source_blob_sha": "512e4237cffc84562d2af4f8af27d117fdbdf821",
+      "size_bytes": 1037,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_tlog_vstr_abi.c",
+      "source_blob_sha": "359e02a159f6d5da823ea1d4708a9fe0bc18118d",
+      "size_bytes": 4792,
+      "owner_proposal": "Salts::Core",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "tests/test_tlog_vstr_abi.c",
+          "blob_sha": "98c714ad91cec2de2539f2da6dfd804e1b4793a2"
+        }
+      ]
+    },
+    {
+      "original": "tests/test_tlog_vstr_abi_cpp.cpp",
+      "source_blob_sha": "acf49893d942ec1bdec2072fa716500538002110",
+      "size_bytes": 738,
+      "owner_proposal": "Salts::Core",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "tests/test_tstr_v2_contract.c",
+      "source_blob_sha": "65d5dcdd8d79c34c0d8c0226641f42fb4cafc4cc",
+      "size_bytes": 1228,
+      "owner_proposal": "Salts::Core",
+      "status": "byte_identical_unverified",
+      "destination_candidates": [
+        {
+          "path": "tests/test_tstr_v2_contract.c",
+          "blob_sha": "65d5dcdd8d79c34c0d8c0226641f42fb4cafc4cc"
+        }
+      ]
+    },
+    {
+      "original": "verification/README.md",
+      "source_blob_sha": "07aaddf74a478d1987d29762a11eb74ee4d7d6d6",
+      "size_bytes": 7218,
+      "owner_proposal": "Core/Concurrency formal models",
+      "status": "name_match_unverified",
+      "destination_candidates": [
+        {
+          "path": "README.md",
+          "blob_sha": "d6f4a47aea2226dda24132b27a382eef433a2505"
+        },
+        {
+          "path": "idna/README.md",
+          "blob_sha": "71eac855779b929d872a9ded612ea54cdbe7143a"
+        },
+        {
+          "path": "sctp/README.md",
+          "blob_sha": "b86723a642239c265bf7227e833679bd1fc454d4"
+        },
+        {
+          "path": "tests/cnet-owner/README.md",
+          "blob_sha": "87682098d54073ee36427e863e99bb52aa6e863d"
+        },
+        {
+          "path": "tests/readiness-reference/README.md",
+          "blob_sha": "0f64efd0d1849a3dd8b15360625d5903cf84762e"
+        },
+        {
+          "path": "tinytest/README.md",
+          "blob_sha": "462096c25046381fa66c23adbf369d8e37aa777d"
+        },
+        {
+          "path": "unicode/README.md",
+          "blob_sha": "3f2d974939f7ae53e561ce450dfc4de0b6113255"
+        }
+      ]
+    },
+    {
+      "original": "verification/buffer_ownership.pml",
+      "source_blob_sha": "f114505c47e071f110108c5120cc5d0143ee7adc",
+      "size_bytes": 6543,
+      "owner_proposal": "Core/Concurrency formal models",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "verification/byte_buffer.pml",
+      "source_blob_sha": "850b5478d163b8207bfb186d7c55fbbd38706d6c",
+      "size_bytes": 9585,
+      "owner_proposal": "Core/Concurrency formal models",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "verification/byte_buffer_errors.pml",
+      "source_blob_sha": "f6c1ab9a753ba6d23d810fd240705f3f286b536a",
+      "size_bytes": 4373,
+      "owner_proposal": "Core/Concurrency formal models",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "verification/disruptor_broadcast.pml",
+      "source_blob_sha": "5c1f0a640fabc47ac28bb2f68ad30991b2e167c4",
+      "size_bytes": 4693,
+      "owner_proposal": "Salts::Concurrency",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "verification/disruptor_topology.pml",
+      "source_blob_sha": "94ce08e20ee2c8614618c0762fb1c7fd45cac7ad",
+      "size_bytes": 3193,
+      "owner_proposal": "Salts::Concurrency",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "verification/disruptor_wait_shutdown.pml",
+      "source_blob_sha": "8308e83bbbf49cd6356590abc408da4217ab75eb",
+      "size_bytes": 3040,
+      "owner_proposal": "Salts::Concurrency",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "verification/disruptor_worker.pml",
+      "source_blob_sha": "6be6e525b06a1cbaeaa1050a21232cf982cbc859",
+      "size_bytes": 8396,
+      "owner_proposal": "Salts::Concurrency",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "verification/priority_queue.pml",
+      "source_blob_sha": "4525c62ad4fbb8b8cf8274b81d691dedc9b37a17",
+      "size_bytes": 7076,
+      "owner_proposal": "Core/Concurrency formal models",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "verification/priority_queue_timeout.pml",
+      "source_blob_sha": "e0b11404ddbb9e3b96247e2ea50d7ee6dd11f799",
+      "size_bytes": 2527,
+      "owner_proposal": "Core/Concurrency formal models",
+      "status": "unmapped",
+      "destination_candidates": []
+    },
+    {
+      "original": "verification/ring_spsc.pml",
+      "source_blob_sha": "73f0ebe702ac713f13e22941cd135762f19fabdd",
+      "size_bytes": 7472,
+      "owner_proposal": "Salts::Concurrency",
+      "status": "unmapped",
+      "destination_candidates": []
+    }
+  ]
+}

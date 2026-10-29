@@ -1,0 +1,153 @@
+"""Frozen full-tree provenance and original native mmap function gates.
+
+This is NOT a functional-migration-complete signal: all 2,975 original
+source blobs and each unresolved owner remain visible as a bounded debt.
+"""
+import importlib.util
+from pathlib import Path
+import shutil
+import tempfile
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location(
+    "migration_owner", ROOT / "tools/check_full_source_migration.py")
+assert SPEC and SPEC.loader
+proof = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(proof)
+
+
+class ExactMigrationSourceTests(unittest.TestCase):
+    def test_all_2975_source_files_and_owners_remain_accounted_for(self):
+        a, b = proof.verify_origin(ROOT, "salts"), proof.verify_origin(ROOT, "salts-utils")
+        self.assertEqual(len(a[0]["files"]), 1554)
+        self.assertEqual(len(b[0]["files"]), 1421)
+        self.assertEqual(sum(v["count"] for v in proof.ORIGINS.values()), 2975)
+        for key, (manifest, _) in zip(("salts", "salts-utils"), (a, b)):
+            self.assertEqual(manifest["source"]["tree"],
+                             proof.ORIGINS[key]["tree"])
+
+    def test_original_blob_cannot_be_renamed_or_reclassified_silently(self):
+        for key in ("salts", "salts-utils"):
+            source = ROOT / proof.ORIGINS[key]["file"]
+            with self.subTest(repo=key), tempfile.TemporaryDirectory() as temp:
+                dest = Path(temp) / proof.ORIGINS[key]["file"]
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                data = source.read_bytes()
+                dest.write_bytes(data.replace(
+                    b"unaccounted-source-needs-owner",
+                    b"upstream-retained-verify-ownership", 1))
+                with self.assertRaisesRegex(ValueError, "modified"):
+                    proof.verify_origin(Path(temp), key)
+
+    def test_shared_upstream_build_files_are_not_migrated_functions(self):
+        # A repeated CMake/helper Git blob is a provenance coincidence,
+        # never an excuse to mark an upper-layer function as Core-qualified.
+        for key in ("salts", "salts-utils"):
+            with self.subTest(repo=key):
+                manifest, _ = proof.verify_origin(ROOT, key)
+                shared = [r for r in manifest["files"]
+                          if r["owner"].endswith("upstream-or-build-support")
+                          and "target_path" in r]
+                self.assertGreater(len(shared), 0)
+                self.assertTrue(all(r["status"] ==
+                                    "upstream-retained-verify-ownership"
+                                    for r in shared))
+
+    def test_windows_crlf_worktree_preserves_exact_git_blob_identity(self):
+        for key in ("salts", "salts-utils"):
+            with self.subTest(repo=key), tempfile.TemporaryDirectory() as temp:
+                source = ROOT / proof.ORIGINS[key]["file"]
+                dest = Path(temp) / proof.ORIGINS[key]["file"]
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                canonical = source.read_bytes().replace(b"\r\n", b"\n")
+                dest.write_bytes(canonical.replace(b"\n", b"\r\n"))
+                data, _ = proof.verify_origin(Path(temp), key)
+                self.assertEqual(len(data["files"]), proof.ORIGINS[key]["count"])
+
+                # A truly different source byte cannot be normalized away:
+                # a second CR inserted before LF remains visible in Git SHA.
+                dest.write_bytes(canonical.replace(b"\n", b"\r\r\n"))
+                with self.assertRaisesRegex(ValueError, "modified"):
+                    proof.verify_origin(Path(temp), key)
+
+    def test_required_critical_native_symbols_and_source_blobs_exist(self):
+        for (repo, path), sha in proof.CRITICAL_SHA.items():
+            with self.subTest(repo=repo, path=path):
+                data, _ = proof.verify_origin(ROOT, repo)
+                found = [r for r in data["files"] if r["path"] == path]
+                self.assertEqual(len(found), 1)
+                self.assertEqual(found[0]["git_blob"], sha)
+
+    def test_mmap_18_api_signatures_have_real_native_implementation(self):
+        self.assertEqual(len(proof.MMAP_EXPORTS), 18)
+        proof.verify_restored_mmap(ROOT)
+
+    def test_mmap_body_cannot_be_replaced_by_an_empty_stub(self):
+        paths = (
+            "core/include/cmeta_mmap.h", "core/src/cmeta_mmap.c",
+            "core/CMakeLists.txt", "tests/CMakeLists.txt",
+            "tests/installed/CMakeLists.txt",
+            "tests/test_original_native_mmap.c",
+            "tests/installed/original_mmap_consumer.c",
+            "tests/installed/original_mmap_consumer.cpp")
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for rel in paths:
+                to = root / rel
+                to.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ROOT / rel, to)
+            impl = root / "core/src/cmeta_mmap.c"
+            source = impl.read_text(encoding="utf-8")
+            self.assertIn("cmeta_mmap_group_open", source)
+            impl.write_text(
+                source.replace("cmeta_mmap_group_open(", "deleted_group_open(", 1),
+                encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "implementation missing"):
+                proof.verify_restored_mmap(root)
+
+    def test_54_original_headers_and_610_functions_are_pinned(self):
+        source = {key: proof.verify_origin(ROOT, key)[0] for key in proof.ORIGINS}
+        self.assertEqual(proof.verify_public_functions(ROOT, source), 610)
+
+        index = ROOT / proof.PUBLIC_FUNCTION_INDEX
+        self.assertEqual(proof.git_blob(index.read_bytes().replace(b"\r\n", b"\n")),
+                         proof.PUBLIC_FUNCTION_GIT_BLOB)
+
+    def test_public_api_ledger_rejects_deleted_or_renamed_function(self):
+        source = {key: proof.verify_origin(ROOT, key)[0] for key in proof.ORIGINS}
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            target = root / proof.PUBLIC_FUNCTION_INDEX
+            target.parent.mkdir(parents=True, exist_ok=True)
+            original = (ROOT / proof.PUBLIC_FUNCTION_INDEX).read_bytes()
+            changed = original.replace(b"cmeta_mmap_group_open",
+                                       b"cmeta_mmap_group_lost", 1)
+            self.assertNotEqual(original, changed)
+            target.write_bytes(changed)
+            with self.assertRaisesRegex(ValueError, "provenance was modified"):
+                proof.verify_public_functions(root, source)
+
+    def test_windows_crlf_public_api_index_preserves_git_blob(self):
+        source = {key: proof.verify_origin(ROOT, key)[0] for key in proof.ORIGINS}
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            target = root / proof.PUBLIC_FUNCTION_INDEX
+            target.parent.mkdir(parents=True, exist_ok=True)
+            data = (ROOT / proof.PUBLIC_FUNCTION_INDEX).read_bytes()
+            normalized = data.replace(b"\r\n", b"\n")
+            target.write_bytes(normalized.replace(b"\n", b"\r\n"))
+            self.assertEqual(proof.verify_public_functions(root, source), 610)
+
+    def test_final_gate_stays_red_until_all_originals_qualified(self):
+        report = proof.audit(ROOT)
+        self.assertEqual(report["salts"]["frozen_total"], 1554)
+        self.assertEqual(report["salts-utils"]["frozen_total"], 1421)
+        self.assertGreater(report["salts"]["unaccounted_or_changed"], 0)
+        self.assertGreater(report["salts-utils"]["unaccounted_or_changed"], 0)
+        with self.assertRaisesRegex(ValueError, "FINAL MIGRATION BLOCKED"):
+            proof.audit(ROOT, require_complete=True)
+
+
+if __name__ == "__main__":
+    unittest.main()
