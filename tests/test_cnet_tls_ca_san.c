@@ -576,14 +576,16 @@ static int run_python_ssl_client(const char *port_path,
               "CNET_MTLS_PHASE protocol=%s expected=%s accepted=%u "
               "handshaking=%u connected=%u terminal=%u failed=%u "
               "last_state=%d status=%d native_status=%d stage=%s "
-              "polled_events=%zu armed=%u reply_sent=%u\n",
+              "polled_events=%zu armed=%u reply_sent=%u "
+              "plaintext_events=%u send_events=%u\n",
               protocol, outcome, accepted ? 1u : 0u,
               probe.handshaking_count, probe.connected_count,
               probe.terminal_count, probe.failed,
               probe.last_connection_state, probe.last_error_status,
               probe.last_native_status,
               probe.failure_stage[0] != '\0' ? probe.failure_stage : "none",
-              events, armed ? 1u : 0u, response_sent ? 1u : 0u);
+              events, armed ? 1u : 0u, response_sent ? 1u : 0u,
+              probe.received_count, probe.sent_count);
     }
     REQUIRE(probe.connected_count == 1u && probe.failed == 0u);
     REQUIRE(armed && response_sent && probe.sent_count == 1u);
