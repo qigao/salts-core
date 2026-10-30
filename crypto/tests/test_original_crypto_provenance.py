@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DONORS = {
     "crypto/original/cmeta_crypto.h.original":
         "65ce9039ac2d6d83a258257b3d769d031d9fa5cb",
-    "crypto/src/cmeta_crypto.c":
+    "crypto/original/cmeta_crypto.c.original":
         "fb82a80178fdde77f174692437cf6d8a8b7038b2",
     "crypto/vendor/monocypher/UPSTREAM.md":
         "9c3c2bdeedfd8de5b3d7876ac6cc297573e12f19",
@@ -75,6 +75,7 @@ def main() -> int:
 
     header = (ROOT / "crypto/include/cmeta_crypto.h").read_text()
     source = (ROOT / "crypto/src/cmeta_crypto.c").read_text()
+    original_source = (ROOT / "crypto/original/cmeta_crypto.c.original").read_text()
     cmake = (ROOT / "crypto/CMakeLists.txt").read_text()
     installed = (ROOT / "crypto/tests/original-installed/CMakeLists.txt").read_text()
     surface = (ROOT / "crypto/tests/original-installed/surface_smoke.c").read_text()
@@ -83,6 +84,14 @@ def main() -> int:
             "restored Crypto public declarations differ from frozen 37-function set")
     require(set(expected_api).issubset(definitions(source)),
             "original cmeta_crypto.c no longer defines all 37 public functions")
+    restored_source = source.replace(
+        "#include <crypto/asn1_crypto.h>", "#include <salts/asn1_crypto.h>"
+    ).replace(
+        "crypto_asn1_ecdsa_signature_decode",
+        "salts_asn1_ecdsa_signature_decode",
+    )
+    require(restored_source == original_source,
+            "Crypto implementation differs beyond the reviewed ASN1 mechanical rename")
     require("SALTS_C_API" not in header,
             "static Crypto public surface reintroduced SALTS_C_API")
     require("#include <salts/error_codes.h>" in header,
