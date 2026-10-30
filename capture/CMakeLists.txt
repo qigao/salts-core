@@ -145,6 +145,71 @@ if(ANDROID)
             ${CMAKE_DL_LIBS})
 elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   enable_language(OBJC)
+
+  # BEGIN bounded iOS API surface completion
+  # The seven frozen iOS donor files intentionally remain byte-identical.
+  # Their common public header exports six operations that have no iOS
+  # definitions. The sibling frozen Apple/POSIX backends define these exact
+  # operations as unsupported (and GPU enumeration as an empty list). Generate
+  # one bounded C11 unit in the build tree instead of editing the donor blobs or
+  # adding another Capture provider.
+  set(_salts_capture_ios_surface
+      "${CMAKE_CURRENT_BINARY_DIR}/capture_api_ios.c")
+  file(WRITE "${_salts_capture_ios_surface}" [=[
+#include "salts_capture.h"
+#include <string.h>
+
+int salts_capture_list_gpu_devices(salts_capture_device_t *devices, int max_count) {
+  if (!devices || max_count <= 0) return -1;
+  return 0;
+}
+
+int salts_video_capture_get_control_range(
+    salts_capture_t *capture, salts_camera_control_t control,
+    salts_camera_control_range_t *range) {
+  (void)capture;
+  (void)control;
+  if (!range) return SALTS_CAPTURE_ERR_DEVICE;
+  memset(range, 0, sizeof(*range));
+  return SALTS_CAPTURE_ERR_UNSUPPORTED;
+}
+
+int salts_video_capture_set_control(
+    salts_capture_t *capture, salts_camera_control_t control, int value) {
+  (void)capture;
+  (void)control;
+  (void)value;
+  return SALTS_CAPTURE_ERR_UNSUPPORTED;
+}
+
+int salts_video_capture_get_control(
+    salts_capture_t *capture, salts_camera_control_t control, int *value) {
+  (void)capture;
+  (void)control;
+  if (value) *value = 0;
+  return SALTS_CAPTURE_ERR_UNSUPPORTED;
+}
+
+int salts_video_capture_set_crop(
+    salts_capture_t *capture, const salts_video_crop_t *crop) {
+  (void)capture;
+  (void)crop;
+  return SALTS_CAPTURE_ERR_UNSUPPORTED;
+}
+
+int salts_video_capture_get_crop(
+    salts_capture_t *capture, salts_video_crop_t *crop) {
+  (void)capture;
+  if (!crop) return SALTS_CAPTURE_ERR_DEVICE;
+  memset(crop, 0, sizeof(*crop));
+  return SALTS_CAPTURE_ERR_UNSUPPORTED;
+}
+]=])
+  set_source_files_properties("${_salts_capture_ios_surface}"
+    PROPERTIES GENERATED TRUE)
+  target_sources(salts_capture PRIVATE "${_salts_capture_ios_surface}")
+  # END bounded iOS API surface completion
+
   target_sources(
     salts_capture
     PRIVATE src/ios/capture_ios.m src/ios/capture_ios_guard.m
