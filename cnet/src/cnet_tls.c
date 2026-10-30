@@ -1336,6 +1336,17 @@ static int cnet_tls_finish_handshake(cnet_tls_state *state,
     result = tls_get_verify_result(&engine->connection, &verify_result);
     if (result != 1 || verify_result != X509_verify_ok)
       return SALTS_ECONNABORTED;
+    if (state->server) {
+      /* REQUIRED client authentication must have a real, already verified
+       * peer certificate before CNet can publish CONNECTED. TLS1.2 stores
+       * client certs separately from TLS1.3; the canonical getter covers both. */
+      const uint8_t *peer_cert = NULL;
+      size_t peer_cert_size = 0u;
+      result = tls_get_peer_certificate(
+          &engine->connection, &peer_cert, &peer_cert_size);
+      if (result != 1 || peer_cert == NULL || peer_cert_size == 0u)
+        return SALTS_ECONNABORTED;
+    }
     if (!state->server && cnet_tls_ip_literal(engine->server_name)) {
       result = cnet_tls_verify_ip_subject_alt_name(
           &engine->connection, engine->server_name);

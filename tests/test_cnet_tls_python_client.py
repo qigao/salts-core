@@ -11,9 +11,13 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import hashlib
 import socket
 import ssl
 import subprocess
+
+from cryptography import x509
+from cryptography.hazmat.primitives import serialization
 import sys
 import tempfile
 import time
@@ -31,10 +35,16 @@ def scenario(binary: Path, work: Path, crypto, fixtures, proto: str, case: str) 
     # Exact-head Python fixture generator and standard-library ssl client.
     # Context creation errors never count as native handshake rejections.
     ctx = crypto.python_tls_context("client", proto, fixtures, case)
+    expected_digest = "-"
+    if case == "client":
+        certificate = x509.load_pem_x509_certificate(fixtures["client"].read_bytes())
+        expected_digest = hashlib.sha256(
+            certificate.public_bytes(serialization.Encoding.DER)
+        ).hexdigest()
     native = subprocess.Popen(
         [str(binary), "--python-ssl-client", str(port_path),
          str(fixtures["ca"]), str(fixtures["server"]),
-         str(fixtures["server-key"]), proto, expected],
+         str(fixtures["server-key"]), proto, expected, expected_digest],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )
     failure = None

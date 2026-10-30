@@ -4619,7 +4619,7 @@
  }
  
  int tls_do_handshake(TLS_CONNECT *conn)
-@@ -3440,9 +3715,149 @@
+@@ -3440,9 +3715,164 @@
  	return -1;
  }
  
@@ -4697,29 +4697,44 @@
 +int tls_get_peer_certificate_chain(const TLS_CONNECT *conn,
 +	const uint8_t **cert_chain, size_t *cert_chain_len)
 +{
++	const uint8_t *chain;
++	size_t chain_len;
 +	if (!conn || !cert_chain || !cert_chain_len) {
 +		error_print();
 +		return -1;
 +	}
-+	if (conn->handshake_state != TLS_state_handshake_over || !conn->peer_cert_chain_len) {
++	if (conn->handshake_state != TLS_state_handshake_over) {
 +		return 0;
 +	}
-+	*cert_chain = conn->peer_cert_chain;
-+	*cert_chain_len = conn->peer_cert_chain_len;
++	/* TLS1.2 stores the verified client Certificate in client_certs,
++	 * while TLS1.3 and client-side server certificates use peer_cert_chain.
++	 * Both are owned by the same TLS_CONNECT until session cleanup. */
++	if (conn->protocol == TLS_protocol_tls12 && !conn->is_client) {
++		chain = conn->client_certs;
++		chain_len = conn->client_certs_len;
++	} else {
++		chain = conn->peer_cert_chain;
++		chain_len = conn->peer_cert_chain_len;
++	}
++	if (!chain_len) return 0;
++	*cert_chain = chain;
++	*cert_chain_len = chain_len;
 +	return 1;
 +}
 +
 +int tls_get_peer_certificate(const TLS_CONNECT *conn,
 +	const uint8_t **cert, size_t *certlen)
 +{
++	const uint8_t *chain = NULL;
++	size_t chain_len = 0;
++	int ret;
 +	if (!conn || !cert || !certlen) {
 +		error_print();
 +		return -1;
 +	}
-+	if (conn->handshake_state != TLS_state_handshake_over || !conn->peer_cert_chain_len) {
-+		return 0;
-+	}
-+	if (x509_certs_get_cert_by_index(conn->peer_cert_chain, conn->peer_cert_chain_len,
++	ret = tls_get_peer_certificate_chain(conn, &chain, &chain_len);
++	if (ret != 1) return ret;
++	if (x509_certs_get_cert_by_index(chain, chain_len,
 +		0, cert, certlen) != 1) {
 +		error_print();
 +		return -1;

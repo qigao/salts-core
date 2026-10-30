@@ -446,7 +446,8 @@ static int run_python_ssl_client(const char *port_path,
                                  const char *cert_file,
                                  const char *key_file,
                                  const char *protocol,
-                                 const char *outcome) {
+                                 const char *outcome,
+                                 const char *expected_client_sha256) {
   const char *label = "production CNet <- Python ssl TLS REQUIRED-mTLS";
   const char *expected_version = strcmp(protocol, "12") == 0
                                      ? "TLSv1.2" : "TLSv1.3";
@@ -519,6 +520,9 @@ static int run_python_ssl_client(const char *port_path,
       REQUIRE(cnet_tls_peer_certificate_sha256(
           &server, probe.connection, fingerprint) == SALTS_OK);
       REQUIRE(strlen(fingerprint) == 64u);
+      REQUIRE(expected_client_sha256 != NULL &&
+              strlen(expected_client_sha256) == 64u &&
+              strcmp(fingerprint, expected_client_sha256) == 0);
       REQUIRE(cnet_receive(&server, probe.connection, 1u) == SALTS_OK);
       armed = true;
     }
@@ -574,9 +578,9 @@ cleanup:
 }
 
 int main(int argc, char **argv) {
-  if (argc == 8 && strcmp(argv[1], "--python-ssl-client") == 0)
+  if (argc == 9 && strcmp(argv[1], "--python-ssl-client") == 0)
     return run_python_ssl_client(
-        argv[2], argv[3], argv[4], argv[5], argv[6], argv[7]);
+        argv[2], argv[3], argv[4], argv[5], argv[6], argv[7], argv[8]);
   if (argc == 5 && strcmp(argv[1], "--external-san") == 0)
     return run_python_ssl_server(argv[2], argv[3], argv[4]);
   int result;
