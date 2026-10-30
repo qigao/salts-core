@@ -156,7 +156,7 @@ static int drive(cnet_client *client, cnet_client *server,
   if (!(expr)) {                                                              \
     fprintf(stderr, "CNet TLS case %s failed at %d: %s\n",                    \
             label, __LINE__, #expr);                                          \
-    result = __LINE__;                                                        \
+    result = 1;                                                               \
     goto cleanup;                                                             \
   }                                                                           \
 } while (0)
