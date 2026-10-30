@@ -3787,29 +3787,50 @@ int tls_get_selected_alpn(const TLS_CONNECT *conn, const char **protocol, size_t
 int tls_get_peer_certificate_chain(const TLS_CONNECT *conn,
 	const uint8_t **cert_chain, size_t *cert_chain_len)
 {
+	const uint8_t *peer_chain;
+	size_t peer_chain_len;
+
 	if (!conn || !cert_chain || !cert_chain_len) {
 		error_print();
 		return -1;
 	}
-	if (conn->handshake_state != TLS_state_handshake_over || !conn->peer_cert_chain_len) {
+	*cert_chain = NULL;
+	*cert_chain_len = 0;
+	if (conn->handshake_state != TLS_state_handshake_over) {
 		return 0;
 	}
-	*cert_chain = conn->peer_cert_chain;
-	*cert_chain_len = conn->peer_cert_chain_len;
+	/* The TLS1.2 server verifies the client's certificate into client_certs;
+	 * TLS1.3 and TLS1.2 clients use peer_cert_chain instead. Read only the
+	 * peer's already-authenticated chain, never this endpoint's local identity. */
+	if (conn->protocol == TLS_protocol_tls12 && !conn->is_client) {
+		peer_chain = conn->client_certs;
+		peer_chain_len = conn->client_certs_len;
+	} else {
+		peer_chain = conn->peer_cert_chain;
+		peer_chain_len = conn->peer_cert_chain_len;
+	}
+	if (peer_chain_len == 0) {
+		return 0;
+	}
+	*cert_chain = peer_chain;
+	*cert_chain_len = peer_chain_len;
 	return 1;
 }
 
 int tls_get_peer_certificate(const TLS_CONNECT *conn,
 	const uint8_t **cert, size_t *certlen)
 {
+	const uint8_t *peer_chain = NULL;
+	size_t peer_chain_len = 0;
+	int ret;
+
 	if (!conn || !cert || !certlen) {
 		error_print();
 		return -1;
 	}
-	if (conn->handshake_state != TLS_state_handshake_over || !conn->peer_cert_chain_len) {
-		return 0;
-	}
-	if (x509_certs_get_cert_by_index(conn->peer_cert_chain, conn->peer_cert_chain_len,
+	ret = tls_get_peer_certificate_chain(conn, &peer_chain, &peer_chain_len);
+	if (ret != 1) return ret;
+	if (x509_certs_get_cert_by_index(peer_chain, peer_chain_len,
 		0, cert, certlen) != 1) {
 		error_print();
 		return -1;
