@@ -976,6 +976,24 @@ static int cnet_tls_cipher_record_ready(const cnet_tls_gmssl_state *engine,
   size_t record_size;
   if (engine == NULL || out_ready == NULL) return SALTS_EINVAL;
   *out_ready = false;
+  /*
+   * TLS 1.3 can consume one post-handshake control record and immediately
+   * begin reading the next record inside a single tls13_recv() call. On
+   * WANT_READ its provider recv_state/record_offset already own that next
+   * record's header or payload. The CNet ring then starts with a *suffix*
+   * of that record, not a fresh TLS header. Parsing the suffix as a header
+   * (or requiring five new bytes) can strand the authenticated connection
+   * until its peer closes. Let the single provider resume its own partial
+   * frame; the provider still validates the entire authenticated record.
+   */
+  if (engine->connection.protocol == TLS_protocol_tls13 &&
+      (engine->connection.recv_state == TLS_state_recv_record_header ||
+       engine->connection.recv_state == TLS_state_recv_record_data ||
+       engine->connection.datalen != 0u)) {
+    *out_ready = engine->input_size != 0u ||
+                 engine->connection.datalen != 0u;
+    return SALTS_OK;
+  }
   if (engine->input_size < TLS_RECORD_HEADER_SIZE) return SALTS_OK;
   if (cnet_tls_ring_peek(engine->cipher_input, engine->capacity,
                          engine->input_head, engine->input_size,
