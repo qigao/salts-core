@@ -1315,7 +1315,14 @@ static int cnet_owner_tls_background_progress(cnet_owner_impl *impl,
    * an already authenticated close_notify unprocessed. Only a new kernel
    * receive must respect read_active (see the guard below/start_read).
    */
-  if (session->close_requested || session->receive_demand != 0u)
+  /* The background control probe is post-authentication only. Without this
+   * boundary a pending handshake read can cause the Owner to call
+   * cnet_tls_probe_peer_close before Finished, returning ENOTCONN and
+   * terminating a perfectly valid TLS handshake. read_active does NOT
+   * inhibit a probe after authentication: provider ciphertext is separately
+   * owned from the leased NativeIO receive buffer. */
+  if (!cnet_tls_state_handshake_complete(&session->tls) ||
+      session->close_requested || session->receive_demand != 0u)
     return SALTS_OK;
 
   status = cnet_tls_probe_peer_close(&session->tls, &peer_closed, &plaintext_pending);
