@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timedelta, timezone
 import hashlib
+import ipaddress
 import os
 from pathlib import Path
 import re
@@ -74,6 +75,8 @@ def cert(
     eku: x509.ObjectIdentifier | None = None,
     expired: bool = False,
     server_san: bool = False,
+    server_ip_san: bool = False,
+    server_dns_ip_san: bool = False,
 ) -> x509.Certificate:
     now = datetime.now(timezone.utc)
     if expired:
@@ -111,10 +114,22 @@ def cert(
         obj = obj.add_extension(x509.SubjectAlternativeName([
             x509.DNSName("localhost")
         ]), critical=False)
+    if server_ip_san:
+        # RFC 5280 iPAddress contains raw 4/16-byte addresses, never DNS text.
+        obj = obj.add_extension(x509.SubjectAlternativeName([
+            x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
+            x509.IPAddress(ipaddress.IPv6Address("::1")),
+        ]), critical=False)
+    if server_dns_ip_san:
+        # Deliberately NOT an iPAddress SAN: DNSName/CN spoofing cannot
+        # satisfy an IP-literal reference identity.
+        obj = obj.add_extension(x509.SubjectAlternativeName([
+            x509.DNSName("127.0.0.1"),
+        ]), critical=False)
     return obj.sign(private_key=issuer_key, algorithm=hashes.SHA256())
 
 
-def make_fixtures(folder: Path) -> dict[str, Path]:
+def make_fixtures(folder: Path, *, include_ip_san: bool = False) -> dict[str, Path]:
     root_key, wrong_key, intermediate_key = (
         rsa_identity(), rsa_identity(), rsa_identity()
     )
@@ -142,12 +157,22 @@ def make_fixtures(folder: Path) -> dict[str, Path]:
         # The intermediate is deliberately OMITTED from the on-wire PEM leaf.
         "chain": (intermediate_name, intermediate_key, ExtendedKeyUsageOID.CLIENT_AUTH, False, False),
     }
+    if include_ip_san:
+        subjects["server-ip"] = (
+            root_name, root_key, ExtendedKeyUsageOID.SERVER_AUTH, False, False
+        )
+        subjects["server-ip-dns"] = (
+            root_name, root_key, ExtendedKeyUsageOID.SERVER_AUTH, False, False
+        )
     for label, (issuer, signing_key, usage, expired, san) in subjects.items():
         key = rsa_identity()
         leaf = cert(
-            "localhost" if label == "server" else "mtls-" + label,
+            ("127.0.0.1" if label in ("server-ip", "server-ip-dns") else
+             "localhost" if label == "server" else "mtls-" + label),
             key.public_key(), issuer, signing_key,
             eku=usage, expired=expired, server_san=san,
+            server_ip_san=label == "server-ip",
+            server_dns_ip_san=label == "server-ip-dns",
         )
         if label == "badsig":
             # Preserve DER lengths/public key. Flip ONLY the final RSA

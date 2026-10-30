@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Independent Python ssl server for static CNet client DNS-SAN verification.
+"""Independent Python ssl server for production CNet DNS and IP SAN verification.
 
-Two separate processes, not a second provider in the CNet/Salts::Crypto
-image. The same valid localhost server certificate is presented regardless
-of requested SNI. A positive localhost control MUST succeed first.
+Reuse one production native CNet executable and the original two CTests per
+TLS version. Independent Python ssl servers present real DNS SAN and RFC 5280
+binary iPAddress SAN certificates; IP literals never go into SNI.
 """
 import argparse
 import pathlib
@@ -11,6 +11,7 @@ import socket
 import ssl
 import subprocess
 import sys
+import tempfile
 import threading
 
 
@@ -27,7 +28,9 @@ def ssl_context(cert: pathlib.Path, key: pathlib.Path, protocol: str):
     return ctx
 
 
-def one_session(ctx, binary, protocol, identity):
+def one_session(ctx, binary, protocol, identity, *, ip_ca=None, expect_success=None):
+    ip_mode = ip_ca is not None
+    positive = identity == "localhost" if expect_success is None else expect_success
     observed = {"accepted": False, "sni": None, "completed": False, "version": None,
                 "failure": None}
 
@@ -65,9 +68,15 @@ def one_session(ctx, binary, protocol, identity):
         thread = threading.Thread(target=serve, name="openssl-independent-peer")
         thread.start()
         try:
+            native_args = (
+                [str(binary), "--external-ip-san", str(port), protocol,
+                 identity, str(ip_ca), "accept" if positive else "reject"]
+                if ip_mode else
+                [str(binary), "--external-san", str(port), protocol, identity]
+            )
             result = subprocess.run(
-                [str(binary), "--external-san", str(port), protocol, identity],
-                capture_output=True, text=True, timeout=25, check=False,
+                native_args, capture_output=True, text=True,
+                timeout=25, check=False,
             )
         except subprocess.TimeoutExpired as exc:
             result = None
@@ -78,9 +87,12 @@ def one_session(ctx, binary, protocol, identity):
             return False
 
     expected_version = "TLSv1.2" if protocol == "tls12" else "TLSv1.3"
+    # RFC 6066 host_name SNI excludes address literals, while the public
+    # CNet verified identity still must be exactly the requested IPv4/IPv6.
+    expected_sni = None if ip_mode else identity
     passed = (result is not None and result.returncode == 0
-              and observed["accepted"] and observed["sni"] == identity)
-    if identity == "localhost":
+              and observed["accepted"] and observed["sni"] == expected_sni)
+    if positive:
         passed = (passed and observed["completed"]
                   and observed["version"] == expected_version)
     # A wrong-SAN negative may trigger an alert before the server completes
@@ -93,8 +105,9 @@ def one_session(ctx, binary, protocol, identity):
             print("CNet returncode:", result.returncode, file=sys.stderr)
             print("CNet stderr:", result.stderr[-3000:], file=sys.stderr)
     else:
-        print(f"PASS {protocol} independent OpenSSL server "
-              f"SNI={identity} client authentication/denial")
+        print(f"PASS {protocol} independent Python ssl server "
+              f"identity={identity} SNI={expected_sni} "
+              f"expected={'accept' if positive else 'reject'}")
     return passed
 
 
@@ -115,6 +128,48 @@ def main():
         return 1
     if not one_session(ctx, args.binary, args.protocol, "wrong.example"):
         return 1
+
+    # Reuse the already-pinned, test-only X.509 fixture generator that the
+    # production REQUIRED-mTLS native CTest uses. No second test TLS engine,
+    # provider, client binary, workflow, installer or consumer is created.
+    sys.path.insert(0, str(
+        pathlib.Path(__file__).resolve().parents[2] / "crypto" / "tests" / "sdk"
+    ))
+    import python_mtls
+
+    with tempfile.TemporaryDirectory(prefix="cnet-ip-san-") as temp:
+        private = pathlib.Path(temp)
+        private.chmod(0o700)
+        fixtures = python_mtls.make_fixtures(private, include_ip_san=True)
+        ip_ctx = ssl_context(
+            fixtures["server-ip"], fixtures["server-ip-key"], args.protocol
+        )
+        # Native CNet connects over IPv4 loopback in every case; reference
+        # identity is independent from the TCP endpoint and MUST be checked
+        # against DER iPAddress SAN, not CN/DNSName or reverse DNS.
+        for identity, should_accept in (
+            ("127.0.0.1", True),
+            ("::1", True),
+            ("127.0.0.2", False),
+            ("::2", False),
+        ):
+            if not one_session(
+                ip_ctx, args.binary, args.protocol, identity,
+                ip_ca=fixtures["ca"], expect_success=should_accept
+            ):
+                return 1
+
+        # Both CN and DNS SAN spell an IP literal; only iPAddress SAN can
+        # authenticate an IP-literal reference identity.
+        spoof_ctx = ssl_context(
+            fixtures["server-ip-dns"], fixtures["server-ip-dns-key"],
+            args.protocol,
+        )
+        if not one_session(
+            spoof_ctx, args.binary, args.protocol, "127.0.0.1",
+            ip_ca=fixtures["ca"], expect_success=False
+        ):
+            return 1
     return 0
 
 

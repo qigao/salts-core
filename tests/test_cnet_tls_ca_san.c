@@ -343,9 +343,11 @@ cleanup:
  */
 static int run_python_ssl_server(const char *port_text,
                                  const char *protocol,
-                                 const char *identity) {
+                                 const char *identity,
+                                 const char *trust_ca,
+                                 bool expect_success) {
   const char *label = "production CNet -> pinned Python ssl TLS peer";
-  const bool approved_identity = strcmp(identity, "localhost") == 0;
+  const bool approved_identity = expect_success;
   const char *expected_version = strcmp(protocol, "tls12") == 0
                                      ? "TLSv1.2" : "TLSv1.3";
   char *end = NULL;
@@ -357,7 +359,7 @@ static int run_python_ssl_server(const char *port_text,
   cnet_client_config client_cfg = config();
   const cnet_tls_client_config tls_config = {
       .size = sizeof(cnet_tls_client_config),
-      .ca_file = CORE_TLS_TEST_EXTERNAL_CA,
+      .ca_file = trust_ca,
       .server_name = identity};
   char uri[96] = {0};
   bool initialized = false;
@@ -368,7 +370,13 @@ static int run_python_ssl_server(const char *port_text,
 
   if (end == port_text || *end != '\0' || port == 0u || port > 65535u ||
       (strcmp(protocol, "tls12") != 0 && strcmp(protocol, "tls13") != 0) ||
-      (!approved_identity && strcmp(identity, "wrong.example") != 0))
+      trust_ca == NULL || trust_ca[0] == '\0' ||
+      (strcmp(identity, "localhost") != 0 &&
+       strcmp(identity, "wrong.example") != 0 &&
+       strcmp(identity, "127.0.0.1") != 0 &&
+       strcmp(identity, "127.0.0.2") != 0 &&
+       strcmp(identity, "::1") != 0 &&
+       strcmp(identity, "::2") != 0))
     return 2;
 
   probe.client = &client;
@@ -582,7 +590,16 @@ int main(int argc, char **argv) {
     return run_python_ssl_client(
         argv[2], argv[3], argv[4], argv[5], argv[6], argv[7], argv[8]);
   if (argc == 5 && strcmp(argv[1], "--external-san") == 0)
-    return run_python_ssl_server(argv[2], argv[3], argv[4]);
+    return run_python_ssl_server(
+        argv[2], argv[3], argv[4], CORE_TLS_TEST_EXTERNAL_CA,
+        strcmp(argv[4], "localhost") == 0);
+  if (argc == 7 && strcmp(argv[1], "--external-ip-san") == 0) {
+    if (strcmp(argv[6], "accept") != 0 && strcmp(argv[6], "reject") != 0)
+      return 2;
+    return run_python_ssl_server(
+        argv[2], argv[3], argv[4], argv[5],
+        strcmp(argv[6], "accept") == 0);
+  }
   int result;
   if (argc == 8 && strcmp(argv[1], "--required-mtls") == 0) {
     const bool expect_success = strcmp(argv[7], "accept") == 0;
