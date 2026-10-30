@@ -7,6 +7,34 @@
 #include <stdint.h>
 #include <time.h>
 
+#ifdef _WIN32
+  #define SALTS_WIN32 1
+  #ifndef _SSIZE_T_DEFINED
+    typedef intptr_t ssize_t;
+    #define _SSIZE_T_DEFINED
+  #endif
+#endif
+
+#ifndef UNUSED
+  #define UNUSED(x) (void)(x)
+#endif
+
+#if defined(__GNUC__) || defined(__clang__)
+  #ifndef likely
+    #define likely(x) __builtin_expect(!!(x), 1)
+  #endif
+  #ifndef unlikely
+    #define unlikely(x) __builtin_expect(!!(x), 0)
+  #endif
+#else
+  #ifndef likely
+    #define likely(x) (x)
+  #endif
+  #ifndef unlikely
+    #define unlikely(x) (x)
+  #endif
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
