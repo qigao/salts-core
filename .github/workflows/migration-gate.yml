@@ -51,7 +51,12 @@ jobs:
             exit 1
           fi
 
-          if grep -RFn --include='CMakeLists.txt' -- 'installed/' .; then
+          cmake_installed_refs="$(
+            grep -RFn --include='CMakeLists.txt' -- 'installed/' . |
+              grep -Ev ':[0-9]+:[[:space:]]*#' || true
+          )"
+          if [[ -n "$cmake_installed_refs" ]]; then
+            printf '%s\n' "$cmake_installed_refs"
             echo "Native CMake must not generate installed test-project targets."
             exit 1
           fi
