@@ -13,7 +13,7 @@
 #include <gmssl/sm3.h>
 #include <gmssl/sm2.h>
 #include <salts/asn1.h>
-#include <salts/asn1_crypto.h>
+#include <crypto/asn1_crypto.h>
 #include <gmssl/sm4.h>
 
 #include "core_monocypher_namespace.h"
@@ -559,7 +559,7 @@ int cmeta_ecdsa_p256_sign_sha256(
                         message_size) != 1 ||
       ecdsa_sign_finish(&context, staged, &signature_size) != 1 ||
       signature_size == 0u || signature_size > sizeof(staged) ||
-      salts_asn1_ecdsa_signature_decode(staged, signature_size,
+      crypto_asn1_ecdsa_signature_decode(staged, signature_size,
                                         &r, &r_size, &s, &s_size) !=
           SALTS_ASN1_OK ||
       r_size > SALTS_ECDSA_P256_PRIVATE_KEY_BYTES ||
@@ -597,7 +597,7 @@ int cmeta_ecdsa_p256_verify_sha256(
       !cmeta_crypto_range_valid_v1(message, message_size) ||
       !cmeta_crypto_range_valid_v1(signature_der, signature_der_size))
     return SALTS_EINVAL;
-  if (salts_asn1_ecdsa_signature_decode(signature_der, signature_der_size,
+  if (crypto_asn1_ecdsa_signature_decode(signature_der, signature_der_size,
                                         &r, &r_size, &s, &s_size) !=
           SALTS_ASN1_OK ||
       r_size > SALTS_ECDSA_P256_PRIVATE_KEY_BYTES ||
