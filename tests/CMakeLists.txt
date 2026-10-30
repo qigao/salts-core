@@ -97,6 +97,23 @@ set_target_properties(saltscore_platform_test PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.platform COMMAND saltscore_platform_test)
 
+add_executable(saltscore_original_platform_cpp_test test_platform_original_cpp.cpp)
+target_compile_features(saltscore_original_platform_cpp_test PRIVATE cxx_std_17)
+target_link_libraries(saltscore_original_platform_cpp_test PRIVATE Salts::Platform)
+set_target_properties(saltscore_original_platform_cpp_test PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+add_test(NAME saltscore.original_platform_cpp17
+  COMMAND saltscore_original_platform_cpp_test)
+set_tests_properties(saltscore.platform saltscore.original_platform_cpp17
+  PROPERTIES TIMEOUT 30)
+
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME saltscore.original_platform_source_provenance
+  COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_original_platform_provenance.py")
+set_tests_properties(saltscore.original_platform_source_provenance
+  PROPERTIES ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1" TIMEOUT 30)
+
 add_executable(saltscore_concurrency_test test_concurrency.c)
 target_link_libraries(saltscore_concurrency_test PRIVATE Salts::Concurrency)
 set_target_properties(saltscore_concurrency_test PROPERTIES

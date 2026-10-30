@@ -9,8 +9,8 @@ if(SALTSCORE_ENABLE_EPOLL_READINESS AND
   message(FATAL_ERROR "epoll readiness is available only on Linux or Android")
 endif()
 set(_saltscore_platform_sources
-    src/clock.c src/random.c src/readiness.c
-    src/portable_atomic.c src/portable_once.c
+    src/clock.c src/random.c src/platform.c src/thread_policy.c
+    src/readiness.c src/portable_atomic.c src/portable_once.c
     src/c11_threads.c src/fastpath.c)
 if(WIN32)
   list(APPEND _saltscore_platform_sources
@@ -65,7 +65,7 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "^(Linux|Android)$" AND
     SALTS_ENABLE_EPOLL_READINESS=1)
 endif()
 if(WIN32)
-  target_link_libraries(saltscore_platform PRIVATE bcrypt)
+  target_link_libraries(saltscore_platform PRIVATE bcrypt iphlpapi ws2_32)
 elseif(APPLE)
   target_compile_definitions(saltscore_platform PRIVATE _DARWIN_C_SOURCE=1)
 elseif(UNIX)
