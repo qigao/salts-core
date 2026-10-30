@@ -1,5 +1,5 @@
 # One native C11 filesystem owner; no CMeta/CFlow/old Salts references.
-add_library(saltscore_fs SHARED src/fs.c src/fs_root.c)
+add_library(saltscore_fs SHARED src/fs.c src/fs_root.c src/fs_watch.c)
 add_library(Salts::FS ALIAS saltscore_fs)
 target_compile_features(saltscore_fs PUBLIC c_std_11)
 set_target_properties(saltscore_fs PROPERTIES
@@ -10,6 +10,19 @@ target_include_directories(saltscore_fs PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_link_libraries(saltscore_fs PUBLIC Salts::Platform)
+
+if(WIN32)
+  target_sources(saltscore_fs PRIVATE src/fs_watch_windows.c)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_sources(saltscore_fs PRIVATE src/fs_watch_linux.c)
+elseif(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  enable_language(OBJC)
+  target_sources(saltscore_fs PRIVATE src/fs_watch_macos.m)
+  target_link_libraries(saltscore_fs PRIVATE "-framework CoreServices")
+else()
+  target_sources(saltscore_fs PRIVATE src/fs_watch_unsupported.c)
+endif()
+
 if(WIN32)
   target_compile_definitions(saltscore_fs PRIVATE WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0600)
   set_target_properties(saltscore_fs PROPERTIES
@@ -24,7 +37,8 @@ install(TARGETS saltscore_fs EXPORT SaltsCoreTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES include/salts/fs.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/salts)
+install(FILES include/salts/fs.h include/salts/fs_watch.h
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/salts)
 if(BUILD_TESTING)
   add_executable(saltscore_fs_test ${PROJECT_SOURCE_DIR}/tests/test_fs.c)
   target_compile_features(saltscore_fs_test PRIVATE c_std_11)
