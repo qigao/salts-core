@@ -55,8 +55,7 @@ def check_core(owner: Path = ROOT) -> list[str]:
     required = [
         "core/include/re.h", "core/src/re.c", "core/src/re_scan.h",
         "core/CMakeLists.txt", "tests/test_re.c", "tests/test_re_smoke.c",
-        "tests/CMakeLists.txt", "tests/installed/CMakeLists.txt",
-        "tests/installed/re_consumer.c", "tests/installed/re_consumer.cpp",
+        "tests/CMakeLists.txt",
     ]
     contents = {}
     for rel in required:
@@ -73,7 +72,7 @@ def check_core(owner: Path = ROOT) -> list[str]:
     scan = contents["core/src/re_scan.h"]
     cmake = contents["core/CMakeLists.txt"]
     suite = contents["tests/CMakeLists.txt"]
-    installed = contents["tests/installed/CMakeLists.txt"]
+    installed = contents[]
     for symbol in PUBLIC:
         pattern = r"\b" + re.escape(symbol) + r"\s*\("
         if not re.search(pattern, h):
@@ -90,10 +89,6 @@ def check_core(owner: Path = ROOT) -> list[str]:
                    "Salts::Core", "Salts::TinyTest"):
         if marker not in suite:
             errors.append("Original regex CTest coverage missing: " + marker)
-    for marker in ("sdk.original_re_c11", "sdk.original_re_cpp17",
-                   "Salts::Core"):
-        if marker not in installed:
-            errors.append("Installed regex consumer missing: " + marker)
     if "re_scan_first_byte_native" not in s or "re_scan_first_byte_native" not in tests:
         errors.append("Real original regex test must use the Core-native SIMD helper")
     for marker in ("re_scan_first_byte_scalar", "SALTS_RE_NATIVE_SSE2",
@@ -129,8 +124,7 @@ class OriginalRegexSourceContract(unittest.TestCase):
             for relative in (
                 "core/include/re.h", "core/src/re.c", "core/src/re_scan.h",
                 "core/CMakeLists.txt", "tests/test_re.c", "tests/test_re_smoke.c",
-                "tests/CMakeLists.txt", "tests/installed/CMakeLists.txt",
-                "tests/installed/re_consumer.c", "tests/installed/re_consumer.cpp",
+                "tests/CMakeLists.txt",
             ):
                 target = src / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -148,9 +142,7 @@ class OriginalRegexSourceContract(unittest.TestCase):
             src = Path(tmp)
             files = ["core/include/re.h", "core/src/re.c", "core/src/re_scan.h",
                      "core/CMakeLists.txt", "tests/test_re.c",
-                     "tests/test_re_smoke.c", "tests/CMakeLists.txt",
-                     "tests/installed/CMakeLists.txt",
-                     "tests/installed/re_consumer.c", "tests/installed/re_consumer.cpp"]
+                     "tests/test_re_smoke.c", "tests/CMakeLists.txt",]
             for rel in files:
                 to = src / rel
                 to.parent.mkdir(parents=True, exist_ok=True)

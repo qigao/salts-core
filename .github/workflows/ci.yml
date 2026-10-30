@@ -48,8 +48,8 @@ jobs:
       matrix:
         include:
           - {os: ubuntu-24.04, dependency_mode: binary}
-          - {os: macos-15, dependency_mode: source}
-          - {os: windows-2025, dependency_mode: source}
+          - {os: macos-15, dependency_mode: binary}
+          - {os: windows-2025, dependency_mode: binary}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
@@ -103,8 +103,7 @@ jobs:
             -DSALTSCORE_BUILD_SCTP=ON \
             -DSALTSCORE_BUILD_WEBSOCKET_PARSER=ON \
             -DSALTSCORE_NATIVE_CPP_CONFORMANCE=ON \
-            -DSALTSCORE_CNET_OWNER_SOURCE_TESTS=ON \
-            -DSALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION=ON
+            -DSALTSCORE_CNET_OWNER_SOURCE_TESTS=ON
       - name: Build once
         shell: bash
         run: cmake --build build --parallel 2

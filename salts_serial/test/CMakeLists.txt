@@ -60,11 +60,7 @@ if(UNIX)
   set_tests_properties(saltscore.serial_posix_pty PROPERTIES TIMEOUT 30)
 endif()
 
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
-add_test(NAME saltscore.serial_source_provenance
-  COMMAND "${Python3_EXECUTABLE}" -m unittest discover
-    -s "${CMAKE_CURRENT_SOURCE_DIR}" -p test_serial_provenance.py -v)
 set_tests_properties(saltscore.serial_original_c11 saltscore.serial_public_abi
   saltscore.serial_original_fixes saltscore.serial_backend_contract
-  saltscore.serial_storage_ownership saltscore.serial_source_provenance
+  saltscore.serial_storage_ownership
   PROPERTIES TIMEOUT 60)

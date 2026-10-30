@@ -31,9 +31,3 @@ if(UNIX AND NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
   salts_capture_original_test(capture_posix_test test_capture_posix.c)
 endif()
 
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
-add_test(NAME saltscore.capture_source_provenance
-  COMMAND "${Python3_EXECUTABLE}" -m unittest discover
-    -s "${CMAKE_CURRENT_SOURCE_DIR}" -p test_source_provenance.py -v)
-set_tests_properties(saltscore.capture_source_provenance PROPERTIES
-  ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1" TIMEOUT 30)

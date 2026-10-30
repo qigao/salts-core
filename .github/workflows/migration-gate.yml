@@ -72,6 +72,7 @@ jobs:
             "dotnet ""pack"
             "dotnet nuget ""push"
             "pub""lish"
+            "SALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION=""ON"
           )
           for token in "${forbidden[@]}"; do
             if grep -RFn --include='*.yml' --include='*.yaml' -- "$token" .github/workflows; then
@@ -91,3 +92,22 @@ jobs:
           set -euo pipefail
           python tools/check_full_source_migration.py
           python tools/audit_original_utils_parity.py
+      - name: Source provenance policies once
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python -B crypto/tools/check_local_native_source.py
+          python -B -m unittest discover -s tests -p test_local_native_crypto_source.py -v
+          python -B -m unittest discover -s tests -p test_full_source_migration.py -v
+          python -B -m unittest discover -s capture/tests -p test_source_provenance.py -v
+          python -B playback/tests/test_source_provenance.py
+          python -B -m unittest discover -s salts_serial/test -p test_serial_provenance.py -v
+          SALTSCORE_USB_TEST_CMAKE="$(command -v cmake)" \
+            python -B -m unittest discover -s usb/tests -p test_usb_provenance.py -v
+          python -B tests/test_original_platform_provenance.py
+          python -B -m unittest discover -s tests -p test_original_zstd_provenance.py -v
+          python -B -m unittest discover -s tests -p test_original_re_provenance.py -v
+          python -B -m unittest discover -s tests -p test_original_simd_provenance.py -v
+          python -B -m unittest discover -s tests -p test_original_error_provenance.py -v

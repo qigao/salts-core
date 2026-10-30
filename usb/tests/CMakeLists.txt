@@ -35,11 +35,6 @@ endforeach()
 add_test(NAME saltscore.usb_original_state COMMAND saltscore_cflow_usb_state_test)
 add_test(NAME saltscore.usb_lifecycle COMMAND saltscore_usb_lifecycle_test)
 
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
-add_test(NAME saltscore.usb_source_provenance
-  COMMAND "${CMAKE_COMMAND}" -E env "SALTSCORE_USB_TEST_CMAKE=${CMAKE_COMMAND}"
-    "${Python3_EXECUTABLE}" -m unittest discover
-    -s "${CMAKE_CURRENT_SOURCE_DIR}" -p test_usb_provenance.py -v)
 set_tests_properties(saltscore.usb_original_c11 saltscore.usb_original_cpp17
   saltscore.usb_original_state saltscore.usb_lifecycle
-  saltscore.usb_source_provenance PROPERTIES TIMEOUT 60)
+  PROPERTIES TIMEOUT 60)

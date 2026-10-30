@@ -83,18 +83,16 @@ if(SALTSCORE_BUILD_ZSTD)
     target_link_libraries(saltscore_zstd_contract PRIVATE Salts::Core)
     add_test(NAME saltscore.zstd_native_contract COMMAND saltscore_zstd_contract)
 
-    find_package(Python3 COMPONENTS Interpreter REQUIRED)
-    add_test(NAME saltscore.original_zstd_source_provenance
-      COMMAND "${Python3_EXECUTABLE}" -m unittest discover
-        -s "${PROJECT_SOURCE_DIR}/tests" -p test_original_zstd_provenance.py -v)
     if(CMAKE_EXECUTABLE_FORMAT STREQUAL "ELF")
+      find_package(Python3 COMPONENTS Interpreter REQUIRED)
       add_test(NAME saltscore.zstd_private_archive
         COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/test_zstd_binary_owner.py"
           --library "$<TARGET_FILE:saltscore_core>"
           --nm "${CMAKE_NM}" --readelf "${CMAKE_READELF}")
+      set_tests_properties(saltscore.zstd_private_archive PROPERTIES TIMEOUT 60)
     endif()
     set_tests_properties(saltscore.original_zstd saltscore.zstd_native_contract
-      saltscore.original_zstd_source_provenance PROPERTIES TIMEOUT 60)
+      PROPERTIES TIMEOUT 60)
   endif()
 endif()
 
