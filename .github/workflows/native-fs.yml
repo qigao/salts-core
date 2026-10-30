@@ -8,6 +8,8 @@ on:
       - "fs/CMakeLists.txt"
       - "CMakeLists.txt"
       - "tests/test_fs.c"
+      - "tests/test_fs_watch_provenance.py"
+      - "tests/test_fs_watch.c"
       - "tests/fs-installed/**"
       - "tools/check_dependency_boundaries.py"
       - ".github/workflows/native-fs.yml"
