@@ -556,6 +556,9 @@ int salts_fs_root_file_open(
     const salts_fs_root_t *root, const char *relative_path,
     int flags, int mode, salts_fs_root_file_t **out_file);
 int salts_fs_root_file_close(salts_fs_root_file_t *file);
+/* Flush the byte contents of a root-relative opened staging file.
+ * Requires a writable native file handle on platforms that demand it. */
+int salts_fs_root_file_fsync(salts_fs_root_file_t *file);
 int salts_fs_root_file_read(
     salts_fs_root_file_t *file, char *buffer, size_t length);
 int salts_fs_root_file_write(
@@ -578,6 +581,34 @@ int salts_fs_root_file_set_append(salts_fs_root_file_t *file, bool append);
 int salts_fs_root_rename(
     const salts_fs_root_t *source_root, const char *source_path,
     const salts_fs_root_t *target_root, const char *target_path);
+
+/* M0: durably publish one completed REGULAR staging FILE at an ABSENT
+ * immutable destination. Uses the same admitted root and relative paths;
+ * never follows intermediate symlinks/reparse points, never replaces a
+ * present destination, never copies across filesystems. No fallback rename.
+ *
+ * Linux: openat(O_NOFOLLOW), fsync staging, renameat2(RENAME_NOREPLACE),
+ *        fsync destination AND source parent directories.
+ * macOS: same, but renameatx_np(RENAME_EXCL).
+ * Windows: explicitly -ENOSYS / NOT_PUBLISHED until root-relative native
+ *        durability and Unicode rename/flush semantics are qualified.
+ *
+ * The output state is always set to NOT_PUBLISHED before validation.
+ * Once the namespace move succeeds, later parent-sync failure yields
+ * DURABILITY_UNKNOWN with a negative return: inspect/reconcile the named
+ * revision before retrying; NEVER re-use the requested generation blindly.
+ * A successful return requires PUBLISHED_DURABLE.
+ *
+ * Writer contract: a UNIQUE staging inode with no other hard links, kept
+ * exclusively owned and unchanged for the duration of publication; this
+ * primitive does not authenticate a publisher, mint monotonic generations,
+ * enforce the read-only policy, or manage reader leases/GC. Existing opened
+ * root-file handles pin the inode; the caller must preserve a published
+ * revision until all readers have finished (Windows GC is still unqualified).
+ */
+int salts_fs_root_publish_file_noreplace(
+    const salts_fs_root_t *root, const char *staging_path,
+    const char *revision_path, salts_fs_replace_state_t *state);
 
 /*
  * stat is secure no-follow in capability v1: a final symlink/reparse point

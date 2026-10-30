@@ -583,6 +583,12 @@ static int salts_fs_root_dir_seek_cookie_win(
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#ifdef __linux__
+#include <sys/syscall.h>
+#ifndef RENAME_NOREPLACE
+#define RENAME_NOREPLACE 1u
+#endif
+#endif
 
 struct salts_fs_root_s {
   int fd;
@@ -970,6 +976,20 @@ int salts_fs_root_file_close(salts_fs_root_file_t *file) {
   return 0;
 }
 
+int salts_fs_root_file_fsync(salts_fs_root_file_t *file) {
+  if (!file) return -EINVAL;
+#ifdef _WIN32
+  if (!FlushFileBuffers(file->handle))
+    return salts_fs_root_win32_error(GetLastError());
+  return 0;
+#else
+  for (;;) {
+    if (fsync(file->fd) == 0) return 0;
+    if (errno != EINTR) return -errno;
+  }
+#endif
+}
+
 int salts_fs_root_file_read(
     salts_fs_root_file_t *file, char *buffer, size_t length) {
   if (!file || (!buffer && length != 0u) || length > (size_t)INT_MAX)
@@ -1117,6 +1137,117 @@ int salts_fs_root_rename(
     rc = -errno;
   if (source_parent >= 0) close(source_parent);
   if (target_parent >= 0) close(target_parent);
+  return rc;
+#endif
+}
+
+int salts_fs_root_publish_file_noreplace(
+    const salts_fs_root_t *root, const char *staging_path,
+    const char *revision_path, salts_fs_replace_state_t *state) {
+  if (!state) return -EINVAL;
+  *state = SALTS_FS_REPLACE_NOT_PUBLISHED;
+  if (!root || !staging_path || !revision_path ||
+      strcmp(staging_path, revision_path) == 0)
+    return -EINVAL;
+  /* Validation belongs to the existing root capability path parser.
+   * Unlike file replacement, immutable generation publication MUST NOT
+   * silently degrade into a check-then-rename TOCTOU. */
+  {
+    int rc = salts_fs_root_validate_relative_path(staging_path);
+    if (rc != 0) return rc;
+    rc = salts_fs_root_validate_relative_path(revision_path);
+    if (rc != 0) return rc;
+  }
+#ifdef _WIN32
+  /* The current root-relative Windows rename primitive supports replacement
+   * but its after-rename directory durability and pinned-reader GC contract
+   * have not yet been qualified. Do not mutate namespace and then claim
+   * a durable immutable version: explicit unsupported, no fallback. */
+  return -ENOSYS;
+#else
+  int old_parent = -1, new_parent = -1, staged = -1;
+  char old_name[SALTS_FS_ROOT_COMPONENT_MAX];
+  char new_name[SALTS_FS_ROOT_COMPONENT_MAX];
+  struct stat native;
+  int rc = salts_fs_root_open_parent_posix(
+      root, staging_path, &old_parent, old_name);
+  if (rc == 0)
+    rc = salts_fs_root_open_parent_posix(
+        root, revision_path, &new_parent, new_name);
+  if (rc != 0) goto done;
+
+  staged = openat(old_parent, old_name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+  if (staged < 0) { rc = -errno; goto done; }
+  if (fstat(staged, &native) != 0) {
+    rc = -errno;
+    goto done;
+  }
+  /* No hard-link alias to mutate an otherwise published inode.
+   * Open writers with an existing file handle are forbidden by the
+   * cooperative single-publisher contract (not enforceable by fstat). */
+  if (!S_ISREG(native.st_mode) || native.st_nlink != 1) {
+    rc = -EINVAL;
+    goto done;
+  }
+  for (;;) {
+    if (fsync(staged) == 0) break;
+    if (errno != EINTR) { rc = -errno; goto done; }
+  }
+  /* Retain the exact staged inode handle while the native atomic rename
+   * runs. The source pathname alone cannot prove the renamed identity. */
+
+#if defined(__linux__) && defined(SYS_renameat2)
+  if (syscall(SYS_renameat2, old_parent, old_name, new_parent,
+              new_name, RENAME_NOREPLACE) != 0) {
+    rc = (errno == ENOSYS || errno == EINVAL) ? -ENOSYS : -errno;
+    goto done;
+  }
+#elif defined(__APPLE__) && defined(RENAME_EXCL)
+  if (renameatx_np(old_parent, old_name, new_parent,
+                   new_name, RENAME_EXCL) != 0) {
+    rc = (errno == ENOTSUP || errno == EINVAL) ? -ENOSYS : -errno;
+    goto done;
+  }
+#else
+  rc = -ENOSYS;
+  goto done;
+#endif
+
+  /* Once rename succeeded, the namespace has changed. A later error is
+   * UNKNOWN and may not be retried as if no publication took place. */
+  *state = SALTS_FS_REPLACE_DURABILITY_UNKNOWN;
+  {
+    struct stat published;
+    if (fstatat(new_parent, new_name, &published, AT_SYMLINK_NOFOLLOW) != 0) {
+      rc = -errno;
+      goto done;
+    }
+    if (!S_ISREG(published.st_mode) || published.st_dev != native.st_dev ||
+        published.st_ino != native.st_ino) {
+      rc = -EIO;
+      goto done;
+    }
+  }
+  if (close(staged) != 0) {
+    staged = -1;
+    rc = -errno;
+    goto done;
+  }
+  staged = -1;
+  for (;;) {
+    if (fsync(new_parent) == 0) break;
+    if (errno != EINTR) { rc = -errno; goto done; }
+  }
+  for (;;) {
+    if (fsync(old_parent) == 0) break;
+    if (errno != EINTR) { rc = -errno; goto done; }
+  }
+  *state = SALTS_FS_REPLACE_PUBLISHED_DURABLE;
+  rc = 0;
+done:
+  if (staged >= 0) (void)close(staged);
+  if (old_parent >= 0) (void)close(old_parent);
+  if (new_parent >= 0) (void)close(new_parent);
   return rc;
 #endif
 }
