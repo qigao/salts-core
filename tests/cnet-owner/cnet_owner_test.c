@@ -1,5 +1,8 @@
 #include "cnet_module.h"
 #include "cnet_owner.h"
+#if defined(CNET_INTERNAL_TESTING)
+  #include "cnet_test_internal.h"
+#endif
 #if defined(__linux__)
 #include "cnet_transport.h"
 #endif
@@ -1983,6 +1986,36 @@ static void cnet_owner_test_init_cleanup_after_backend(
 
 spec("CNet owner shard") {
 #if defined(CNET_INTERNAL_TESTING)
+  it("resumes TLS1.3 provider-owned partial records without a second header") {
+    const uint8_t record[10] = {
+        0x17, 0x03, 0x03, 0x00, 0x05, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5};
+    bool ready = true;
+    /* A fresh ring must wait for the complete authenticated record. */
+    check_equal(cnet_test_tls_receive_record_gate(0u, record, 7u, &ready),
+                SALTS_OK);
+    check_false(ready);
+    check_equal(cnet_test_tls_receive_record_gate(0u, record, sizeof(record),
+                                                   &ready), SALTS_OK);
+    check_true(ready);
+    /* Once the provider has consumed the header, the remaining bytes are
+     * ciphertext payload, NOT a second record header. */
+    check_equal(cnet_test_tls_receive_record_gate(1u, record + 5, 2u, &ready),
+                SALTS_OK);
+    check_true(ready);
+    check_equal(cnet_test_tls_receive_record_gate(2u, record + 5, 2u, &ready),
+                SALTS_OK);
+    check_true(ready);
+    check_equal(cnet_test_tls_receive_record_gate(2u, record, 0u, &ready),
+                SALTS_OK);
+    check_false(ready);
+    /* Provider-buffered plaintext may be delivered without more ciphertext. */
+    check_equal(cnet_test_tls_receive_record_gate(3u, record, 0u, &ready),
+                SALTS_OK);
+    check_true(ready);
+    check_equal(cnet_test_tls_receive_record_gate(4u, record, 0u, &ready),
+                SALTS_EINVAL);
+  }
+
   it("uses caller-owned network byte order for IPv4 and IPv6 resolver ports") {
     cnet_owner_test_requested_port_byte_order();
   }
