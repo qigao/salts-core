@@ -3049,7 +3049,8 @@ int tls_recv_certificate_verify(TLS_CONNECT *conn)
 	}
 
 	if (client_sign_key.algor == OID_rsa_encryption) {
-		if (sig_alg != TLS_sig_rsa_pkcs1_sha256) {
+		if (sig_alg != TLS_sig_rsa_pkcs1_sha256
+			&& sig_alg != TLS_sig_rsa_pss_rsae_sha256) {
 			error_print();
 			tls_send_alert(conn, TLS_alert_unsupported_certificate);
 			return -1;
@@ -3064,7 +3065,27 @@ int tls_recv_certificate_verify(TLS_CONNECT *conn)
 		tls_send_alert(conn, TLS_alert_bad_certificate);
 		return -1;
 	}
-	if (x509_verify_init_ex(&sign_ctx, &client_sign_key,
+	if (sig_alg == TLS_sig_rsa_pss_rsae_sha256) {
+		/* RFC 5246 CertificateVerify signs the exact TLS1.2 handshake
+		 * transcript (without this CertificateVerify message). This branch
+		 * verifies RSA-PSS/SHA256 with the authenticated client RSA key.
+		 * An invalid signature is a fatal alert, never a PKCS#1 fallback. */
+		SHA256_CTX hash_ctx;
+		uint8_t transcript_hash[SHA256_DIGEST_SIZE];
+		int verified;
+		sha256_init(&hash_ctx);
+		sha256_update(&hash_ctx, conn->transcript, conn->transcript_len);
+		sha256_finish(&hash_ctx, transcript_hash);
+		verified = rsa_verify_pss_sha256(
+			&client_sign_key.u.rsa_public_key, transcript_hash, sig, siglen);
+		gmssl_secure_clear(&hash_ctx, sizeof(hash_ctx));
+		gmssl_secure_clear(transcript_hash, sizeof(transcript_hash));
+		if (verified != 1) {
+			error_print();
+			tls_send_alert(conn, TLS_alert_decrypt_error);
+			return -1;
+		}
+	} else if (x509_verify_init_ex(&sign_ctx, &client_sign_key,
 		tls_signature_scheme_algorithm_oid(sig_alg),
 		signer_id, signer_idlen, sig, siglen) != 1
 		|| x509_verify_update(&sign_ctx, conn->transcript, conn->transcript_len) != 1
