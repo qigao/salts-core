@@ -92,11 +92,29 @@ jobs:
           dependency-mode: binary
           token: ${{ github.token }}
           features: simd,usb,playback,capture,zstd
+      - name: Pinned Python wheel for original NativeIO REQUIRED-mTLS cases
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --no-cache-dir \
+            --only-binary=:all: "cryptography==46.0.4"
+
       - name: Configure full Core graph
         shell: bash
         run: |
           set -euo pipefail
+          extra_native_qualification=()
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            extra_native_qualification=(
+              -DSALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION=ON
+              -DSALTSCORE_CNET_M5_PYTHON_MTLS_TEST=ON
+              "-DSALTSCORE_CRYPTO_TEST_FIXTURES=$GITHUB_WORKSPACE/crypto/tests/fixtures"
+              "-DSALTSCORE_CRYPTO_PYTHON_FIXTURE_SOURCE=$GITHUB_WORKSPACE/crypto/tests/sdk/python_mtls.py"
+            )
+          fi
           cmake -S . -B build -G Ninja \
+            "${extra_native_qualification[@]}" \
             "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" \
             "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" \
             "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" \
