@@ -1438,7 +1438,7 @@ int cnet_owner_test_tls_pending_deadline_rollover(void) {
   cnet_owner_session session = {0};
   cnet_owner_request requests[3] = {{0}};
   cmeta_deadline_event event = {0};
-  const uint64_t now = 1000u;
+  uint64_t now = 1000u;
   cmeta_deadline_id read_id, write_id;
   int status;
   int result = SALTS_EPROTO;
