@@ -321,6 +321,18 @@ if(TARGET Salts::CNet)
       set_tests_properties(saltscore.cnet_python_ssl_peer_${_protocol}
         PROPERTIES TIMEOUT 95 RESOURCE_LOCK cnet_native_python_ssl_peer)
     endforeach()
+
+    # Inverse interop: Python's own ssl TLS client uses exact TLS1.2 or
+    # TLS1.3 against the ONE production CNet listener, with REQUIRED mTLS.
+    # No duplicate CNet owner, test-only provider, installed SDK or consumer.
+    add_test(NAME saltscore.cnet_python_ssl_client_required_mtls
+      COMMAND "${Python3_EXECUTABLE}" -B
+        "${PROJECT_SOURCE_DIR}/tests/test_cnet_tls_python_client.py"
+        --binary "$<TARGET_FILE:saltscore_cnet_tls_ca_san_test>"
+        --fixture-generator "${PROJECT_SOURCE_DIR}/crypto/tests/sdk/python_mtls.py"
+        --work "${PROJECT_BINARY_DIR}/native-python-client-mtls")
+    set_tests_properties(saltscore.cnet_python_ssl_client_required_mtls
+      PROPERTIES TIMEOUT 300 RESOURCE_LOCK cnet_native_required_mtls)
   endif()
 endif()
 
