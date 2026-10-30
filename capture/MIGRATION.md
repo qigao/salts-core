@@ -52,7 +52,7 @@ to use the platform's JNI types.
 | Linux | miniaudio, V4L2 video, PipeWire and X11/XShm screen | Pinned miniaudio and libyuv/JPEG; PipeWire 0.3 API, X11/Xext, threads, dl and libm |
 | macOS | miniaudio/CoreAudio, AVFoundation video, ScreenCaptureKit | System Apple frameworks plus pinned miniaudio |
 | Android | OpenSL ES/miniaudio support, Camera2/Media NDK, AImageReader/MediaProjection | NDK, pinned miniaudio and libyuv/JPEG; native Platform synchronization |
-| iOS | AVAudioEngine, AVFoundation and ReplayKit source set | System Apple frameworks; the public-symbol gaps below remain unresolved |
+| iOS | AVAudioEngine, AVFoundation and ReplayKit source set plus bounded common-API completion unit | System Apple frameworks; frozen donor files remain byte-identical |
 
 Linux always enables and links **both** original PipeWire and X11 paths. Missing
 SDK dependencies fail configuration. The build is not reduced to the platform
@@ -73,9 +73,12 @@ frameworks. The default Core graph now also builds local Crypto and CNet,
 so the Capture workflow restores the real base c-ares, KCP and SIMDe
 dependencies on iOS as on every other platform. It configures the full
 iPhoneOS/arm64 source and installed-consumer graphs through the canonical
-toolchain and CMake's real Apple SDK support. All common public-symbol
-references remain required, including the six unresolved iOS implementations
-below; dependency restoration does not resolve those missing definitions.
+toolchain and CMake's real Apple SDK support. All common public-symbol references remain required. The frozen iOS donor set
+does not define six common operations, so the active iOS CMake graph generates
+one bounded C11 translation unit containing exactly those six definitions. It
+does not alter any frozen donor blob, remove any export, or introduce another
+Capture provider. Dependency restoration and this surface completion remain
+independent gates.
 
 The frozen vcpkg baseline is
 `b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01`: miniaudio is `0.11.22`, and libyuv
@@ -143,11 +146,23 @@ public header:
 - `salts_video_capture_set_crop`
 - `salts_video_capture_get_crop`
 
-These are source-inspection findings, not a claimed iOS execution result. The
-explicit export list and real installed consumer references expose the missing
-definitions at link time. The iOS row remains mandatory and failing until a
-separately reviewed implementation resolves the gap. There are no fabricated
-success returns, removal of public declarations, or skipped consumer references.
+This donor gap is now handled without rewriting the seven frozen iOS source
+files. On iOS only, `capture/CMakeLists.txt` writes one generated C11
+translation unit in the build directory and compiles it into the existing sole
+`Salts::Capture` target. The source-provenance test requires the generated
+block to define **exactly these six symbols** and nothing else.
+
+The behavior is not invented success behavior. It is the same bounded contract
+already present in the frozen sibling Apple/POSIX implementations: invalid GPU
+enumeration arguments return `-1`, a valid GPU list is empty, camera controls
+and crop return `SALTS_CAPTURE_ERR_UNSUPPORTED`, range/crop outputs are zeroed
+when supplied, control reads zero the supplied value, and null range/crop
+outputs return `SALTS_CAPTURE_ERR_DEVICE` where the donor contract does so.
+
+The explicit export list and installed consumers continue to reference every
+common API. Exact-head iOS compile/link and installed-consumer CI must pass
+before this source-level repair is accepted. It is not physical camera,
+microphone, screen, permission, suspend/resume or unplug qualification.
 
 The Linux original POSIX test also exposes a resource leak in the fixed
 **miniaudio 0.11.22 provider** when PulseAudio initialization cannot connect.
