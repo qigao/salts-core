@@ -36,7 +36,13 @@ if(WIN32)
     mfplat mf mfuuid mfreadwrite strmiids ole32 oleaut32 delayimp)
   add_test(NAME capture_exposure_windows_test COMMAND capture_exposure_windows_test)
   set_target_properties(capture_exposure_windows_test PROPERTIES FOLDER "capture/tests")
-  set_tests_properties(capture_exposure_windows_test PROPERTIES TIMEOUT 15)
+  # The test links the native vcpkg libyuv/JPEG import libraries.
+  # Admit their exact binary-cache runtime DLLs without staging a package or
+  # depending on any installed consumer project.
+  set_tests_properties(capture_exposure_windows_test PROPERTIES
+    TIMEOUT 15
+    ENVIRONMENT_MODIFICATION
+      "PATH=path_list_prepend:${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin")
   # This executable enumerates physical audio/video/screen/GPU devices and may
   # open camera modes. Build it on Windows to protect the API/ABI, but do not
   # register it in generic hosted-runner CTest. Device-backed qualification

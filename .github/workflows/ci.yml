@@ -125,12 +125,24 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
+          import os
           import subprocess
           import sys
+          from pathlib import Path
 
+          runtime = (
+              Path("build/vcpkg_installed")
+              / os.environ["CORE_CI_TRIPLET"] / "bin"
+          ).resolve()
+          if not runtime.is_dir():
+              raise SystemExit(f"required native binary cache runtime missing: {runtime}")
+          env = dict(os.environ)
+          env["PATH"] = str(runtime) + os.pathsep + env["PATH"]
+          print(f"fake-COM binary runtime: {runtime}", flush=True)
           process = subprocess.Popen(
               ["build/bin/capture_exposure_windows_test.exe"],
-              stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+              env=env)
           try:
               output, _ = process.communicate(timeout=10)
           except subprocess.TimeoutExpired:
