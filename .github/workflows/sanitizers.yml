@@ -74,6 +74,7 @@ jobs:
             "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" \
             "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" \
             "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" \
+            "-DVCPKG_MANIFEST_FEATURES=simd;usb;playback;capture;zstd" \
             "-DCMAKE_C_COMPILER=${{ matrix.cc }}" \
             "-DCMAKE_CXX_COMPILER=${{ matrix.cxx }}" \
             "-DCMAKE_C_FLAGS=${{ matrix.flags }} -fno-omit-frame-pointer -g -O1" \

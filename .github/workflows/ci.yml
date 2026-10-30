@@ -48,7 +48,7 @@ jobs:
       matrix:
         include:
           - {os: ubuntu-24.04, dependency_mode: binary}
-          - {os: macos-15, dependency_mode: binary}
+          - {os: macos-15, dependency_mode: source}
           - {os: windows-2025, dependency_mode: source}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -87,6 +87,7 @@ jobs:
             "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" \
             "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" \
             "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" \
+            "-DVCPKG_MANIFEST_FEATURES=simd;usb;playback;capture;zstd" \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTING=ON \
             -DSALTSCORE_BUILD_PROCESS=ON \
