@@ -1,0 +1,57 @@
+name: Migration gate
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-migration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Keep CI and consumer scaffolding bounded
+        shell: bash
+        run: |
+          set -euo pipefail
+          count="$(find .github/workflows -maxdepth 1 -type f -name '*.yml' | wc -l)"
+          test "$count" -le 4
+          test ! -d tests/installed
+          test ! -d tests/fs-installed
+          test ! -d tests/process-installed
+          test ! -d tests/zstd-installed
+          test ! -d asn1/tests/installed
+          test ! -d capture/tests/installed
+          test ! -d playback/tests/installed
+          test ! -d usb/tests/installed
+          test ! -d salts_serial/test/installed
+          test ! -d unicode/test/install_consumer
+      - name: Source layout and dependency boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/check_dependency_boundaries.py
+          python tools/check_module_layout.py
+      - name: Frozen 2,975-file / 610-API accounting
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/check_full_source_migration.py
+          python tools/audit_original_utils_parity.py
+      - name: Migration tooling unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tools/migration -p 'test_*.py' -v
