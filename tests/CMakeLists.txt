@@ -107,13 +107,6 @@ add_test(NAME saltscore.original_platform_cpp17
 set_tests_properties(saltscore.platform saltscore.original_platform_cpp17
   PROPERTIES TIMEOUT 30)
 
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
-add_test(NAME saltscore.original_platform_source_provenance
-  COMMAND "${Python3_EXECUTABLE}"
-    "${CMAKE_CURRENT_SOURCE_DIR}/test_original_platform_provenance.py")
-set_tests_properties(saltscore.original_platform_source_provenance
-  PROPERTIES ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1" TIMEOUT 30)
-
 add_executable(saltscore_concurrency_test test_concurrency.c)
 target_link_libraries(saltscore_concurrency_test PRIVATE Salts::Concurrency)
 set_target_properties(saltscore_concurrency_test PROPERTIES
@@ -431,12 +424,7 @@ target_link_libraries(saltscore_original_spsc_smoke PRIVATE Salts::Concurrency)
 add_test(NAME saltscore.original_spsc_smoke COMMAND saltscore_original_spsc_smoke)
 
 # The original seven-function MPMC API is owned by the existing concurrency
-# module. Its original test and independent delivery oracle exercise that DSO.
-add_executable(saltscore_mpmc_contract installed/mpmc_consumer.c)
-target_compile_features(saltscore_mpmc_contract PRIVATE c_std_11)
-target_link_libraries(saltscore_mpmc_contract PRIVATE Salts::Concurrency)
-add_test(NAME saltscore.mpmc_delivery_contract COMMAND saltscore_mpmc_contract)
-set_tests_properties(saltscore.mpmc_delivery_contract PROPERTIES TIMEOUT 30)
+# module. The original native TinyTest contract exercises that canonical owner.
 if(TARGET Salts::TinyTest)
   add_executable(saltscore_original_bucket_mpmc_test test_bucket_priority_queue_mpmc.c)
   target_compile_features(saltscore_original_bucket_mpmc_test PRIVATE c_std_11)
@@ -563,31 +551,8 @@ add_test(NAME saltscore.original_native_mmap
   COMMAND saltscore_original_native_mmap_test)
 set_tests_properties(saltscore.original_native_mmap PROPERTIES TIMEOUT 30)
 
-# The complete 1554+1421 Git Blob provenance contract is a non-waivable
-# structural gate: unresolved original native paths remain explicit debt.
-# Do NOT run --require-complete here and fake success: the independent
-# final admission remains RED until every function/test is qualified.
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
-add_test(NAME crypto.native.source_integrity
-  COMMAND "${Python3_EXECUTABLE}" -B
-          "${PROJECT_SOURCE_DIR}/crypto/tools/check_local_native_source.py")
-set_tests_properties(crypto.native.source_integrity PROPERTIES TIMEOUT 30)
-add_test(NAME crypto.native.source_negative
-  COMMAND "${Python3_EXECUTABLE}" -B -m unittest discover
-          -s "${PROJECT_SOURCE_DIR}/tests" -p test_local_native_crypto_source.py -v)
-set_tests_properties(crypto.native.source_negative PROPERTIES TIMEOUT 30)
-add_test(NAME saltscore.all_original_source_provenance
-  COMMAND "${Python3_EXECUTABLE}"
-          "${PROJECT_SOURCE_DIR}/tools/check_full_source_migration.py")
-set_tests_properties(saltscore.all_original_source_provenance
-  PROPERTIES TIMEOUT 45)
-add_test(NAME saltscore.all_original_source_negative
-  COMMAND "${Python3_EXECUTABLE}" -m unittest discover
-          -s "${PROJECT_SOURCE_DIR}/tests"
-          -p "test_full_source_migration.py" -v)
-set_tests_properties(saltscore.all_original_source_negative
-  PROPERTIES TIMEOUT 45)
-
+# Frozen source/accounting policies run once in the Migration gate.
+# Native CTest below remains executable behavior only.
 
 # qigao/salts original utils native byte regex, 10 owned public C11 functions.
 # Always-on compiled source/runtime; TinyTest retains all 25 donor test cases.
@@ -614,34 +579,5 @@ if(TARGET Salts::TinyTest)
 endif()
 
 
-# Fail closed if any original 25 regex tests, ten public functions,
-# private SSE2/NEON scanner or installed C11/C++17 acceptance vanishes.
-add_test(NAME saltscore.original_re_source_provenance
-  COMMAND "${Python3_EXECUTABLE}" -m unittest discover
-          -s "${PROJECT_SOURCE_DIR}/tests"
-          -p "test_original_re_provenance.py" -v)
-set_tests_properties(saltscore.original_re_source_provenance
-  PROPERTIES TIMEOUT 45)
-
-# The frozen 610-function inventory did not parse the original SIMD header's
-# unannotated C declarations. Keep its separate 32-function supplement intact.
-add_test(NAME saltscore.original_simd_source_provenance
-  COMMAND "${Python3_EXECUTABLE}" -m unittest discover
-          -s "${PROJECT_SOURCE_DIR}/tests"
-          -p "test_original_simd_provenance.py" -v)
-set_tests_properties(saltscore.original_simd_source_provenance
-  PROPERTIES TIMEOUT 45)
-
-add_test(NAME saltscore.original_error_source_provenance
-  COMMAND "${Python3_EXECUTABLE}" -B -m unittest discover
-          -s "${PROJECT_SOURCE_DIR}/tests"
-          -p "test_original_error_provenance.py" -v)
-set_tests_properties(saltscore.original_error_source_provenance PROPERTIES TIMEOUT 45)
-
-add_test(NAME saltscore.migration_evidence_negative
-  COMMAND "${CMAKE_COMMAND}" -E env
-          "SALTSCORE_CTEST_COMMAND=${CMAKE_CTEST_COMMAND}"
-          "SALTSCORE_CMAKE_COMMAND=${CMAKE_COMMAND}"
-          "${Python3_EXECUTABLE}" -B -m unittest discover
-          -s "${PROJECT_SOURCE_DIR}/tests" -p "test_migration_evidence.py" -v)
-set_tests_properties(saltscore.migration_evidence_negative PROPERTIES TIMEOUT 60)
+# Regex/SIMD/Error source provenance also runs once in the Migration gate.
+# The release-only migration-receipt harness is intentionally not part of PR CI.

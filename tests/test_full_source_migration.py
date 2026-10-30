@@ -97,10 +97,7 @@ class ExactMigrationSourceTests(unittest.TestCase):
         paths = (
             "core/include/cmeta_mmap.h", "core/src/cmeta_mmap.c",
             "core/CMakeLists.txt", "tests/CMakeLists.txt",
-            "tests/installed/CMakeLists.txt",
-            "tests/test_original_native_mmap.c",
-            "tests/installed/original_mmap_consumer.c",
-            "tests/installed/original_mmap_consumer.cpp")
+            "tests/test_original_native_mmap.c",)
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             for rel in paths:

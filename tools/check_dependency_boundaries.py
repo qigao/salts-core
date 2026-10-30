@@ -29,8 +29,6 @@ NATIVE_USB_HEADER_USERS = frozenset({
     Path("usb/tests/cflow_usb_state_test.c"),
     Path("usb/tests/cflow_usb_header_cpp_test.cpp"),
     Path("usb/tests/usb_lifecycle_test.c"),
-    Path("usb/tests/installed/usb_consumer.c"),
-    Path("usb/tests/installed/usb_consumer.cpp"),
 })
 NATIVE_USB_INCLUDE = re.compile(r'^\s*#\s*include\s*[<"]cflow/usb\.h[>"]\s*$')
 
@@ -41,11 +39,8 @@ NATIVE_USB_INCLUDE = re.compile(r'^\s*#\s*include\s*[<"]cflow/usb\.h[>"]\s*$')
 # structure remains intact. Active links elsewhere are never excluded.
 NEGATIVE_ASSERTION_FILES = frozenset({
     Path("tests/cnet-crypto-static/CMakeLists.txt"),
-    Path("asn1/tests/installed/CMakeLists.txt"),
-    Path("crypto/tests/asn1/installed/CMakeLists.txt"),
     Path("crypto/tests/mobile/CMakeLists.txt"),
     Path("crypto/tests/owner/CMakeLists.txt"),
-    Path("crypto/tests/sdk/CMakeLists.txt"),
 })
 _TARGET_NAME = r"[A-Za-z_][A-Za-z_0-9]*::[A-Za-z_][A-Za-z_0-9]*"
 _LIST_GUARD = re.compile(

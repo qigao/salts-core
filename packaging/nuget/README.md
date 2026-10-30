@@ -32,19 +32,12 @@ validation checks structure and bytes. It does not convert a missing source
 identity, unsupported backend, cross compilation, or unqualified API into a
 completed migration.
 
-Manifest schema 2 distinguishes regular files from symlinks. Relative SONAME
-aliases retain their exact link text and Unix ZIP type through the supported
-`core_sdk.py extract` path, so aliases still resolve to one runtime file. The
-verifier rejects a flattened copy even when its library bytes are identical.
-It preflights all link targets within one RID before writing, rejecting escaping,
-cyclic, dangling, directory, parent-directory and cross-RID links.
-
-The existing `dotnet pack` glob and generic NuGet restore have not yet passed a
-real round trip of this typed-link contract. If either flattens links, validation
-fails; the package is not repaired or relabeled as qualified. This remains a
-publication limitation. Unix SDK extraction also requires symlink support and
-permission on the host; there is no regular-file fallback. Native Windows SDKs
-whose entries are regular DLL/import-library files do not need symlinks.
+Manifest schema 2 distinguishes regular files from symlinks. The previous PR-time
+six-RID archive/installed-consumer harness has been removed from CI; publication
+packaging is deliberately deferred until the migration gate is complete. Release
+tooling must preserve relative SONAME aliases and reject escaping, cyclic,
+dangling or cross-RID links when it is reintroduced. Ordinary PR CI does not
+assemble or unpack NuGet packages.
 
 ## CMake consumption
 

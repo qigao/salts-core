@@ -119,7 +119,6 @@ def main() -> int:
     cmake = (ROOT / "platform/CMakeLists.txt").read_text()
     tests = (ROOT / "tests/test_platform.c").read_text()
     tests_cmake = (ROOT / "tests/CMakeLists.txt").read_text()
-    installed_cmake = (ROOT / "tests/installed/CMakeLists.txt").read_text()
 
     require(set(PLATFORM_API).issubset(declared_names(header)),
             "restored Platform public declarations are incomplete")
@@ -159,10 +158,6 @@ def main() -> int:
 
     require("saltscore.original_platform_cpp17" in tests_cmake,
             "native C++17 Platform contract is not registered")
-    require("sdk.original_platform_c11" in installed_cmake and
-            "sdk.original_platform_cpp17" in installed_cmake,
-            "installed Platform C11/C++17 contracts are not registered")
-
     print("PASS: frozen Platform/thread donor identities and 24+3 native owner surface retained")
     return 0
 

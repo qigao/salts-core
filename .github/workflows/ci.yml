@@ -1,0 +1,129 @@
+name: Core CI
+
+on:
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "packaging/**"
+      - "tools/migration/**"
+      - "tools/check_full_source_migration.py"
+      - "tools/audit_original_utils_parity.py"
+      - "tools/check_migration_evidence.py"
+      - "tools/check_dependency_boundaries.py"
+      - "tools/check_module_layout.py"
+      - "**/*provenance.py"
+      - "crypto/tools/check_local_native_source.py"
+      - "tests/test_local_native_crypto_source.py"
+      - "tests/test_full_source_migration.py"
+      - "tests/test_migration_evidence.py"
+      - ".github/workflows/migration-gate.yml"
+      - ".github/workflows/portable-compiler-abi.yml"
+      - ".github/workflows/sanitizers.yml"
+  push:
+    branches: [master]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "packaging/**"
+      - "tools/migration/**"
+      - "tools/check_full_source_migration.py"
+      - "tools/audit_original_utils_parity.py"
+      - "tools/check_migration_evidence.py"
+      - "tools/check_dependency_boundaries.py"
+      - "tools/check_module_layout.py"
+      - "**/*provenance.py"
+      - "crypto/tools/check_local_native_source.py"
+      - "tests/test_local_native_crypto_source.py"
+      - "tests/test_full_source_migration.py"
+      - "tests/test_migration_evidence.py"
+      - ".github/workflows/migration-gate.yml"
+      - ".github/workflows/portable-compiler-abi.yml"
+      - ".github/workflows/sanitizers.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: core-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: "false"
+
+jobs:
+  build-test:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+        with:
+          arch: x64
+      - name: Compiler cache
+        uses: qigao/stun/.github/actions/setup-ccache@6498e9710609820da7d99a938627cc44f17f00ed
+        with:
+          profile: saltscore-core-ci
+          source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Linux system SDKs
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build libudev-dev libpipewire-0.3-dev libx11-dev libxext-dev
+      - name: Pinned build prerequisites
+        uses: ./.github/actions/setup-core-native
+        with:
+          dependency-mode: binary
+          token: ${{ github.token }}
+          features: simd,usb,playback,capture,zstd
+      - name: Configure full Core graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build -G Ninja \
+            "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" \
+            "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" \
+            "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" \
+            "-DVCPKG_MANIFEST_FEATURES=simd;usb;playback;capture;zstd" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=ON \
+            -DSALTSCORE_BUILD_PROCESS=ON \
+            -DSALTSCORE_BUILD_SIMD=ON \
+            -DSALTSCORE_BUILD_USB=ON \
+            -DSALTSCORE_BUILD_PLAYBACK=ON \
+            -DSALTSCORE_BUILD_SERIAL=ON \
+            -DSALTSCORE_BUILD_CAPTURE=ON \
+            -DSALTSCORE_BUILD_UNICODE=ON \
+            -DSALTSCORE_BUILD_IDNA=ON \
+            -DSALTSCORE_BUILD_CSERDE=ON \
+            -DSALTSCORE_BUILD_TINYTEST=ON \
+            -DSALTSCORE_BUILD_SCTP=ON \
+            -DSALTSCORE_BUILD_WEBSOCKET_PARSER=ON \
+            -DSALTSCORE_NATIVE_CPP_CONFORMANCE=ON \
+            -DSALTSCORE_CNET_OWNER_SOURCE_TESTS=ON
+      - name: Build once
+        shell: bash
+        run: cmake --build build --parallel 2
+      - name: Run native tests once
+        shell: bash
+        run: ctest --test-dir build --output-on-failure --no-tests=error --timeout 120
+      - name: Cache statistics
+        if: always()
+        shell: bash
+        run: ccache --show-stats || true

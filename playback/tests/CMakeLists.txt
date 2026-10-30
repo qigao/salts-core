@@ -42,10 +42,3 @@ target_link_libraries(playback_lifecycle_test PRIVATE playback_null_test_impl Sa
 add_test(NAME saltscore.playback_original_lifecycle COMMAND playback_lifecycle_test)
 set_tests_properties(saltscore.playback_original_buffer
   saltscore.playback_original_lifecycle PROPERTIES TIMEOUT 30)
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
-add_test(NAME saltscore.playback_source_provenance
-  COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/test_source_provenance.py")
-add_executable(playback_production_contract installed/playback_consumer.c)
-target_compile_features(playback_production_contract PRIVATE c_std_11)
-target_link_libraries(playback_production_contract PRIVATE Salts::Playback)
-add_test(NAME saltscore.playback_production_contract COMMAND playback_production_contract)

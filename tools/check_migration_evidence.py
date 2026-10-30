@@ -413,9 +413,14 @@ def verify_receipt(root: Path, receipt_path: Path, identity: dict | None = None)
 
 
 def audit_evidence(root: Path, evidence_dir: Path | None = None) -> dict:
-    load_contract(root)
+    # Ordinary PR migration accounting is native-source-only. Installed SDK /
+    # consumer receipts are release evidence and are checked only when an
+    # explicit evidence directory is supplied.
+    if git_blob(canonical((root / SUPPLEMENT).read_bytes())) != SUPPLEMENT_BLOB:
+        raise ValueError("frozen SIMD supplement changed")
     profiles = set()
     if evidence_dir is not None:
+        load_contract(root)
         if not evidence_dir.is_dir():
             raise ValueError("evidence directory missing")
         identity = source_identity(root)
