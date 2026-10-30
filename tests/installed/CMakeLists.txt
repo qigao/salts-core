@@ -235,6 +235,18 @@ target_compile_features(portable_concurrency_consumer_cpp PRIVATE cxx_std_17)
 target_link_libraries(portable_concurrency_consumer_cpp PRIVATE Salts::Platform)
 add_test(NAME sdk.portable_concurrency_cpp COMMAND portable_concurrency_consumer_cpp)
 
+# Restored original Platform/time/system/timer public surface. Both installed
+# consumers link only the canonical Salts::Platform owner.
+add_executable(original_platform_consumer_c original_platform_consumer.c)
+target_compile_features(original_platform_consumer_c PRIVATE c_std_11)
+target_link_libraries(original_platform_consumer_c PRIVATE Salts::Platform)
+add_test(NAME sdk.original_platform_c11 COMMAND original_platform_consumer_c)
+
+add_executable(original_platform_consumer_cpp original_platform_consumer.cpp)
+target_compile_features(original_platform_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(original_platform_consumer_cpp PRIVATE Salts::Platform)
+add_test(NAME sdk.original_platform_cpp17 COMMAND original_platform_consumer_cpp)
+
 
 # Installed C11 source compatibility: explicitly select our threads.h, never
 # assume the provider's private build tree or system compiler's threads.h.
