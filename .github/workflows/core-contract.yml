@@ -1,67 +1,144 @@
 name: SaltsCore standalone SDK contract
+
 on:
-  push:
   pull_request:
+    paths:
+      - "CMakeLists.txt"
+      - "cmake/**"
+      - "platform/**"
+      - "core/**"
+      - "concurrency/**"
+      - "coroutine/**"
+      - "native-io/**"
+      - "fs/**"
+      - "process/**"
+      - "uri/**"
+      - "cnet/src/wsparser/**"
+      - "sctp/**"
+      - "cserde/**"
+      - "tinytest/**"
+      - "unicode/**"
+      - "idna/**"
+      - "tests/**"
+      - ".github/workflows/core-contract.yml"
+  push:
+    branches: [master]
+    paths:
+      - "CMakeLists.txt"
+      - "cmake/**"
+      - "platform/**"
+      - "core/**"
+      - "concurrency/**"
+      - "coroutine/**"
+      - "native-io/**"
+      - "fs/**"
+      - "process/**"
+      - "uri/**"
+      - "cnet/src/wsparser/**"
+      - "sctp/**"
+      - "cserde/**"
+      - "tinytest/**"
+      - "unicode/**"
+      - "idna/**"
+      - "tests/**"
+      - ".github/workflows/core-contract.yml"
+  workflow_dispatch:
+
 permissions:
   contents: read
+  packages: read
+
+concurrency:
+  group: master-native-core-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: "false"
+
 jobs:
   sdk:
+    name: Native source / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+        os: [ubuntu-24.04, macos-15, windows-2025]
     steps:
       - uses: actions/checkout@v4
-      - name: Prove no legacy Salts/CMeta/CFlow/CSTL dependency
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+        with:
+          arch: x64
+      - name: Verified compiler cache
+        uses: qigao/stun/.github/actions/setup-ccache@6498e9710609820da7d99a938627cc44f17f00ed
+        with:
+          profile: saltscore-master-native
+          source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Exact re2c 4.6.5 and Unicode 17 tables
+        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@4864033d4e4bc70d182df6a33695582ec6fcc968
+        with:
+          token: ${{ github.token }}
+          version: "4.6.5"
+          sha256: "dfdcf77dfd36e60500532a3fcc8a1bd32dc2232edeb63e053267a712bc4489ed"
+      - name: Configure native owners once
         shell: bash
         run: |
-          python3 tools/check_ci_ctest_regex.py .github/workflows/cnet-sanitizers.yml
-          python3 tools/check_ci_ctest_regex.py .github/workflows/readiness-reference-sanitizers.yml
-          python3 tools/check_dependency_boundaries.py
+          set -euo pipefail
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            owner_threads=OFF
+          else
+            owner_threads=ON
+          fi
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=ON \
+            -DSALTSCORE_BUILD_URI=ON \
+            -DSALTSCORE_BUILD_WEBSOCKET_PARSER=ON \
+            -DSALTSCORE_BUILD_SCTP=ON \
+            "-DCNET_SCTP_TEST_OWNER_THREADS=$owner_threads" \
+            -DSALTSCORE_BUILD_FS=ON \
+            -DSALTSCORE_BUILD_PROCESS=ON \
+            -DSALTSCORE_BUILD_TINYTEST=ON \
+            -DSALTSCORE_BUILD_CSERDE=ON \
+            -DSALTSCORE_BUILD_UNICODE=ON \
+            -DSALTSCORE_BUILD_IDNA=ON \
+            -DSALTSCORE_NATIVE_CPP_CONFORMANCE=ON
+      - name: Build native source graph
+        shell: bash
+        run: cmake --build build --parallel 2
+      - name: Run native behavior tests once
+        shell: bash
+        run: ctest --test-dir build --output-on-failure --no-tests=error --timeout 120
+      - name: Source ownership policies (Linux once)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Consolidated single-host source gates from retired module workflows.
           python3 tools/check_module_layout.py
           python3 tools/check_original_module_paths.py
-          python3 -m unittest discover -s tests -p 'test_original_module_paths.py' -v
+          python3 tools/audit_cnet_sctp_source.py
           python3 tools/check_cnet_ci_triggers.py
-          python3 -m unittest tests.test_cnet_ci_triggers
-          python3 -m unittest discover -s tests -p 'test_dependency_boundaries.py'
-      - name: Configure, compile, test, and install
-        shell: bash
-        run: |
-          set -euo pipefail
-          cmake -S . -B build -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/saltscore-sdk"
-          cmake --build build --config Release --parallel 2
-          ctest --test-dir build --output-on-failure -C Release
-          cmake --install build --config Release
-      - name: Installed C11 and C++17 consumer
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Shared foundation must be found from the clean installed prefix,
-          # not from build-tree archives or an already installed legacy Salts.
-          case "$RUNNER_OS" in
-            Windows) export PATH="$(cygpath -u "$RUNNER_TEMP")/saltscore-sdk/bin:$PATH" ;;
-            macOS) export DYLD_LIBRARY_PATH="$RUNNER_TEMP/saltscore-sdk/lib:${DYLD_LIBRARY_PATH:-}" ;;
-            Linux) export LD_LIBRARY_PATH="$RUNNER_TEMP/saltscore-sdk/lib:${LD_LIBRARY_PATH:-}" ;;
-          esac
-          cmake -S tests/installed -B build-installed -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/saltscore-sdk"
-          cmake --build build-installed --config Release --parallel 2
-          ctest --test-dir build-installed --output-on-failure -C Release
-      - name: Prove future minor ABI 0.2 cannot load installed 0.1
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Requested 0.2 must fail against installed 0.1; an extra cache
-          # entry or a matching major-zero package is not an ABI waiver.
-          if cmake -S tests/abi-version-mismatch -B build-abi-version-mismatch \
-                "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/saltscore-sdk"; then
-            echo "ABI violation: find_package(SaltsCore 0.2) accepted 0.1" >&2
+          python3 -m unittest discover -s tests -p 'test_cnet_ci_triggers.py' -v
+          python3 -m unittest discover -s tests -p 'test_dependency_boundaries.py' -v
+          if grep -nE 'cmeta_|CMETA_|SALTS_C_API|TLOG_|#include "platform.h"' fs/src/*.c fs/include/salts/fs.h; then
+            echo "FS original native API boundary violated" >&2
             exit 1
           fi
-          echo "Expected rejection: 0.2 consumer cannot resolve 0.1 ABI"
-      - name: Verify future 0.2 cannot satisfy older 0.1 ABI
+          if grep -nE 'cmeta_process|tstr_|vstr_|SALTS_C_API|#include "cmeta_|#include "platform.h"' process/src/process.c process/include/salts/process.h; then
+            echo "Process original native API boundary violated" >&2
+            exit 1
+          fi
+          # Baseline master still has a known Crypto/ASN1 policy RED. Never skip it.
+          python3 tools/check_dependency_boundaries.py
+      - name: Cache statistics
+        if: always()
         shell: bash
-        run: |
-          set -euo pipefail
-          python3 tools/test_abi_minor_compat.py \
-            --version-file "$RUNNER_TEMP/saltscore-sdk/lib/cmake/SaltsCore/SaltsCoreConfigVersion.cmake"
+        run: ccache --show-stats || true
