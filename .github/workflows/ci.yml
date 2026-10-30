@@ -120,6 +120,30 @@ jobs:
       - name: Build once
         shell: bash
         run: cmake --build build --parallel 2
+      - name: Diagnose Windows fake-COM startup before native CTest
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import subprocess
+          import sys
+
+          process = subprocess.Popen(
+              ["build/bin/capture_exposure_windows_test.exe"],
+              stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+          try:
+              output, _ = process.communicate(timeout=10)
+          except subprocess.TimeoutExpired:
+              process.kill()
+              output, _ = process.communicate()
+              sys.stdout.buffer.write(output)
+              sys.stdout.flush()
+              raise SystemExit("Windows fake-COM runtime exceeded 10 seconds")
+          sys.stdout.buffer.write(output)
+          sys.stdout.flush()
+          if process.returncode:
+              raise SystemExit(f"Windows fake-COM exited {process.returncode}")
+          PY
       - name: Run native tests once
         shell: bash
         run: ctest --test-dir build --output-on-failure --no-tests=error --timeout 120

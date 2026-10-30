@@ -1,20 +1,6 @@
 /* Test the production entry points without opening or changing a real camera. */
 #include "../src/capture_video_win32.c"
-#define TINYTEST_NO_MAIN
 #include <tinytest.h>
-
-/* Preserve TinyTest's original entrypoint while making pre-main hangs
- * distinguishable from control assertions on hosted Windows runners. */
-int main(int argc, char **argv) {
-    fputs("capture fake-COM: entered main\n", stderr);
-    fflush(stderr);
-    int result = ttest_main__(argc, argv, NULL, TT_USE_COLOR != 0,
-                              TT_USE_TAP != 0, TTEST_IS_ATTY__() != 0,
-                              TTEST_PRINT_TRACE_DEFAULT__);
-    fprintf(stderr, "capture fake-COM: tinytest exit=%d\n", result);
-    fflush(stderr);
-    return result;
-}
 
 static const salts_camera_control_t auto_exposure = SALTS_CAMERA_CONTROL_AUTO_EXPOSURE;
 
