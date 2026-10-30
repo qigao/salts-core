@@ -39,7 +39,6 @@
   #endif
 #endif
 
-#define UNUSED(x) (void)(x)
 
 static int cmeta_platform_copy_string(char *buffer, size_t buffer_size, const char *value) {
   size_t len;
