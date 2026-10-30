@@ -4,6 +4,7 @@ on:
     paths:
       - "fs/src/**"
       - "fs/include/salts/fs.h"
+      - "fs/include/salts/fs_watch.h"
       - "fs/CMakeLists.txt"
       - "CMakeLists.txt"
       - "tests/test_fs.c"
@@ -36,13 +37,60 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - name: CMeta-free owner and no legacy C interfaces
+      - name: CMeta-runtime-free owner and exact Platform ABI boundary
         shell: bash
         run: |
           set -euo pipefail
           python3 tools/check_dependency_boundaries.py
-          if grep -nE 'cmeta_|CMETA_|SALTS_C_API|TLOG_|#include "platform.h"' fs/src/*.c fs/include/salts/fs.h; then
-            echo "Retired CMeta/Salts native API is forbidden in Core FS" >&2
+          if grep -R -nE 'CMETA_|SALTS_C_API|TLOG_|#include[[:space:]]+"cmeta_|#include[[:space:]]+"platform.h"' \
+            fs/src fs/include; then
+            echo "CMeta runtime, legacy export decoration, TLog and old platform umbrella are forbidden in Core FS" >&2
+            exit 1
+          fi
+          allowed='^(cmeta_mutex_(destroy|init|lock|unlock)|cmeta_mutex_t|cmeta_thread_(create|destroy|join)|cmeta_thread_t)      - name: Restore exact prerequisites for the default local Crypto and CNet graph
+        uses: ./.github/actions/setup-core-native
+        with:
+          dependency-mode: source
+          token: ${{ github.token }}
+      - name: Native full C11 FS build and owner tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER_OS" == Windows ]]; then gen=(-G 'Visual Studio 18 2026' -A x64); else gen=(-G Ninja); fi
+          cmake -S . "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" -B build-fs "${gen[@]}" -DBUILD_TESTING=ON \
+            -DSALTSCORE_BUILD_FS=ON -DCMAKE_BUILD_TYPE=Release \
+            "-DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/fs-native-sdk"
+          cmake --build build-fs --config Release --parallel 2
+          ctest --test-dir build-fs -C Release -R '^saltscore[.]fs_' \
+            --no-tests=error --output-on-failure --timeout 40
+          cmake --install build-fs --config Release
+      - name: Clean installed FS SDK C11 and C++17 consumers
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            gen=(-G 'Visual Studio 18 2026' -A x64)
+            export PATH="$(cygpath -u "$RUNNER_TEMP")/fs-native-sdk/bin:$PATH"
+          elif [[ "$RUNNER_OS" == macOS ]]; then
+            gen=(-G Ninja)
+            export DYLD_LIBRARY_PATH="$RUNNER_TEMP/fs-native-sdk/lib:${DYLD_LIBRARY_PATH:-}"
+          else
+            gen=(-G Ninja)
+            export LD_LIBRARY_PATH="$RUNNER_TEMP/fs-native-sdk/lib:${LD_LIBRARY_PATH:-}"
+          fi
+          cmake -S tests/fs-installed -B build-fs-installed "${gen[@]}" \
+            "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/fs-native-sdk" -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-fs-installed --config Release --parallel 2
+          ctest --test-dir build-fs-installed -C Release \
+            --no-tests=error --output-on-failure --timeout 40
+
+          bad="$(
+            grep -RhoE '\bcmeta_[A-Za-z0-9_]+' fs/src/fs_watch* 2>/dev/null |
+              sort -u | grep -Ev "$allowed" || true
+          )"
+          if [[ -n "$bad" ]]; then
+            echo "FS watch acquired a non-Platform cmeta dependency:" >&2
+            echo "$bad" >&2
             exit 1
           fi
       - name: Restore exact prerequisites for the default local Crypto and CNet graph
