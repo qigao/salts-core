@@ -144,8 +144,22 @@ static int drive(cnet_client *client, cnet_client *server,
   }                                                                           \
 } while (0)
 
-static int run_case(const char *label, const char *ca_file,
-                    const char *verified_hostname, bool should_verify) {
+typedef struct tls_case_options {
+  const char *label;
+  const char *ca_file;
+  const char *verified_hostname;
+  bool expect_success;
+  bool expect_server_rejection;
+  const char *server_ca_file;
+  const char *server_cert_file;
+  const char *server_key_file;
+  const char *client_cert_file;
+  const char *client_key_file;
+} tls_case_options;
+
+static int run_case(const tls_case_options *options) {
+  const char *label = options->label;
+  const bool should_verify = options->expect_success;
   cnet_client client = {0};
   cnet_client server = {0};
   cnet_listener listener = {0};
@@ -156,13 +170,20 @@ static int run_case(const char *label, const char *ca_file,
       client_cfg.backend, "127.0.0.1", 0u, 2u};
   const cnet_tls_server_config server_tls_cfg = {
       .size = sizeof(cnet_tls_server_config),
-      .cert_file = CORE_TLS_TEST_P384_LEAF,
-      .key_file = CORE_TLS_TEST_P384_KEY,
-      .client_auth = CNET_TLS_CLIENT_AUTH_NONE};
+      .cert_file = options->server_cert_file != NULL
+                       ? options->server_cert_file : CORE_TLS_TEST_P384_LEAF,
+      .key_file = options->server_key_file != NULL
+                      ? options->server_key_file : CORE_TLS_TEST_P384_KEY,
+      .ca_file = options->server_ca_file,
+      .client_auth = options->server_ca_file != NULL
+                         ? CNET_TLS_CLIENT_AUTH_REQUIRED
+                         : CNET_TLS_CLIENT_AUTH_NONE};
   const cnet_tls_client_config client_tls_cfg = {
       .size = sizeof(cnet_tls_client_config),
-      .ca_file = ca_file,
-      .server_name = verified_hostname};
+      .ca_file = options->ca_file,
+      .cert_file = options->client_cert_file,
+      .key_file = options->client_key_file,
+      .server_name = options->verified_hostname};
   tls_probe client_probe = {0}, server_probe = {0};
   cnet_connect_options options = {0};
   cnet_connection outbound = {0};
@@ -198,6 +219,8 @@ static int run_case(const char *label, const char *ca_file,
     if (should_verify) {
       if (client_probe.connected_count && server_probe.connected_count) break;
       if (client_probe.terminal_count || server_probe.terminal_count) break;
+    } else if (options->expect_server_rejection) {
+      if (server_probe.terminal_count) break;
     } else if (client_probe.terminal_count) break;
     REQUIRE(drive(&client, &server, &listener, &tls_server,
                   &server_probe, &accepted) == SALTS_OK);
@@ -205,15 +228,23 @@ static int run_case(const char *label, const char *ca_file,
 
   REQUIRE(accepted);
   if (!should_verify) {
-    /* Rejected trust or identity must not publish an authenticated connection
-     * or deliver any plaintext, with no downgrade, retry or alternate CA. */
-    REQUIRE(client_probe.terminal_count == 1u);
-    REQUIRE(client_probe.failed != 0u);
-    REQUIRE(client_probe.connected_count == 0u);
+    /* A rejection must never deliver plaintext or publish a verified
+     * server connection. Only the handshake-owning side determines rejection. */
     REQUIRE(client_probe.received_count == 0u);
     REQUIRE(server_probe.received_count == 0u);
     REQUIRE(client_probe.sent_count == 0u);
-    REQUIRE(strcmp(client_probe.failure_stage, "handshake") == 0);
+    REQUIRE(server_probe.sent_count == 0u);
+    if (options->expect_server_rejection) {
+      REQUIRE(server_probe.terminal_count == 1u);
+      REQUIRE(server_probe.failed != 0u);
+      REQUIRE(server_probe.connected_count == 0u);
+      REQUIRE(strcmp(server_probe.failure_stage, "handshake") == 0);
+    } else {
+      REQUIRE(client_probe.terminal_count == 1u);
+      REQUIRE(client_probe.failed != 0u);
+      REQUIRE(client_probe.connected_count == 0u);
+      REQUIRE(strcmp(client_probe.failure_stage, "handshake") == 0);
+    }
   } else {
     char fingerprint[CNET_TLS_PEER_CERTIFICATE_SHA256_CAPACITY] = {0};
     REQUIRE(client_probe.connected_count == 1u);
@@ -228,6 +259,12 @@ static int run_case(const char *label, const char *ca_file,
     REQUIRE(cnet_tls_peer_certificate_sha256(&client, outbound,
                                              fingerprint) == SALTS_OK);
     REQUIRE(strlen(fingerprint) == 64u);
+    if (options->server_ca_file != NULL) {
+      char client_certificate_hash[CNET_TLS_PEER_CERTIFICATE_SHA256_CAPACITY] = {0};
+      REQUIRE(cnet_tls_peer_certificate_sha256(
+          &server, server_probe.connection, client_certificate_hash) == SALTS_OK);
+      REQUIRE(strlen(client_certificate_hash) == 64u);
+    }
     REQUIRE(cnet_receive(&server, server_probe.connection, 1u) == SALTS_OK);
 
     outgoing = mem_get_buffer(mem_global(), 1u);
@@ -280,14 +317,44 @@ cleanup:
   return result;
 }
 
-int main(void) {
+int main(int argc, char **argv) {
   int result;
-  result = run_case("trusted CA + correct DNS",
-                    CORE_TLS_TEST_P384_CA, "localhost", true);
+  if (argc == 8 && strcmp(argv[1], "--required-mtls") == 0) {
+    const bool expect_success = strcmp(argv[7], "accept") == 0;
+    const bool expect_rejection = strcmp(argv[7], "reject") == 0;
+    if (!expect_success && !expect_rejection) return 2;
+    if ((strcmp(argv[5], "-") == 0) != (strcmp(argv[6], "-") == 0))
+      return 2;
+    const tls_case_options required_mtls = {
+        .label = "production CNet REQUIRED-mTLS",
+        .ca_file = argv[2],
+        .verified_hostname = "localhost",
+        .expect_success = expect_success,
+        .expect_server_rejection = expect_rejection,
+        .server_ca_file = argv[2],
+        .server_cert_file = argv[3],
+        .server_key_file = argv[4],
+        .client_cert_file = strcmp(argv[5], "-") == 0 ? NULL : argv[5],
+        .client_key_file = strcmp(argv[6], "-") == 0 ? NULL : argv[6]};
+    return run_case(&required_mtls);
+  }
+  if (argc != 1) return 2;
+  const tls_case_options trusted = {
+      .label = "trusted CA + correct DNS",
+      .ca_file = CORE_TLS_TEST_P384_CA,
+      .verified_hostname = "localhost",
+      .expect_success = true};
+  result = run_case(&trusted);
   if (result) return result;
-  result = run_case("wrong trusted root",
-                    CORE_TLS_TEST_P384_WRONG_CA, "localhost", false);
+  const tls_case_options wrong_ca = {
+      .label = "wrong trusted root",
+      .ca_file = CORE_TLS_TEST_P384_WRONG_CA,
+      .verified_hostname = "localhost"};
+  result = run_case(&wrong_ca);
   if (result) return result;
-  return run_case("wrong DNS SAN",
-                  CORE_TLS_TEST_P384_CA, "wrong.example", false);
+  const tls_case_options wrong_san = {
+      .label = "wrong DNS SAN",
+      .ca_file = CORE_TLS_TEST_P384_CA,
+      .verified_hostname = "wrong.example"};
+  return run_case(&wrong_san);
 }

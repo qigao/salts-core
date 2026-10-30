@@ -289,6 +289,23 @@ if(TARGET Salts::CNet)
   add_test(NAME saltscore.cnet_tls_ca_san
     COMMAND saltscore_cnet_tls_ca_san_test)
   set_tests_properties(saltscore.cnet_tls_ca_san PROPERTIES TIMEOUT 65)
+
+  # This is the exact production Salts::CNet target, never the retired
+  # second test-only CNet Owner / Crypto adapter.
+  option(SALTSCORE_CNET_PRODUCTION_REQUIRED_MTLS_TEST
+    "Exercise public NativeIO CNet REQUIRED client-certificate auth" OFF)
+  if(SALTSCORE_CNET_PRODUCTION_REQUIRED_MTLS_TEST)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME saltscore.cnet_production_required_mtls
+      COMMAND "${Python3_EXECUTABLE}" -B
+        "${PROJECT_SOURCE_DIR}/tests/test_cnet_tls_required_mtls.py"
+        --binary "$<TARGET_FILE:saltscore_cnet_tls_ca_san_test>"
+        --fixture-generator
+          "${PROJECT_SOURCE_DIR}/crypto/tests/sdk/python_mtls.py"
+        --work "${PROJECT_BINARY_DIR}/native-required-mtls")
+    set_tests_properties(saltscore.cnet_production_required_mtls
+      PROPERTIES TIMEOUT 180 RESOURCE_LOCK cnet_native_required_mtls)
+  endif()
 endif()
 
 # Cross-compiler-compatible Atomic/Thread runtime; no consumer-native _Atomic.
