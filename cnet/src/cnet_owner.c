@@ -1385,6 +1385,46 @@ static int cnet_owner_tls_drain_fatal_alert(cnet_owner_impl *impl,
   return cnet_owner_finalize_session(impl, session);
 }
 
+/*
+ * A TLS_READ/TLS_WRITE admitted during handshake deliberately has no
+ * request-level timeout: the handshake owns the bounded session deadline.
+ * Handshake completion cancels that session deadline, while a NativeIO
+ * receive/send request admitted earlier may still own its original lease.
+ * Re-arm its normal READ/WRITE deadline without cancelling, resubmitting,
+ * or changing the existing generation-owned NativeIO operation.
+ *
+ * Exactly one deadline may belong to each active request. Repeated calls
+ * cannot reset timeouts; stale/foreign requests and disabled timeouts are
+ * left untouched. Runs on the same owner thread as all other deadlines.
+ */
+static int cnet_owner_tls_promote_pending_deadlines(
+    cnet_owner_impl *impl, cnet_owner_session *session) {
+  size_t index;
+  if (impl == NULL || session == NULL ||
+      !cnet_tls_state_handshake_complete(&session->tls))
+    return SALTS_EINVAL;
+
+  for (index = 0u; index < impl->request_capacity; ++index) {
+    cnet_owner_request *request = &impl->request_records[index];
+    uint32_t timeout_ms;
+    int status;
+    if (!request->active ||
+        request->session.slot != session->handle.slot ||
+        request->session.generation != session->handle.generation ||
+        request->deadline != 0u ||
+        (request->role != CNET_OWNER_REQUEST_TLS_READ &&
+         request->role != CNET_OWNER_REQUEST_TLS_WRITE))
+      continue;
+    timeout_ms = cnet_owner_request_timeout(session, request->role);
+    if (timeout_ms == 0u) continue;
+    status = cmeta_deadline_queue_schedule(
+        &impl->deadlines, cnet_owner_deadline_after(impl, timeout_ms),
+        index + 1u, &request->deadline);
+    if (status != SALTS_OK) return status;
+  }
+  return SALTS_OK;
+}
+
 static int cnet_owner_tls_pump_impl(cnet_owner_impl *impl, cnet_owner_session *session) {
   bool started = false;
   int status;
@@ -1429,6 +1469,10 @@ static int cnet_owner_tls_pump_impl(cnet_owner_impl *impl, cnet_owner_session *s
     status = cnet_owner_cancel_deadline(impl, &session->connect_deadline);
     if (status != SALTS_OK) return status;
     session->session_deadline_stage = CNET_SESSION_STAGE_NONE;
+    /* Handshake-local I/O requests may outlive the session deadline.
+     * Their normal post-auth deadlines must exist before CONNECTED. */
+    status = cnet_owner_tls_promote_pending_deadlines(impl, session);
+    if (status != SALTS_OK) return status;
     status = cnet_owner_queue_connected_event(impl, session);
     if (status != SALTS_OK) return status;
   }
