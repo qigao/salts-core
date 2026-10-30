@@ -1,0 +1,78 @@
+name: Core sanitizers
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: core-sanitizers-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sanitize:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: asan-ubsan, cc: clang, cxx: clang++, flags: "-fsanitize=address,undefined"}
+          - {name: tsan, cc: gcc, cxx: g++, flags: "-fsanitize=thread"}
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Linux system SDKs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build libudev-dev libpipewire-0.3-dev libx11-dev libxext-dev
+      - name: Pinned build prerequisites
+        uses: ./.github/actions/setup-core-native
+        with:
+          dependency-mode: source
+          token: ${{ github.token }}
+          features: simd,usb,playback,capture,zstd
+      - name: Configure one full sanitizer graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-sanitize -G Ninja \
+            "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" \
+            "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" \
+            "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" \
+            "-DCMAKE_C_COMPILER=${{ matrix.cc }}" \
+            "-DCMAKE_CXX_COMPILER=${{ matrix.cxx }}" \
+            "-DCMAKE_C_FLAGS=${{ matrix.flags }} -fno-omit-frame-pointer -g -O1" \
+            "-DCMAKE_CXX_FLAGS=${{ matrix.flags }} -fno-omit-frame-pointer -g -O1" \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_TESTING=ON \
+            -DSALTSCORE_BUILD_PROCESS=ON \
+            -DSALTSCORE_BUILD_SIMD=ON \
+            -DSALTSCORE_BUILD_USB=ON \
+            -DSALTSCORE_BUILD_PLAYBACK=ON \
+            -DSALTSCORE_BUILD_SERIAL=ON \
+            -DSALTSCORE_BUILD_CAPTURE=ON \
+            -DSALTSCORE_BUILD_UNICODE=ON \
+            -DSALTSCORE_BUILD_IDNA=ON \
+            -DSALTSCORE_BUILD_CSERDE=ON \
+            -DSALTSCORE_BUILD_TINYTEST=ON \
+            -DSALTSCORE_BUILD_SCTP=ON \
+            -DSALTSCORE_BUILD_WEBSOCKET_PARSER=ON
+      - name: Build
+        run: cmake --build build-sanitize --parallel 2
+      - name: Run sanitizer tests once
+        shell: bash
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+          TSAN_OPTIONS: halt_on_error=1
+        run: ctest --test-dir build-sanitize --output-on-failure --no-tests=error --timeout 120
