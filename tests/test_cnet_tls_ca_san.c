@@ -39,6 +39,8 @@ typedef struct tls_probe {
   unsigned sent_count;
   unsigned received_count;
   unsigned char received_byte;
+  /* Python ssl peer sends a complete two-byte TLS application record. */
+  bool expect_python_ok_record;
   int tls_version_status;
   int tls_cipher_status;
   char tls_version[24];
@@ -79,7 +81,18 @@ static void receive_callback(void *user, cnet_connection connection,
   tls_probe *p = (tls_probe *)user;
   (void)connection;
   if (view == NULL || view->kind != CNET_MESSAGE_BYTES ||
-      view->size != 1u || view->data == NULL || p->received_count != 0u) {
+      view->data == NULL || p->received_count != 0u) {
+    ++p->failed;
+    return;
+  }
+  if (p->expect_python_ok_record) {
+    /* Receive demand counts events, not bytes. The independent Python ssl
+     * server sends exactly "ok" in one authenticated application record. */
+    if (view->size != 2u || memcmp(view->data, "ok", 2u) != 0) {
+      ++p->failed;
+      return;
+    }
+  } else if (view->size != 1u) {
     ++p->failed;
     return;
   }
@@ -359,6 +372,7 @@ static int run_python_ssl_server(const char *port_text,
     return 2;
 
   probe.client = &client;
+  probe.expect_python_ok_record = true;
   REQUIRE(cnet_client_init(&client, &client_cfg) == SALTS_OK);
   initialized = true;
   REQUIRE(snprintf(uri, sizeof(uri), "tls://127.0.0.1:%lu", port) > 0);
@@ -405,7 +419,8 @@ static int run_python_ssl_server(const char *port_text,
       REQUIRE(cnet_client_poll(&client, 1u, &events) == SALTS_OK);
     /* Independent Python ssl writes "ok" over the negotiated record;
      * one byte of explicit NativeIO receive demand must deliver 'o'. */
-    REQUIRE(probe.received_count == 1u && probe.received_byte == 'o');
+    REQUIRE(probe.received_count == 1u && probe.received_byte == 'o' &&
+            probe.failed == 0u);
     REQUIRE(probe.sent_count == 1u && probe.failed == 0u);
     REQUIRE(cnet_close(&client, outbound) == SALTS_OK);
   }
