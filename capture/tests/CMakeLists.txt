@@ -11,7 +11,9 @@ endfunction()
 if(WIN32)
   # Original fake-COM control test compiles the exact Windows backend body.
   # This is an isolated regression, not a replacement production provider.
-  add_executable(capture_exposure_windows_test test_capture_exposure_windows.c)
+  add_executable(capture_exposure_windows_test
+    test_capture_exposure_windows.c
+    capture_exposure_destroy_stub.c)
   target_compile_features(capture_exposure_windows_test PRIVATE c_std_11)
   target_compile_definitions(capture_exposure_windows_test PRIVATE SALTS_CAPTURE_BUILD)
   target_include_directories(capture_exposure_windows_test PRIVATE
