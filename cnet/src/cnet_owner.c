@@ -219,6 +219,37 @@ static cnet_session_stage cnet_owner_request_stage(const cnet_owner_session *ses
   return CNET_SESSION_STAGE_CONNECT;
 }
 
+/*
+ * An outstanding NativeIO TLS_READ/WRITE may have been submitted while
+ * handshaking but complete after TLS has authenticated the connection.
+ * The completion/terminal stage reflects the state at completion, never
+ * the stage captured on submission. Preserve a real pre-auth failure as
+ * HANDSHAKE; do not relabel other request kinds or previous fatal status.
+ */
+static cnet_session_stage cnet_owner_completion_stage(
+    const cnet_owner_session *session, cnet_owner_request_role role,
+    cnet_session_stage admission_stage) {
+  if (session != NULL &&
+      cnet_tls_state_handshake_complete(&session->tls)) {
+    if (role == CNET_OWNER_REQUEST_TLS_READ) return CNET_SESSION_STAGE_READ;
+    if (role == CNET_OWNER_REQUEST_TLS_WRITE) return CNET_SESSION_STAGE_WRITE;
+  }
+  return admission_stage;
+}
+
+#if defined(CNET_INTERNAL_TESTING)
+cnet_session_stage cnet_owner_test_tls_completion_stage(
+    bool handshake_complete, bool write_request,
+    cnet_session_stage admission_stage) {
+  cnet_owner_session session = {0};
+  session.tls.handshake_complete = handshake_complete;
+  return cnet_owner_completion_stage(
+      &session, write_request ? CNET_OWNER_REQUEST_TLS_WRITE
+                              : CNET_OWNER_REQUEST_TLS_READ,
+      admission_stage);
+}
+#endif
+
 static uint32_t cnet_owner_request_timeout(const cnet_owner_session *session,
                                            cnet_owner_request_role role) {
   if (role == CNET_OWNER_REQUEST_RECEIVE) return session->peer.read_timeout_ms;
@@ -2047,7 +2078,7 @@ static int cnet_owner_complete(cnet_owner_impl *impl, cnet_owner_request *reques
   if (session == NULL || session->active_requests == 0u || impl->active_requests == 0u)
     return SALTS_EPROTO;
   role = request->role;
-  request_stage = request->stage;
+  request_stage = cnet_owner_completion_stage(session, role, request->stage);
   requested_size = request->requested_size;
   close_after_send = request->close_after_send;
 #if defined(_WIN32) && defined(CNET_INTERNAL_TESTING)
@@ -2478,7 +2509,9 @@ static int cnet_owner_process_deadlines(cnet_owner_impl *impl) {
       request->deadline = 0u;
       session = cnet_owner_find_session(impl, request->session);
       if (session == NULL) return SALTS_EPROTO;
-      cnet_owner_record_failure(session, SALTS_ETIMEDOUT, request->stage);
+      cnet_owner_record_failure(
+          session, SALTS_ETIMEDOUT,
+          cnet_owner_completion_stage(session, request->role, request->stage));
       status = cnet_owner_cancel_session_requests(impl, session->handle);
       if (status != SALTS_OK) return status;
     }
