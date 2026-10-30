@@ -185,7 +185,7 @@ static int run_case(const tls_case_options *options) {
       .key_file = options->client_key_file,
       .server_name = options->verified_hostname};
   tls_probe client_probe = {0}, server_probe = {0};
-  cnet_connect_options options = {0};
+  cnet_connect_options connect_options = {0};
   cnet_connection outbound = {0};
   bool tls_live = false, client_live = false;
   bool server_live = false, listener_live = false, accepted = false;
@@ -208,11 +208,11 @@ static int run_case(const tls_case_options *options) {
   REQUIRE(cnet_listener_port(&listener, &port) == SALTS_OK && port != 0u);
   REQUIRE(snprintf(uri, sizeof(uri), "tls://127.0.0.1:%u",
                    (unsigned int)port) > 0);
-  options = (cnet_connect_options){
+  connect_options = (cnet_connect_options){
       .uri = uri,
       .observer = {state_callback, receive_callback, &client_probe, send_callback},
       .tls = &client_tls_cfg};
-  REQUIRE(cnet_connect(&client, &options, &outbound) == SALTS_OK);
+  REQUIRE(cnet_connect(&client, &connect_options, &outbound) == SALTS_OK);
 
   deadline = cmeta_monotonic_ms() + 7000u;
   while (cmeta_monotonic_ms() < deadline) {

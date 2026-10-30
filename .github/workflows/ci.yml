@@ -104,12 +104,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          native_mtls=()
+          native_mtls=OFF
           if [[ "$RUNNER_OS" == Linux ]]; then
-            native_mtls=(-DSALTSCORE_CNET_PRODUCTION_REQUIRED_MTLS_TEST=ON)
+            native_mtls=ON
           fi
           cmake -S . -B build -G Ninja \
-            "${native_mtls[@]}" \
+            "-DSALTSCORE_CNET_PRODUCTION_REQUIRED_MTLS_TEST=$native_mtls" \
             "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" \
             "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" \
             "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" \
