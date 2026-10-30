@@ -67,7 +67,6 @@ static int test_original_time_and_system_surface(void) {
   if (epoch != (time_t)1704110400) return 13;
   if (cmeta_timegm(NULL) != (time_t)-1) return 14;
 
-  local = *localtime(&epoch);
   if (cmeta_mktime(&local) == (time_t)-1) return 15;
 
   memset(buffer, 0, sizeof(buffer));
