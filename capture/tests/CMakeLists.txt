@@ -15,18 +15,21 @@ if(WIN32)
     test_capture_exposure_windows.c
     capture_exposure_destroy_stub.c)
   target_compile_features(capture_exposure_windows_test PRIVATE c_std_11)
-  target_compile_definitions(capture_exposure_windows_test PRIVATE SALTS_CAPTURE_BUILD)
   target_include_directories(capture_exposure_windows_test PRIVATE
     "${PROJECT_SOURCE_DIR}/capture/include")
-  # Compile the exact backend body in this executable; linking the complete
-  # Capture DLL duplicates the same Windows provider and can keep hosted
-  # processes alive after the fake-COM assertions finish.
+  # Link only the original control entrypoints exercised by fake-COM tests.
+  # /Gy + /OPT:REF discards the unused device/MF backend functions, so the
+  # test does not load Media Foundation or the production Capture DLL.
+  if(MSVC)
+    target_compile_options(capture_exposure_windows_test PRIVATE /Gy)
+    target_link_options(capture_exposure_windows_test PRIVATE /OPT:REF)
+  endif()
+  target_compile_definitions(capture_exposure_windows_test PRIVATE TT_PRINT_TRACE)
   target_link_libraries(capture_exposure_windows_test PRIVATE
-    Salts::Core Salts::TinyTest yuv
-    mfplat mf mfuuid mfreadwrite strmiids ole32 oleaut32)
+    Salts::Core Salts::TinyTest yuv)
   add_test(NAME capture_exposure_windows_test COMMAND capture_exposure_windows_test)
   set_target_properties(capture_exposure_windows_test PROPERTIES FOLDER "capture/tests")
-  set_tests_properties(capture_exposure_windows_test PROPERTIES TIMEOUT 60)
+  set_tests_properties(capture_exposure_windows_test PROPERTIES TIMEOUT 15)
   # This executable enumerates physical audio/video/screen/GPU devices and may
   # open camera modes. Build it on Windows to protect the API/ABI, but do not
   # register it in generic hosted-runner CTest. Device-backed qualification
