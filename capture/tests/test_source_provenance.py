@@ -25,6 +25,29 @@ class CaptureSourceProvenance(unittest.TestCase):
                 blob = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
                 self.assertEqual(blob, row["git_blob"])
 
+    def test_ios_public_gap_is_bounded_without_editing_frozen_donors(self):
+        cmake = (ROOT / "capture/CMakeLists.txt").read_text()
+        match = re.search(
+            r"# BEGIN bounded iOS API surface completion(.*?)"
+            r"# END bounded iOS API surface completion",
+            cmake, re.S)
+        self.assertIsNotNone(match)
+        block = match.group(1)
+        expected = [
+            "salts_capture_list_gpu_devices",
+            "salts_video_capture_get_control_range",
+            "salts_video_capture_set_control",
+            "salts_video_capture_get_control",
+            "salts_video_capture_set_crop",
+            "salts_video_capture_get_crop",
+        ]
+        self.assertEqual(
+            re.findall(r"(?m)^int\s+(salts_[A-Za-z0-9_]+)\s*\(", block),
+            expected)
+        self.assertIn('file(WRITE "${_salts_capture_ios_surface}"', block)
+        self.assertIn('target_sources(salts_capture PRIVATE "${_salts_capture_ios_surface}")', block)
+        self.assertEqual(block.count("SALTS_CAPTURE_ERR_UNSUPPORTED"), 5)
+
     def test_export_lists_keep_all_original_public_symbols(self):
         def symbols(header):
             return re.findall(r"SALTS_CAPTURE_API\s+.*?\b(salts_[A-Za-z0-9_]+)\s*\(",
