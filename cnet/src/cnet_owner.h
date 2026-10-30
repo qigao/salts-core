@@ -297,6 +297,8 @@ int cnet_owner_test_set_send_chunk_bytes(cnet_owner *owner, size_t bytes);
 cnet_session_stage cnet_owner_test_tls_completion_stage(
     bool handshake_complete, bool write_request,
     cnet_session_stage admission_stage);
+/** Private regression: promote handshake-era TLS read/write leases to post-auth deadlines. */
+int cnet_owner_test_tls_pending_deadline_rollover(void);
 #endif
 
 #if defined(CNET_INTERNAL_PROFILING)
