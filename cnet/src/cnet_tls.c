@@ -452,8 +452,12 @@ static int cnet_tls_load_apple_anchors(cnet_tls_der_bundle *bundle) {
 static int cnet_tls_load_system_trust(TLS_CTX *tls) {
 #if defined(_WIN32)
   cnet_tls_der_bundle bundle = {0};
+  /* Windows ROOT is the trust-anchor store. CA holds intermediates for
+   * path building and is NOT an independent trusted-anchor source.
+   * tls_ctx_set_ca_certificates_der treats every supplied DER certificate
+   * as an anchor candidate: including CA would silently promote an
+   * untrusted intermediate into a root authority. Never merge stores. */
   int status = cnet_tls_append_windows_store(&bundle, "ROOT");
-  if (status == SALTS_OK) status = cnet_tls_append_windows_store(&bundle, "CA");
   if (status == SALTS_OK && bundle.size == 0u) status = SALTS_EIO;
   if (status == SALTS_OK &&
       tls_ctx_set_ca_certificates_der(tls, bundle.data, bundle.size,

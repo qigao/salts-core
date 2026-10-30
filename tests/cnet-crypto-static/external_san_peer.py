@@ -6,6 +6,8 @@ TLS version. Independent Python ssl servers present real DNS SAN and RFC 5280
 binary iPAddress SAN certificates; IP literals never go into SNI.
 """
 import argparse
+import ctypes
+from contextlib import contextmanager
 import pathlib
 import socket
 import ssl
@@ -13,6 +15,59 @@ import subprocess
 import sys
 import tempfile
 import threading
+
+
+@contextmanager
+def temporary_current_user_intermediate_in_ca(pem: pathlib.Path):
+    """Insert only this unique intermediate in the current user's CA store.
+
+    The process never edits ROOT or machine-wide trust. The certificate
+    context is deleted even when native TLS validation fails.
+    """
+    if sys.platform != "win32":
+        raise RuntimeError("Windows CurrentUser CA store test on non-Windows")
+    from ctypes import wintypes
+    from cryptography import x509
+    from cryptography.hazmat.primitives import serialization
+
+    cert_der = x509.load_pem_x509_certificate(pem.read_bytes()).public_bytes(
+        serialization.Encoding.DER
+    )
+    crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
+    crypt32.CertOpenSystemStoreW.argtypes = [
+        wintypes.HANDLE, wintypes.LPCWSTR,
+    ]
+    crypt32.CertOpenSystemStoreW.restype = ctypes.c_void_p
+    crypt32.CertAddEncodedCertificateToStore.argtypes = [
+        ctypes.c_void_p, wintypes.DWORD, ctypes.c_void_p,
+        wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p),
+    ]
+    crypt32.CertAddEncodedCertificateToStore.restype = wintypes.BOOL
+    crypt32.CertDeleteCertificateFromStore.argtypes = [ctypes.c_void_p]
+    crypt32.CertDeleteCertificateFromStore.restype = wintypes.BOOL
+    crypt32.CertCloseStore.argtypes = [ctypes.c_void_p, wintypes.DWORD]
+    crypt32.CertCloseStore.restype = wintypes.BOOL
+
+    store = crypt32.CertOpenSystemStoreW(None, "CA")
+    if not store:
+        raise OSError(ctypes.get_last_error(), "open CurrentUser CA store")
+    cert_context = ctypes.c_void_p()
+    encoded = ctypes.create_string_buffer(cert_der)
+    try:
+        # X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, CERT_STORE_ADD_NEW.
+        if not crypt32.CertAddEncodedCertificateToStore(
+            store, 0x00010001, ctypes.cast(encoded, ctypes.c_void_p),
+            len(cert_der), 1, ctypes.byref(cert_context),
+        ):
+            raise OSError(ctypes.get_last_error(), "add test intermediate to CA")
+        try:
+            yield
+        finally:
+            if not crypt32.CertDeleteCertificateFromStore(cert_context):
+                raise OSError(ctypes.get_last_error(), "remove test CA entry")
+    finally:
+        if not crypt32.CertCloseStore(store, 0):
+            raise OSError(ctypes.get_last_error(), "close test CA store")
 
 
 def ssl_context(cert: pathlib.Path, key: pathlib.Path, protocol: str):
@@ -89,7 +144,9 @@ def one_session(ctx, binary, protocol, identity, *, ip_ca=None, expect_success=N
     expected_version = "TLSv1.2" if protocol == "tls12" else "TLSv1.3"
     # RFC 6066 host_name SNI excludes address literals, while the public
     # CNet verified identity still must be exactly the requested IPv4/IPv6.
-    expected_sni = None if ip_mode else identity
+    expected_sni = None if ip_mode and identity in (
+        "127.0.0.1", "127.0.0.2", "::1", "::2"
+    ) else identity
     passed = (result is not None and result.returncode == 0
               and observed["accepted"] and observed["sni"] == expected_sni)
     if positive:
@@ -140,7 +197,10 @@ def main():
     with tempfile.TemporaryDirectory(prefix="cnet-ip-san-") as temp:
         private = pathlib.Path(temp)
         private.chmod(0o700)
-        fixtures = python_mtls.make_fixtures(private, include_ip_san=True)
+        fixtures = python_mtls.make_fixtures(
+            private, include_ip_san=True,
+            include_windows_ca_anchor=sys.platform == "win32",
+        )
         ip_ctx = ssl_context(
             fixtures["server-ip"], fixtures["server-ip-key"], args.protocol
         )
@@ -170,6 +230,32 @@ def main():
             ip_ca=fixtures["ca"], expect_success=False
         ):
             return 1
+
+        if sys.platform == "win32":
+            chain_ctx = ssl_context(
+                fixtures["server-chain"], fixtures["server-chain-key"],
+                args.protocol,
+            )
+            # Positive control: a leaf + intermediate signed by the
+            # separately trusted root must authenticate. A failed fixture
+            # cannot masquerade as a system-trust rejection.
+            if not one_session(
+                chain_ctx, args.binary, args.protocol, "localhost",
+                ip_ca=fixtures["ca"], expect_success=True,
+            ):
+                return 1
+
+            # Negative control: an otherwise valid intermediate present
+            # ONLY in CurrentUser CA must never become an anchor. The native
+            # CNet client intentionally uses its production system roots.
+            with temporary_current_user_intermediate_in_ca(
+                fixtures["intermediate"]
+            ):
+                if not one_session(
+                    chain_ctx, args.binary, args.protocol, "localhost",
+                    ip_ca="-", expect_success=False,
+                ):
+                    return 1
     return 0
 
 

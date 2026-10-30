@@ -371,7 +371,10 @@ static int run_python_ssl_server(const char *port_text,
   cnet_client_config client_cfg = config();
   const cnet_tls_client_config tls_config = {
       .size = sizeof(cnet_tls_client_config),
-      .ca_file = trust_ca,
+      /* The existing external peer CLI uses "-" only for the independent
+       * Windows native system-root negative. NULL enables the production
+       * CNet system trust path, with no test-only TLS provider. */
+      .ca_file = strcmp(trust_ca, "-") == 0 ? NULL : trust_ca,
       .server_name = identity};
   char uri[96] = {0};
   bool initialized = false;
