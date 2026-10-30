@@ -99,7 +99,7 @@ def main() -> int:
                 f"frozen Platform donor blob changed: {path}")
         copy = ROOT / ORIGINAL_COPIES[path]
         require(copy.is_file(), f"frozen Platform donor copy missing: {path}")
-        require(git_blob(copy.read_bytes().replace(b"\r\n", b"\n")) == blob,
+        require(git_blob(copy.read_bytes()) == blob,
                 f"frozen Platform donor copy changed: {path}")
 
     public = json.loads(
