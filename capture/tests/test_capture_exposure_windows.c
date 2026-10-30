@@ -2,6 +2,15 @@
 #include "../src/capture_video_win32.c"
 #include <tinytest.h>
 
+/* The backend translation unit references the generic destroy dispatcher only
+ * from device-creation error cleanup. These fake-COM control tests never enter
+ * device creation; fail immediately if that assumption changes rather than
+ * linking the complete Capture DLL back into this isolated test. */
+void salts_capture_destroy(salts_capture_t *capture) {
+    (void)capture;
+    abort();
+}
+
 static const salts_camera_control_t auto_exposure = SALTS_CAMERA_CONTROL_AUTO_EXPOSURE;
 
 typedef struct {

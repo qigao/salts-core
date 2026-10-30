@@ -14,6 +14,8 @@ if(WIN32)
   add_executable(capture_exposure_windows_test test_capture_exposure_windows.c)
   target_compile_features(capture_exposure_windows_test PRIVATE c_std_11)
   target_compile_definitions(capture_exposure_windows_test PRIVATE SALTS_CAPTURE_BUILD)
+  target_include_directories(capture_exposure_windows_test PRIVATE
+    "${PROJECT_SOURCE_DIR}/capture/include")
   # Compile the exact backend body in this executable; linking the complete
   # Capture DLL duplicates the same Windows provider and can keep hosted
   # processes alive after the fake-COM assertions finish.
