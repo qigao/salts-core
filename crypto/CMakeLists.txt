@@ -29,6 +29,8 @@ if(NOT TARGET Salts::ASN1)
 endif()
 
 set(_libecc "${CMAKE_CURRENT_SOURCE_DIR}/vendor/libecc")
+set(_monocypher "${CMAKE_CURRENT_SOURCE_DIR}/vendor/monocypher")
+set(_shared_error_include "${CMAKE_CURRENT_SOURCE_DIR}/../platform/include")
 # Compile libecc's reviewed Ed448 subset in its own internal OBJECT target.
 # Fold these objects directly into the sole installed Salts::Crypto archive.
 add_subdirectory(vendor/libecc)
@@ -43,6 +45,9 @@ add_library(salts_crypto STATIC
   src/crypto_ed448.c
   src/crypto_sha256.c
   src/crypto_random.c
+  src/cmeta_crypto.c
+  vendor/monocypher/core_monocypher.c
+  vendor/monocypher/core_monocypher_ed25519.c
   src/asn1/crypto.c
   src/crypto_x509_der.c
   $<TARGET_OBJECTS:crypto_libecc_ed448_objects>
@@ -57,9 +62,11 @@ target_compile_features(salts_crypto PUBLIC c_std_11)
 target_link_libraries(salts_crypto PUBLIC Threads::Threads Salts::ASN1)
 target_include_directories(salts_crypto
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+         $<BUILD_INTERFACE:${_shared_error_include}>
          $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
   PRIVATE "${_crypto_native_include}"
-          "${_libecc}/include")
+          "${_libecc}/include"
+          "${_monocypher}")
 target_compile_definitions(salts_crypto PRIVATE
   ENABLE_TLS ENABLE_SECP256R1 ENABLE_SECP384R1
   ENABLE_SHA1 ENABLE_SHA2 ENABLE_AES)
@@ -97,6 +104,13 @@ install(TARGETS salts_crypto EXPORT SaltsCryptoTargets
 install(DIRECTORY include/crypto
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.h")
+install(FILES include/cmeta_crypto.h
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+# Crypto's restored public surface uses the same dependency-free SALTS_* error
+# constants as the rest of Core. Install the one source-owned header without
+# linking Crypto to the Platform DSO.
+install(FILES "${_shared_error_include}/salts/error_codes.h"
+  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/salts")
 # Preserve the existing SM3 public C API from the same locally built archive.
 # Native TLS and algorithm headers stay build-private.
 install(FILES "${_crypto_native_include}/gmssl/sm3.h"
@@ -105,6 +119,8 @@ install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/native/gmssl/LICENSE"
   DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Crypto/GmSSL")
 install(FILES "${_libecc}/LICENSE"
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/Crypto/libecc)
+install(FILES "${_monocypher}/UPSTREAM.md"
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/Crypto/Monocypher)
 
 set(_package_dir "${CMAKE_INSTALL_LIBDIR}/cmake/Crypto")
 install(EXPORT SaltsCryptoTargets FILE CryptoTargets.cmake
