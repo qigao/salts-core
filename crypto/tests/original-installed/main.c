@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <string.h>
 
+int crypto_original_surface_smoke(void);
+
 int main(void) {
   static const uint8_t expected[SALTS_SM3_DIGEST_BYTES] = {
       0x66,0xc7,0xf0,0xf4,0x62,0xee,0xed,0xd9,
@@ -125,5 +127,6 @@ int main(void) {
     if (cmeta_ecdsa_p256_public_key(p256_private, p256_public) != SALTS_OK)
       return 24;
   }
+  if (crypto_original_surface_smoke() != 0) return 25;
   return 0;
 }
