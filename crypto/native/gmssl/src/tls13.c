@@ -9373,6 +9373,11 @@ int tls13_do_server_handshake(TLS_CONNECT *conn)
 			if (ret != 1) return ret;
 			if (selected_protocol == TLS_protocol_tls12) {
 				conn->protocol = TLS_protocol_tls12;
+				/* The range owner was initialized through tls13_init(), not
+				 * tls_init()'s TLS1.2 path. REQUIRED mTLS must retain its
+				 * CertificateRequest/CertificateVerify obligation here. */
+				conn->client_certificate_verify =
+					conn->ctx->certificate_request ? 1 : 0;
 				next_state = TLS_state_client_hello;
 				break;
 			}
