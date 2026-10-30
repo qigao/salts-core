@@ -659,7 +659,12 @@ static int cnet_tls_configure_variant(cnet_tls_context *context,
       tls_ctx_set_signature_algorithms(tls, signatures, signature_count) != 1)
     return SALTS_EIO;
 
-  if (variant == CNET_TLS_VARIANT_1_2) {
+  /* RFC 5746 initial-handshake secure renegotiation is mandatory for
+   * TLS1.2, including when the normal public context negotiates TLS12/13.
+   * This is never permission to renegotiate or downgrade an established TLS
+   * session, and pure TLS1.3/TLCP profiles remain unchanged. */
+  if (variant == CNET_TLS_VARIANT_1_2 ||
+      (variant == CNET_TLS_VARIANT_RANGE && context->server)) {
     if (context->server) {
       if (tls12_ctx_set_renegotiation_info(tls, 1) != 1)
         return SALTS_EIO;

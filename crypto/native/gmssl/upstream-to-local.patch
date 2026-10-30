@@ -4803,7 +4803,63 @@
  #ifdef ENABLE_AES_CCM
  	TLS_cipher_ecdhe_ecdsa_with_aes_128_ccm,
  #endif
-@@ -576,6 +585,7 @@
+@@ -504,25 +513,36 @@
+ 
+ 
+ 
+-int tls12_ctx_set_renegotiation_info(TLS_CTX *ctx, int enable)
+-{
+-	if (!ctx || ctx->protocol != TLS_protocol_tls12) {
+-		error_print();
+-		return -1;
+-	}
+-	ctx->renegotiation_info = enable ? 1 : 0;
+-	return 1;
+-}
+-
+-int tls12_ctx_set_empty_renegotiation_info_scsv(TLS_CTX *ctx, int enable)
+-{
+-	if (!ctx || ctx->protocol != TLS_protocol_tls12) {
+-		error_print();
+-		return -1;
+-	}
+-	ctx->empty_renegotiation_info_scsv = enable ? 1 : 0;
+-	return 1;
+-}
++/* Only an initial TLS1.2 handshake (including a TLS12/13 range)
++ * may emit RFC 5746 secure_renegotiation signaling. TLS1.3-only and TLCP
++ * contexts cannot borrow this protocol-specific extension. */
++static int tls12_ctx_accepts_secure_hello(const TLS_CTX *ctx)
++{
++	return ctx && (ctx->protocol == TLS_protocol_tls12
++		|| (ctx->protocol == TLS_protocol_tls13
++			&& ctx->min_protocol == TLS_protocol_tls12
++			&& ctx->max_protocol == TLS_protocol_tls13));
++}
++
++int tls12_ctx_set_renegotiation_info(TLS_CTX *ctx, int enable)
++{
++	if (!tls12_ctx_accepts_secure_hello(ctx)) {
++		error_print();
++		return -1;
++	}
++	ctx->renegotiation_info = enable ? 1 : 0;
++	return 1;
++}
++
++int tls12_ctx_set_empty_renegotiation_info_scsv(TLS_CTX *ctx, int enable)
++{
++	if (!tls12_ctx_accepts_secure_hello(ctx)) {
++		error_print();
++		return -1;
++	}
++	ctx->empty_renegotiation_info_scsv = enable ? 1 : 0;
++	return 1;
++}
+ 
+ static int tls12_renegotiation_info_ext_is_empty(const uint8_t *ext_data, size_t ext_datalen)
+ {
+@@ -576,6 +596,7 @@
  		switch (cipher_suite) {
  		case TLS_cipher_ecdhe_ecdsa_with_aes_128_cbc_sha256:
  		case TLS_cipher_ecdhe_ecdsa_with_aes_128_gcm_sha256:
@@ -4811,7 +4867,7 @@
  		case TLS_cipher_ecdhe_ecdsa_with_aes_128_ccm:
  			break;
  		default:
-@@ -616,6 +626,15 @@
+@@ -616,6 +637,15 @@
  			return -1;
  		}
  		break;
@@ -4827,7 +4883,7 @@
  	default:
  		error_print();
  		return -1;
-@@ -661,6 +680,8 @@
+@@ -661,6 +691,8 @@
  			return 1;
  		}
  		break;
@@ -4836,7 +4892,7 @@
  	}
  	return 0;
  }
-@@ -673,6 +694,7 @@
+@@ -673,6 +705,7 @@
  		return group == TLS_curve_sm2p256v1;
  	case TLS_cipher_ecdhe_ecdsa_with_aes_128_cbc_sha256:
  	case TLS_cipher_ecdhe_ecdsa_with_aes_128_gcm_sha256:
@@ -4844,7 +4900,7 @@
  	case TLS_cipher_ecdhe_ecdsa_with_aes_128_ccm:
  		return group == TLS_curve_secp256r1;
  	default:
-@@ -735,6 +757,10 @@
+@@ -735,6 +768,10 @@
  		error_print();
  		return -1;
  	}
@@ -4855,7 +4911,7 @@
  	if (public_key.algor != OID_ec_public_key) {
  		error_print();
  		return -1;
-@@ -824,7 +850,9 @@
+@@ -824,7 +861,9 @@
  			error_print();
  			return -1;
  		}
@@ -4866,7 +4922,7 @@
  			continue;
  		}
  		if (x509_certs_get_cert_by_index(cert_chain, cert_chain_len, 0, &cert, &certlen) != 1) {
-@@ -854,7 +882,11 @@
+@@ -854,7 +893,11 @@
  			int cipher_suite = common_cipher_suites[i];
  			int key_exchange_group;
  
@@ -4879,7 +4935,7 @@
  				continue;
  			}
  			if ((ret = tls12_select_key_exchange_group(common_supported_groups,
-@@ -868,7 +900,11 @@
+@@ -868,7 +911,11 @@
  			for (j = 0; j < common_signature_algorithms_cnt; j++) {
  				int sig_alg = common_signature_algorithms[j];
  
@@ -4892,7 +4948,7 @@
  					continue;
  				}
  				if (!tls12_signature_scheme_match_cipher_suite(sig_alg, cipher_suite)) {
-@@ -994,6 +1030,16 @@
+@@ -994,6 +1041,16 @@
  			}
  		}
  
@@ -4909,7 +4965,7 @@
  		// renegotiation_info
  		if (conn->ctx->renegotiation_info) {
  			uint8_t ext_data[1] = { 0 };
-@@ -1072,6 +1118,8 @@
+@@ -1072,6 +1129,8 @@
  	size_t ec_point_formats_len = 0;
  	int server_name = 0;
  	int trusted_ca_keys = 0;
@@ -4918,7 +4974,7 @@
  	int renegotiation_info = 0;
  
  	if(conn->verbose)
-@@ -1115,7 +1163,15 @@
+@@ -1115,7 +1174,15 @@
  	memcpy(conn->server_random, server_random, 32);
  
  	// session_id
@@ -4935,7 +4991,7 @@
  	conn->session_id_len = session_id_len;
  
  	// cipher_suite
-@@ -1150,6 +1206,15 @@
+@@ -1150,6 +1217,15 @@
  		}
  
  		switch (ext_type) {
@@ -4951,7 +5007,7 @@
  		case TLS_extension_ec_point_formats:
  			if (ec_point_formats) {
  				error_print();
-@@ -1202,6 +1267,19 @@
+@@ -1202,6 +1278,19 @@
  		}
  	}
  
@@ -4971,7 +5027,7 @@
  	if ((conn->ctx->renegotiation_info || conn->ctx->empty_renegotiation_info_scsv)
  		&& !renegotiation_info) {
  		error_print();
-@@ -1313,7 +1391,7 @@
+@@ -1313,7 +1402,7 @@
  
  	// verify server Certificate
  	if (tls_cert_chain_verify(conn->protocol, X509_cert_chain_server, conn->cipher_suite,
@@ -4980,7 +5036,7 @@
  		conn->peer_cert_chain, conn->peer_cert_chain_len,
  		conn->ctx->cacerts, conn->ctx->cacertslen,
  		NULL, 0,
-@@ -1403,7 +1481,10 @@
+@@ -1403,7 +1492,10 @@
  		return -1;
  	}
  
@@ -4992,7 +5048,7 @@
  		error_print();
  		tls_send_alert(conn, TLS_alert_illegal_parameter);
  		return -1;
-@@ -1442,6 +1523,14 @@
+@@ -1442,6 +1534,14 @@
  			return -1;
  		}
  		break;
@@ -5007,7 +5063,7 @@
  	default:
  		error_print();
  		return -1;
-@@ -1452,7 +1541,28 @@
+@@ -1452,7 +1552,28 @@
  		sign_argslen = SM2_DEFAULT_ID_LENGTH;
  	}
  
@@ -5037,7 +5093,7 @@
  		|| x509_verify_update(&sign_ctx, conn->client_random, 32) != 1
  		|| x509_verify_update(&sign_ctx, conn->server_random, 32) != 1
  		|| x509_verify_update(&sign_ctx, server_ecdh_params, server_ecdh_params_len) != 1
-@@ -1507,6 +1617,7 @@
+@@ -1507,6 +1628,7 @@
  	size_t ca_names_len;
  	const uint8_t *client_cert;
  	size_t client_cert_len;
@@ -5045,7 +5101,7 @@
  	int client_sig_alg;
  
  	if(conn->verbose) tls_trace("recv CertificateRequest*\n");
-@@ -1571,8 +1682,13 @@
+@@ -1571,8 +1693,13 @@
  		return -1;
  	}
  
@@ -5061,7 +5117,7 @@
  		error_print();
  		tls_send_alert(conn, TLS_alert_unsupported_certificate);
  		return -1;
-@@ -1583,6 +1699,22 @@
+@@ -1583,6 +1710,22 @@
  		tls_send_alert(conn, TLS_alert_bad_certificate);
  		return -1;
  	}
@@ -5084,7 +5140,7 @@
  	if ((ret = tls_cert_match_signature_algorithms(client_cert, client_cert_len,
  		common_sig_algs, common_sig_algs_cnt, &client_sig_alg)) < 0) {
  		error_print();
-@@ -1775,7 +1907,7 @@
+@@ -1775,7 +1918,7 @@
  int tls_send_certificate_verify(TLS_CONNECT *conn)
  {
  	int ret;
@@ -5093,7 +5149,7 @@
  	size_t siglen;
  
  	if (conn->verbose)
-@@ -1998,6 +2130,8 @@
+@@ -1998,6 +2141,8 @@
  	size_t trusted_authorities_len = 0;
  	const uint8_t *server_name = NULL;
  	size_t server_name_len = 0;
@@ -5102,7 +5158,7 @@
  	const uint8_t *renegotiation_info = NULL;
  	size_t renegotiation_info_len = 0;
  	int empty_renegotiation_info_scsv = 0;
-@@ -2140,6 +2274,15 @@
+@@ -2140,6 +2285,15 @@
  			server_name = ext_data;
  			server_name_len = ext_datalen;
  			break;
@@ -5118,7 +5174,7 @@
  		case TLS_extension_renegotiation_info:
  			if (renegotiation_info) {
  				error_print();
-@@ -2299,6 +2442,23 @@
+@@ -2299,6 +2453,23 @@
  		cert_signature_algorithms_cnt = common_signature_algorithms_cnt;
  	}
  
@@ -5142,7 +5198,7 @@
  	if (server_name) {
  		if (tls_server_name_from_bytes(&host_name, &host_name_len, server_name, server_name_len) != 1) {
  			error_print();
-@@ -2392,6 +2552,15 @@
+@@ -2392,6 +2563,15 @@
  			}
  		}
  
@@ -5158,7 +5214,7 @@
  		// renegotiation_info
  		if (conn->secure_renegotiation) {
  			uint8_t ext_data[1] = { 0 };
-@@ -2492,7 +2661,7 @@
+@@ -2492,7 +2672,7 @@
  		X509_SIGN_CTX sign_ctx;
  		const void *sign_args = NULL;
  		size_t sign_argslen = 0;
@@ -5167,7 +5223,7 @@
  		size_t siglen;
  
  		// generate server ecdh_key
-@@ -2563,7 +2732,10 @@
+@@ -2563,7 +2743,10 @@
  	int ret;
  
  	// 如果要进行客户端证书验证，服务器要提供验证的证书，但是所有证书的
@@ -5179,7 +5235,7 @@
  	const int *sig_algs = conn->ctx->signature_algorithms;
  	size_t sig_algs_cnt = conn->ctx->signature_algorithms_cnt;
  	uint8_t ca_names[TLS_MAX_CA_NAMES_SIZE] = {0}; // TODO: 根据客户端验证CA证书列计算缓冲大小，或直接输出到record缓冲
-@@ -2870,16 +3042,25 @@
+@@ -2870,16 +3053,25 @@
  		return -1;
  	}
  
@@ -5211,7 +5267,7 @@
  		|| x509_verify_update(&sign_ctx, conn->transcript, conn->transcript_len) != 1
  		|| x509_verify_finish(&sign_ctx) != 1) {
  		error_print();
-@@ -3157,6 +3338,7 @@
+@@ -3157,6 +3349,7 @@
  
  		case TLS_cipher_ecdhe_sm4_gcm_sm3:
  		case TLS_cipher_ecdhe_ecdsa_with_aes_128_gcm_sha256:

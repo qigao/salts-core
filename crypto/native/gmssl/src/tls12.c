@@ -513,9 +513,20 @@ static int tls12_record_get_handshake_certificate_verify(const uint8_t *record,
 
 
 
+/* Only an initial TLS1.2 handshake (including a TLS12/13 range)
+ * may emit RFC 5746 secure_renegotiation signaling. TLS1.3-only and TLCP
+ * contexts cannot borrow this protocol-specific extension. */
+static int tls12_ctx_accepts_secure_hello(const TLS_CTX *ctx)
+{
+	return ctx && (ctx->protocol == TLS_protocol_tls12
+		|| (ctx->protocol == TLS_protocol_tls13
+			&& ctx->min_protocol == TLS_protocol_tls12
+			&& ctx->max_protocol == TLS_protocol_tls13));
+}
+
 int tls12_ctx_set_renegotiation_info(TLS_CTX *ctx, int enable)
 {
-	if (!ctx || ctx->protocol != TLS_protocol_tls12) {
+	if (!tls12_ctx_accepts_secure_hello(ctx)) {
 		error_print();
 		return -1;
 	}
@@ -525,7 +536,7 @@ int tls12_ctx_set_renegotiation_info(TLS_CTX *ctx, int enable)
 
 int tls12_ctx_set_empty_renegotiation_info_scsv(TLS_CTX *ctx, int enable)
 {
-	if (!ctx || ctx->protocol != TLS_protocol_tls12) {
+	if (!tls12_ctx_accepts_secure_hello(ctx)) {
 		error_print();
 		return -1;
 	}
