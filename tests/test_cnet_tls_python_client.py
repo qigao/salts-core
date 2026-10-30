@@ -27,9 +27,86 @@ CASES = ("client", "missing", "wrongca", "eku", "expired", "chain", "badsig")
 VERSION = {"12": "TLSv1.2", "13": "TLSv1.3"}
 
 
-def scenario(binary: Path, work: Path, crypto, fixtures, proto: str, case: str) -> None:
+def fragmented_tls13_exchange(ctx: ssl.SSLContext, raw: socket.socket) -> None:
+    """One real TLS1.3 client using Python's SSLObject and MemoryBIO.
+
+    Carry Finished and the first application record in the same outbound
+    batch, then split ciphertext into bounded TCP writes. The native CNet
+    peer must finish authentication and deliver F before it can send G.
+    No plaintext/TLS keys are logged and no alternative native engine exists.
+    """
+    incoming, outgoing = ssl.MemoryBIO(), ssl.MemoryBIO()
+    peer = ctx.wrap_bio(incoming, outgoing, server_hostname="localhost")
+    raw.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
+    def flush_ciphertext() -> None:
+        while outgoing.pending:
+            wire = outgoing.read()
+            offset = 0
+            # Split at record-header and payload boundaries. The tail is
+            # sent without sleeping or waiting for a handshake response.
+            for n in (1, 2, 7, 31, 127):
+                if offset >= len(wire):
+                    break
+                step = min(n, len(wire) - offset)
+                raw.sendall(wire[offset:offset + step])
+                offset += step
+                time.sleep(0.001)
+            if offset < len(wire):
+                raw.sendall(wire[offset:])
+
+    def receive_ciphertext(phase: str) -> None:
+        wire = raw.recv(16384)
+        if not wire:
+            raise AssertionError(f"server closed during {phase}")
+        incoming.write(wire)
+
+    # Do not permit a second handshake or a version/security fallback.
+    while True:
+        try:
+            peer.do_handshake()
+            break
+        except ssl.SSLWantWriteError:
+            flush_ciphertext()
+        except ssl.SSLWantReadError:
+            flush_ciphertext()
+            receive_ciphertext("TLS1.3 handshake")
+
+    if peer.version() != "TLSv1.3":
+        raise AssertionError(f"fragmented peer negotiated {peer.version()!r}")
+    if not peer.getpeercert():
+        raise AssertionError("Python TLS1.3 peer did not verify server certificate")
+    # MemoryBIO must contain the encrypted client Finished from handshake.
+    # The application record is then added before EITHER is sent on TCP.
+    finished_bytes = outgoing.pending
+    if finished_bytes == 0:
+        raise AssertionError("TLS1.3 Finished already flushed; coalescing test invalid")
+    if peer.write(b"F") != 1 or outgoing.pending <= finished_bytes:
+        raise AssertionError("Python SSLObject did not queue app data after Finished")
+    flush_ciphertext()
+
+    while True:
+        try:
+            response = peer.read(1)
+            if response != b"G":
+                raise AssertionError(f"fragmented mTLS response missing: {response!r}")
+            return
+        except ssl.SSLWantWriteError:
+            flush_ciphertext()
+        except ssl.SSLWantReadError:
+            flush_ciphertext()
+            receive_ciphertext("TLS1.3 authenticated response")
+
+
+def scenario(
+    binary: Path, work: Path, crypto, fixtures, proto: str, case: str,
+    *, fragmented: bool = False,
+) -> None:
     expected = "accept" if case == "client" else "reject"
-    port_path = work / f"native-{proto}-{case}.port"
+    if fragmented and (proto != "13" or case != "client"):
+        raise AssertionError("fragmented ciphertext gate is valid TLS1.3 only")
+    suffix = "-fragmented" if fragmented else ""
+    port_path = work / f"native-{proto}-{case}{suffix}.port"
     if port_path.exists():
         raise AssertionError("stale private port marker")
     # Exact-head Python fixture generator and standard-library ssl client.
@@ -66,28 +143,33 @@ def scenario(binary: Path, work: Path, crypto, fixtures, proto: str, case: str) 
         with socket.create_connection(("127.0.0.1", port), timeout=8.0) as raw:
             raw.settimeout(9.0)
             try:
-                phase = "tls-handshake"
-                with ctx.wrap_socket(raw, server_hostname="localhost") as peer:
-                    peer.settimeout(9.0)
-                    phase = "negotiated-version"
-                    if peer.version() != VERSION[proto]:
-                        raise AssertionError("Python negotiated a different TLS version")
-                    # For TLS1.3 Python's wrap_socket() can complete before
-                    # the CNet server validates the client's CertificateVerify.
-                    # Always force application-layer progress for negatives.
-                    phase = "authenticated-request"
-                    peer.sendall(b"F")
-                    phase = "authenticated-response"
-                    response = peer.recv(1)
-                    if expected == "accept":
-                        if response != b"G":
-                            raise AssertionError(f"valid mTLS app data missing: {response!r}")
-                        peer_completed = True
-                        phase = "authenticated"
-                    elif response == b"G":
-                        raise AssertionError("invalid mTLS client received authenticated data")
-                    else:
-                        peer_rejected = True
+                if fragmented:
+                    phase = "tls13-fragmented-finished-plus-application"
+                    fragmented_tls13_exchange(ctx, raw)
+                    peer_completed = True
+                    phase = "authenticated"
+                else:
+                    phase = "tls-handshake"
+                    with ctx.wrap_socket(raw, server_hostname="localhost") as peer:
+                        peer.settimeout(9.0)
+                        phase = "negotiated-version"
+                        if peer.version() != VERSION[proto]:
+                            raise AssertionError("Python negotiated a different TLS version")
+                        # TLS1.3 wrap_socket can finish before the server
+                        # verifies CertificateVerify; require real app data.
+                        phase = "authenticated-request"
+                        peer.sendall(b"F")
+                        phase = "authenticated-response"
+                        response = peer.recv(1)
+                        if expected == "accept":
+                            if response != b"G":
+                                raise AssertionError(f"valid mTLS app data missing: {response!r}")
+                            peer_completed = True
+                            phase = "authenticated"
+                        elif response == b"G":
+                            raise AssertionError("invalid mTLS client received authenticated data")
+                        else:
+                            peer_rejected = True
             except (ssl.SSLError, ConnectionError, EOFError):
                 if expected == "accept":
                     raise
@@ -115,7 +197,10 @@ def scenario(binary: Path, work: Path, crypto, fixtures, proto: str, case: str) 
             f"native_exit={native.returncode} "
             f"stdout={out[-350:]} stderr={err[-1200:]}"
         )
-    print(f"PASS independent Python ssl TLS{proto} {case} {expected}")
+    print(
+        f"PASS independent Python ssl TLS{proto} {case} {expected}"
+        + (" Finished+ApplicationData fragmented" if fragmented else "")
+    )
 
 
 def main() -> int:
@@ -137,6 +222,12 @@ def main() -> int:
         for proto in ("12", "13"):
             for case in CASES:
                 scenario(args.binary, private, python_mtls, fixtures, proto, case)
+        # A single additional real TLS1.3 connection, not a retry/stress
+        # loop, fixes wire segmentation deterministically in the same CTest.
+        scenario(
+            args.binary, private, python_mtls, fixtures, "13", "client",
+            fragmented=True,
+        )
     print("PASS Python ssl client -> one production CNet REQUIRED-mTLS server on both TLS versions")
     return 0
 
