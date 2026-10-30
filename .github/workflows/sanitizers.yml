@@ -2,8 +2,14 @@ name: Core sanitizers
 
 on:
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   push:
     branches: [master]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   workflow_dispatch:
 
 permissions:
@@ -30,6 +36,11 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Compiler cache
+        uses: qigao/stun/.github/actions/setup-ccache@6498e9710609820da7d99a938627cc44f17f00ed
+        with:
+          profile: saltscore-sanitizers-${{ matrix.name }}
+          source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Linux system SDKs
         run: |
           sudo apt-get update
@@ -76,3 +87,7 @@ jobs:
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
           TSAN_OPTIONS: halt_on_error=1
         run: ctest --test-dir build-sanitize --output-on-failure --no-tests=error --timeout 120
+      - name: Cache statistics
+        if: always()
+        shell: bash
+        run: ccache --show-stats || true

@@ -2,8 +2,14 @@ name: Migration gate
 
 on:
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   push:
     branches: [master]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   workflow_dispatch:
 
 permissions:
@@ -22,22 +28,47 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - name: Keep CI and consumer scaffolding bounded
+      - name: Keep CI scope bounded
         shell: bash
         run: |
           set -euo pipefail
-          count="$(find .github/workflows -maxdepth 1 -type f -name '*.yml' | wc -l)"
-          test "$count" -le 4
-          test ! -d tests/installed
-          test ! -d tests/fs-installed
-          test ! -d tests/process-installed
-          test ! -d tests/zstd-installed
-          test ! -d asn1/tests/installed
-          test ! -d capture/tests/installed
-          test ! -d playback/tests/installed
-          test ! -d usb/tests/installed
-          test ! -d salts_serial/test/installed
-          test ! -d unicode/test/install_consumer
+
+          expected="$(printf '%s\n' \
+            .github/workflows/ci.yml \
+            .github/workflows/migration-gate.yml \
+            .github/workflows/portable-compiler-abi.yml \
+            .github/workflows/sanitizers.yml)"
+          actual="$(find .github/workflows -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) | sort)"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "Unexpected CI workflow set:"
+            diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") || true
+            exit 1
+          fi
+
+          if find . -type d \( -name installed -o -name install_""consumer \) -print -quit | grep -q .; then
+            echo "Installed/consume test project scaffolding is forbidden in salts-core."
+            find . -type d \( -name installed -o -name install_""consumer \) -print
+            exit 1
+          fi
+
+          forbidden=(
+            "cmake --in""stall"
+            "ins""taller"
+            "consu""mer"
+            "Nu""Get"
+            "package-""candidate"
+            "core_""sdk"
+            "github-""packages"
+            "dotnet ""pack"
+            "dotnet nuget ""push"
+            "pub""lish"
+          )
+          for token in "${forbidden[@]}"; do
+            if grep -RFn --include='*.yml' --include='*.yaml' -- "$token" .github/workflows; then
+              echo "Forbidden CI behavior found: $token"
+              exit 1
+            fi
+          done
       - name: Source layout and dependency boundaries
         shell: bash
         run: |
