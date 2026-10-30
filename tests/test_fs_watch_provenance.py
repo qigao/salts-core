@@ -160,9 +160,11 @@ def main() -> int:
     workflow = (ROOT / ".github/workflows/native-fs.yml").read_text()
     require("CMeta-runtime-free owner and exact Platform ABI boundary" in workflow,
             "FS workflow does not enforce the exact Platform-only dependency boundary")
-    for symbol in sorted(PLATFORM_ONLY):
-        require(symbol in workflow,
-                "FS workflow Platform whitelist omitted: " + symbol)
+    require(
+        "cmeta_mutex_(destroy|init|lock|unlock)" in workflow and
+        "cmeta_thread_(create|destroy|join)" in workflow and
+        "cmeta_mutex_t" in workflow and "cmeta_thread_t" in workflow,
+        "FS workflow Platform-only whitelist changed")
 
     print("PASS: callback-only FS watch keeps exact donor bytes, 7 APIs, native backends and CFlow split")
     return 0
