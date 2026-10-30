@@ -1425,6 +1425,92 @@ static int cnet_owner_tls_promote_pending_deadlines(
   return SALTS_OK;
 }
 
+#if defined(CNET_INTERNAL_TESTING)
+static uint64_t cnet_owner_test_fixed_deadline_now(void *context) {
+  return *(const uint64_t *)context;
+}
+
+/* Run the *production* deadline-promotion path with a bounded fake request
+ * ledger and the real single-owner deadline queue. No mock NativeIO backend,
+ * second TLS implementation or extra CTest executable is involved. */
+int cnet_owner_test_tls_pending_deadline_rollover(void) {
+  cnet_owner_impl owner = {0};
+  cnet_owner_session session = {0};
+  cnet_owner_request requests[3] = {{0}};
+  cmeta_deadline_event event = {0};
+  const uint64_t now = 1000u;
+  cmeta_deadline_id read_id, write_id;
+  int status;
+  int result = SALTS_EPROTO;
+
+  owner.request_records = requests;
+  owner.request_capacity = sizeof(requests) / sizeof(requests[0]);
+  owner.now_ms = cnet_owner_test_fixed_deadline_now;
+  owner.clock_context = (void *)&now;
+  session.handle = (cnet_session_handle){1u, 7u};
+  session.peer.read_timeout_ms = 37u;
+  session.peer.write_timeout_ms = 53u;
+  requests[0].active = true;
+  requests[0].session = session.handle;
+  requests[0].role = CNET_OWNER_REQUEST_TLS_READ;
+  requests[1].active = true;
+  requests[1].session = session.handle;
+  requests[1].role = CNET_OWNER_REQUEST_TLS_WRITE;
+  requests[2].active = true;
+  requests[2].session = (cnet_session_handle){1u, 8u};
+  requests[2].role = CNET_OWNER_REQUEST_TLS_READ;
+
+  status = cmeta_deadline_queue_init(&owner.deadlines, 3u);
+  if (status != SALTS_OK) return status;
+  if (cnet_owner_tls_promote_pending_deadlines(&owner, &session) != SALTS_EINVAL ||
+      cmeta_deadline_queue_size(&owner.deadlines) != 0u)
+    goto cleanup;
+
+  session.tls.handshake_complete = true;
+  if (cnet_owner_tls_promote_pending_deadlines(&owner, &session) != SALTS_OK)
+    goto cleanup;
+  read_id = requests[0].deadline;
+  write_id = requests[1].deadline;
+  if (read_id == 0u || write_id == 0u || read_id == write_id ||
+      requests[2].deadline != 0u ||
+      cmeta_deadline_queue_size(&owner.deadlines) != 2u)
+    goto cleanup;
+  /* Reentry cannot restart either timer. */
+  if (cnet_owner_tls_promote_pending_deadlines(&owner, &session) != SALTS_OK ||
+      requests[0].deadline != read_id ||
+      requests[1].deadline != write_id ||
+      cmeta_deadline_queue_size(&owner.deadlines) != 2u)
+    goto cleanup;
+
+  if (cmeta_deadline_queue_take_ready(&owner.deadlines, now + 36u,
+                                      &event) != SALTS_ETIMEDOUT ||
+      cmeta_deadline_queue_take_ready(&owner.deadlines, now + 37u,
+                                      &event) != SALTS_OK ||
+      event.id != read_id || event.token != 1u ||
+      event.deadline_ms != now + 37u ||
+      cmeta_deadline_queue_take_ready(&owner.deadlines, now + 53u,
+                                      &event) != SALTS_OK ||
+      event.id != write_id || event.token != 2u ||
+      event.deadline_ms != now + 53u ||
+      cmeta_deadline_queue_size(&owner.deadlines) != 0u)
+    goto cleanup;
+
+  /* Disabled READ timeout and a stale foreign generation must not acquire
+   * a request deadline or change any previously scheduled timeout. */
+  requests[0].deadline = 0u;
+  session.peer.read_timeout_ms = 0u;
+  if (cnet_owner_tls_promote_pending_deadlines(&owner, &session) != SALTS_OK ||
+      requests[0].deadline != 0u || requests[2].deadline != 0u ||
+      cmeta_deadline_queue_size(&owner.deadlines) != 0u)
+    goto cleanup;
+  result = SALTS_OK;
+
+cleanup:
+  status = cmeta_deadline_queue_destroy(&owner.deadlines);
+  return result == SALTS_OK ? status : result;
+}
+#endif
+
 static int cnet_owner_tls_pump_impl(cnet_owner_impl *impl, cnet_owner_session *session) {
   bool started = false;
   int status;
