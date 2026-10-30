@@ -1986,6 +1986,24 @@ static void cnet_owner_test_init_cleanup_after_backend(
 
 spec("CNet owner shard") {
 #if defined(CNET_INTERNAL_TESTING)
+  it("attributes a late TLS read/write completion after authentication") {
+    check_equal(cnet_owner_test_tls_completion_stage(
+                    false, false, CNET_SESSION_STAGE_HANDSHAKE),
+                CNET_SESSION_STAGE_HANDSHAKE);
+    check_equal(cnet_owner_test_tls_completion_stage(
+                    false, true, CNET_SESSION_STAGE_HANDSHAKE),
+                CNET_SESSION_STAGE_HANDSHAKE);
+    check_equal(cnet_owner_test_tls_completion_stage(
+                    true, false, CNET_SESSION_STAGE_HANDSHAKE),
+                CNET_SESSION_STAGE_READ);
+    check_equal(cnet_owner_test_tls_completion_stage(
+                    true, true, CNET_SESSION_STAGE_HANDSHAKE),
+                CNET_SESSION_STAGE_WRITE);
+    check_equal(cnet_owner_test_tls_completion_stage(
+                    true, false, CNET_SESSION_STAGE_READ),
+                CNET_SESSION_STAGE_READ);
+  }
+
   it("resumes TLS1.3 provider-owned partial records without a second header") {
     const uint8_t record[10] = {
         0x17, 0x03, 0x03, 0x00, 0x05, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5};
