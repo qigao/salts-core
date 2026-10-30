@@ -466,7 +466,7 @@
   "preparation": "Original pinned port recipe, with existing Core TLS12 empty-authority, TLS13 ticket-bound and strict handshake-reader adaptations. The checked-in patch reproduces the resulting source bytes; no provider binary is imported. The separately recorded local_hardening entries retain defined unsigned byte semantics under full implementation instrumentation.",
   "derivation_patch": {
     "path": "upstream-to-local.patch",
-    "git_blob": "901556571b2e1d07dc0c5f15b5b61c064dd86b13"
+    "git_blob": "3c257787455fbff79b43d8e49d13f15b8c0d56b6"
   },
   "compile_definitions": [
     "ENABLE_AES",
@@ -1309,7 +1309,7 @@
     {
       "path": "src/tls12.c",
       "upstream_git_blob": "71b86a7dbfd7cb7ac9caae3ec5993af50528d553",
-      "local_git_blob": "9e27a78ff3b4cf7ce9f7545f3c781c6abe3222c7"
+      "local_git_blob": "312e0ad47c10c09c19d9201e48c0b7c199184e12"
     },
     {
       "path": "src/tls13-handshake-reader.h",
@@ -1319,7 +1319,7 @@
     {
       "path": "src/tls13.c",
       "upstream_git_blob": "ca4452a2a0842309464c2b22f70255f482286757",
-      "local_git_blob": "34237d4bc37af29146a3f1e965165ecacd5c75c1"
+      "local_git_blob": "2362c7a46b82c89cb196767d0cf5ae5d63fef5bd"
     },
     {
       "path": "src/tls_alpn.c",
@@ -1369,7 +1369,7 @@
     {
       "path": "src/tls_vrf.c",
       "upstream_git_blob": "05eca140af282b811d3f8921b48f7103c5e63ae2",
-      "local_git_blob": "6f502bc733933401ac37d522b5fe384ad738183d"
+      "local_git_blob": "f6e3bcc36733d8bc392446826ea612a0e4c3f2e4"
     },
     {
       "path": "src/version.c",

@@ -20,6 +20,8 @@
 #include <gmssl/sm4.h>
 #include <gmssl/pem.h>
 #include <gmssl/mem.h>
+#include <gmssl/rsa.h>
+#include <gmssl/sha2.h>
 #include <gmssl/tls.h>
 
 
@@ -625,6 +627,9 @@ int tls_signature_scheme_match_cipher_suite(int sig_alg, int cipher_suite)
 		}
 		break;
 	case TLS_sig_rsa_pkcs1_sha256:
+	case TLS_sig_rsa_pss_rsae_sha256:
+		/* RFC 5246 permits RSA-PSS ServerKeyExchange with an ECDHE_RSA
+		 * cipher when the client explicitly advertises the signature. */
 		if (cipher_suite != TLS_cipher_ecdhe_rsa_with_aes_128_gcm_sha256) {
 			error_print();
 			return -1;
@@ -1519,6 +1524,7 @@ int tls_recv_server_key_exchange(TLS_CONNECT *conn)
 		}
 		break;
 	case TLS_sig_rsa_pkcs1_sha256:
+	case TLS_sig_rsa_pss_rsae_sha256:
 		if (server_sign_key.algor != OID_rsa_encryption) {
 			error_print();
 			tls_send_alert(conn, TLS_alert_bad_certificate);
@@ -1535,7 +1541,28 @@ int tls_recv_server_key_exchange(TLS_CONNECT *conn)
 		sign_argslen = SM2_DEFAULT_ID_LENGTH;
 	}
 
-	if (x509_verify_init(&sign_ctx, &server_sign_key, sign_args, sign_argslen, sig, siglen) != 1
+	if (sig_alg == TLS_sig_rsa_pss_rsae_sha256) {
+		/* TLS1.2 ServerKeyExchange signs SHA256(ClientRandom ||
+		 * ServerRandom || the exact unmodified ServerECDHParams bytes).
+		 * Verify PSS with the authenticated RSA leaf, never as PKCS#1. */
+		SHA256_CTX hash_ctx;
+		uint8_t hash[SHA256_DIGEST_SIZE];
+		int verified;
+		sha256_init(&hash_ctx);
+		sha256_update(&hash_ctx, conn->client_random, 32);
+		sha256_update(&hash_ctx, conn->server_random, 32);
+		sha256_update(&hash_ctx, server_ecdh_params, server_ecdh_params_len);
+		sha256_finish(&hash_ctx, hash);
+		verified = rsa_verify_pss_sha256(&server_sign_key.u.rsa_public_key,
+			hash, sig, siglen);
+		gmssl_secure_clear(&hash_ctx, sizeof(hash_ctx));
+		gmssl_secure_clear(hash, sizeof(hash));
+		if (verified != 1) {
+			error_print();
+			tls_send_alert(conn, TLS_alert_decrypt_error);
+			return -1;
+		}
+	} else if (x509_verify_init(&sign_ctx, &server_sign_key, sign_args, sign_argslen, sig, siglen) != 1
 		|| x509_verify_update(&sign_ctx, conn->client_random, 32) != 1
 		|| x509_verify_update(&sign_ctx, conn->server_random, 32) != 1
 		|| x509_verify_update(&sign_ctx, server_ecdh_params, server_ecdh_params_len) != 1

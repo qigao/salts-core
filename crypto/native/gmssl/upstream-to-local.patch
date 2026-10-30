@@ -4773,7 +4773,16 @@
  
 --- a/src/tls12.c
 +++ b/src/tls12.c
-@@ -41,6 +41,12 @@
+@@ -20,6 +20,8 @@
+ #include <gmssl/sm4.h>
+ #include <gmssl/pem.h>
+ #include <gmssl/mem.h>
++#include <gmssl/rsa.h>
++#include <gmssl/sha2.h>
+ #include <gmssl/tls.h>
+ 
+ 
+@@ -41,6 +43,12 @@
  #if defined(ENABLE_SECP256R1) && defined(ENABLE_SHA2)
  	TLS_sig_ecdsa_secp256r1_sha256,
  #endif
@@ -4786,7 +4795,7 @@
  };
  const size_t tls12_signature_algorithms_cnt =
  	sizeof(tls12_signature_algorithms)/sizeof(tls12_signature_algorithms[0]);
-@@ -51,6 +57,7 @@
+@@ -51,6 +59,7 @@
  #if defined(ENABLE_AES) && defined(ENABLE_SHA2) && defined(ENABLE_SECP256R1)
  	TLS_cipher_ecdhe_ecdsa_with_aes_128_cbc_sha256,
  	TLS_cipher_ecdhe_ecdsa_with_aes_128_gcm_sha256,
@@ -4794,7 +4803,7 @@
  #ifdef ENABLE_AES_CCM
  	TLS_cipher_ecdhe_ecdsa_with_aes_128_ccm,
  #endif
-@@ -576,6 +583,7 @@
+@@ -576,6 +585,7 @@
  		switch (cipher_suite) {
  		case TLS_cipher_ecdhe_ecdsa_with_aes_128_cbc_sha256:
  		case TLS_cipher_ecdhe_ecdsa_with_aes_128_gcm_sha256:
@@ -4802,20 +4811,23 @@
  		case TLS_cipher_ecdhe_ecdsa_with_aes_128_ccm:
  			break;
  		default:
-@@ -612,6 +620,12 @@
- 		case TLS_cipher_ecdhe_ecdsa_with_aes_128_ccm:
- 			break;
- 		default:
+@@ -616,6 +626,15 @@
+ 			return -1;
+ 		}
+ 		break;
++	case TLS_sig_rsa_pkcs1_sha256:
++	case TLS_sig_rsa_pss_rsae_sha256:
++		/* RFC 5246 permits RSA-PSS ServerKeyExchange with an ECDHE_RSA
++		 * cipher when the client explicitly advertises the signature. */
++		if (cipher_suite != TLS_cipher_ecdhe_rsa_with_aes_128_gcm_sha256) {
 +			error_print();
 +			return -1;
 +		}
 +		break;
-+	case TLS_sig_rsa_pkcs1_sha256:
-+		if (cipher_suite != TLS_cipher_ecdhe_rsa_with_aes_128_gcm_sha256) {
- 			error_print();
- 			return -1;
- 		}
-@@ -661,6 +675,8 @@
+ 	default:
+ 		error_print();
+ 		return -1;
+@@ -661,6 +680,8 @@
  			return 1;
  		}
  		break;
@@ -4824,7 +4836,7 @@
  	}
  	return 0;
  }
-@@ -673,6 +689,7 @@
+@@ -673,6 +694,7 @@
  		return group == TLS_curve_sm2p256v1;
  	case TLS_cipher_ecdhe_ecdsa_with_aes_128_cbc_sha256:
  	case TLS_cipher_ecdhe_ecdsa_with_aes_128_gcm_sha256:
@@ -4832,72 +4844,72 @@
  	case TLS_cipher_ecdhe_ecdsa_with_aes_128_ccm:
  		return group == TLS_curve_secp256r1;
  	default:
-@@ -734,6 +751,10 @@
- 		|| x509_cert_get_subject_public_key(cert, certlen, &public_key) != 1) {
+@@ -735,6 +757,10 @@
  		error_print();
  		return -1;
-+	}
+ 	}
 +	if (public_key.algor == OID_rsa_encryption) {
 +		*group = 0;
 +		return 1;
- 	}
++	}
  	if (public_key.algor != OID_ec_public_key) {
  		error_print();
-@@ -824,7 +845,9 @@
+ 		return -1;
+@@ -824,7 +850,9 @@
  			error_print();
  			return -1;
  		}
--		if (!tls_type_is_in_list(cert_group, common_supported_groups, common_supported_groups_cnt)) {
 +		if (cert_group
 +			&& !tls_type_is_in_list(cert_group,
 +				common_supported_groups, common_supported_groups_cnt)) {
+-		if (!tls_type_is_in_list(cert_group, common_supported_groups, common_supported_groups_cnt)) {
  			continue;
  		}
  		if (x509_certs_get_cert_by_index(cert_chain, cert_chain_len, 0, &cert, &certlen) != 1) {
-@@ -854,7 +877,11 @@
+@@ -854,7 +882,11 @@
  			int cipher_suite = common_cipher_suites[i];
  			int key_exchange_group;
  
--			if (!tls12_cipher_suite_match_cert_group(cipher_suite, cert_group)) {
 +			if (cipher_suite == TLS_cipher_ecdhe_rsa_with_aes_128_gcm_sha256) {
 +				if (cert_group != 0) {
 +					continue;
 +				}
 +			} else if (!tls12_cipher_suite_match_cert_group(cipher_suite, cert_group)) {
+-			if (!tls12_cipher_suite_match_cert_group(cipher_suite, cert_group)) {
  				continue;
  			}
  			if ((ret = tls12_select_key_exchange_group(common_supported_groups,
-@@ -868,7 +895,11 @@
+@@ -868,7 +900,11 @@
  			for (j = 0; j < common_signature_algorithms_cnt; j++) {
  				int sig_alg = common_signature_algorithms[j];
  
--				if (!tls12_signature_scheme_match_cert_group(sig_alg, cert_group)) {
 +				if (sig_alg == TLS_sig_rsa_pkcs1_sha256) {
 +					if (cert_group != 0) {
 +						continue;
 +					}
 +				} else if (!tls12_signature_scheme_match_cert_group(sig_alg, cert_group)) {
+-				if (!tls12_signature_scheme_match_cert_group(sig_alg, cert_group)) {
  					continue;
  				}
  				if (!tls12_signature_scheme_match_cipher_suite(sig_alg, cipher_suite)) {
-@@ -989,6 +1020,16 @@
- 		// server_name
- 		if (conn->server_name) {
- 			if (tls_server_name_ext_to_bytes(conn->host_name, conn->host_name_len, &pexts, &extslen) != 1) {
-+				error_print();
-+				return -1;
-+			}
-+		}
-+
+@@ -994,6 +1030,16 @@
+ 			}
+ 		}
+ 
 +		// application_layer_protocol_negotiation
 +		if (conn->ctx->alpn_protocols_cnt) {
 +			if (tls_application_layer_protocol_negotiation_ext_to_bytes(
 +				conn->ctx->alpn_protocols, conn->ctx->alpn_protocols_cnt,
 +				&pexts, &extslen) != 1) {
- 				error_print();
- 				return -1;
- 			}
-@@ -1072,6 +1113,8 @@
++				error_print();
++				return -1;
++			}
++		}
++
+ 		// renegotiation_info
+ 		if (conn->ctx->renegotiation_info) {
+ 			uint8_t ext_data[1] = { 0 };
+@@ -1072,6 +1118,8 @@
  	size_t ec_point_formats_len = 0;
  	int server_name = 0;
  	int trusted_ca_keys = 0;
@@ -4906,11 +4918,10 @@
  	int renegotiation_info = 0;
  
  	if(conn->verbose)
-@@ -1115,7 +1158,15 @@
+@@ -1115,7 +1163,15 @@
  	memcpy(conn->server_random, server_random, 32);
  
  	// session_id
--	memcpy(conn->session_id, session_id, session_id_len);
 +	if (session_id_len > sizeof(conn->session_id)
 +		|| (session_id_len && !session_id)) {
 +		error_print();
@@ -4920,10 +4931,11 @@
 +	if (session_id_len) {
 +		memcpy(conn->session_id, session_id, session_id_len);
 +	}
+-	memcpy(conn->session_id, session_id, session_id_len);
  	conn->session_id_len = session_id_len;
  
  	// cipher_suite
-@@ -1150,6 +1201,15 @@
+@@ -1150,6 +1206,15 @@
  		}
  
  		switch (ext_type) {
@@ -4939,12 +4951,10 @@
  		case TLS_extension_ec_point_formats:
  			if (ec_point_formats) {
  				error_print();
-@@ -1200,6 +1260,19 @@
- 			tls_send_alert(conn, TLS_alert_illegal_parameter);
- 			return -1;
+@@ -1202,6 +1267,19 @@
  		}
-+	}
-+
+ 	}
+ 
 +	if (application_layer_protocol_negotiation) {
 +		if (!conn->ctx->alpn_protocols_cnt
 +			|| tls_application_layer_protocol_negotiation_selected_from_bytes(
@@ -4956,45 +4966,78 @@
 +			return -1;
 +		}
 +		conn->application_layer_protocol_negotiation = 1;
- 	}
- 
++	}
++
  	if ((conn->ctx->renegotiation_info || conn->ctx->empty_renegotiation_info_scsv)
-@@ -1313,7 +1386,7 @@
+ 		&& !renegotiation_info) {
+ 		error_print();
+@@ -1313,7 +1391,7 @@
  
  	// verify server Certificate
  	if (tls_cert_chain_verify(conn->protocol, X509_cert_chain_server, conn->cipher_suite,
--		conn->ctx->cacertslen ? 1 : 0,
 +		conn->ctx->external_trust ? 0 : (conn->ctx->cacertslen ? 1 : 0),
+-		conn->ctx->cacertslen ? 1 : 0,
  		conn->peer_cert_chain, conn->peer_cert_chain_len,
  		conn->ctx->cacerts, conn->ctx->cacertslen,
  		NULL, 0,
-@@ -1403,7 +1476,10 @@
+@@ -1403,7 +1481,10 @@
  		return -1;
  	}
  
--	if (tls_signature_scheme_match_cipher_suite(sig_alg, conn->cipher_suite) != 1) {
 +	if ((conn->ctx->signature_algorithms_cnt
 +			&& !tls_type_is_in_list(sig_alg,
 +				conn->ctx->signature_algorithms, conn->ctx->signature_algorithms_cnt))
 +		|| tls_signature_scheme_match_cipher_suite(sig_alg, conn->cipher_suite) != 1) {
+-	if (tls_signature_scheme_match_cipher_suite(sig_alg, conn->cipher_suite) != 1) {
  		error_print();
  		tls_send_alert(conn, TLS_alert_illegal_parameter);
  		return -1;
-@@ -1437,6 +1513,13 @@
- 	case TLS_sig_ecdsa_secp256r1_sha256:
- 		if (server_sign_key.algor != OID_ec_public_key
- 			|| server_sign_key.algor_param != OID_secp256r1) {
+@@ -1442,6 +1523,14 @@
+ 			return -1;
+ 		}
+ 		break;
++	case TLS_sig_rsa_pkcs1_sha256:
++	case TLS_sig_rsa_pss_rsae_sha256:
++		if (server_sign_key.algor != OID_rsa_encryption) {
 +			error_print();
 +			tls_send_alert(conn, TLS_alert_bad_certificate);
 +			return -1;
 +		}
 +		break;
-+	case TLS_sig_rsa_pkcs1_sha256:
-+		if (server_sign_key.algor != OID_rsa_encryption) {
- 			error_print();
- 			tls_send_alert(conn, TLS_alert_bad_certificate);
- 			return -1;
-@@ -1507,6 +1590,7 @@
+ 	default:
+ 		error_print();
+ 		return -1;
+@@ -1452,7 +1541,28 @@
+ 		sign_argslen = SM2_DEFAULT_ID_LENGTH;
+ 	}
+ 
++	if (sig_alg == TLS_sig_rsa_pss_rsae_sha256) {
++		/* TLS1.2 ServerKeyExchange signs SHA256(ClientRandom ||
++		 * ServerRandom || the exact unmodified ServerECDHParams bytes).
++		 * Verify PSS with the authenticated RSA leaf, never as PKCS#1. */
++		SHA256_CTX hash_ctx;
++		uint8_t hash[SHA256_DIGEST_SIZE];
++		int verified;
++		sha256_init(&hash_ctx);
++		sha256_update(&hash_ctx, conn->client_random, 32);
++		sha256_update(&hash_ctx, conn->server_random, 32);
++		sha256_update(&hash_ctx, server_ecdh_params, server_ecdh_params_len);
++		sha256_finish(&hash_ctx, hash);
++		verified = rsa_verify_pss_sha256(&server_sign_key.u.rsa_public_key,
++			hash, sig, siglen);
++		gmssl_secure_clear(&hash_ctx, sizeof(hash_ctx));
++		gmssl_secure_clear(hash, sizeof(hash));
++		if (verified != 1) {
++			error_print();
++			tls_send_alert(conn, TLS_alert_decrypt_error);
++			return -1;
++		}
++	} else if (x509_verify_init(&sign_ctx, &server_sign_key, sign_args, sign_argslen, sig, siglen) != 1
+-	if (x509_verify_init(&sign_ctx, &server_sign_key, sign_args, sign_argslen, sig, siglen) != 1
+ 		|| x509_verify_update(&sign_ctx, conn->client_random, 32) != 1
+ 		|| x509_verify_update(&sign_ctx, conn->server_random, 32) != 1
+ 		|| x509_verify_update(&sign_ctx, server_ecdh_params, server_ecdh_params_len) != 1
+@@ -1507,6 +1617,7 @@
  	size_t ca_names_len;
  	const uint8_t *client_cert;
  	size_t client_cert_len;
@@ -5002,12 +5045,10 @@
  	int client_sig_alg;
  
  	if(conn->verbose) tls_trace("recv CertificateRequest*\n");
-@@ -1571,8 +1655,13 @@
+@@ -1571,8 +1682,13 @@
  		return -1;
  	}
  
--	if (tls_cert_types_has_ecdsa_sign(cert_types, cert_types_len) != 1
--		|| tls_authorities_issued_certificate(ca_names, ca_names_len, conn->client_certs, conn->client_certs_len) != 1) {
 +	/* RFC 5246 section 7.4.4: a zero-length acceptable-CA vector imposes
 +	 * no issuer preference. A nonempty vector must still match exactly.
 +	 * The server independently verifies client trust and CertificateVerify.
@@ -5015,15 +5056,15 @@
 +	if (ca_names_len != 0
 +		&& tls_authorities_issued_certificate(ca_names, ca_names_len,
 +			conn->client_certs, conn->client_certs_len) != 1) {
+-	if (tls_cert_types_has_ecdsa_sign(cert_types, cert_types_len) != 1
+-		|| tls_authorities_issued_certificate(ca_names, ca_names_len, conn->client_certs, conn->client_certs_len) != 1) {
  		error_print();
  		tls_send_alert(conn, TLS_alert_unsupported_certificate);
  		return -1;
-@@ -1581,6 +1670,22 @@
- 		0, &client_cert, &client_cert_len) != 1) {
- 		error_print();
+@@ -1583,6 +1699,22 @@
  		tls_send_alert(conn, TLS_alert_bad_certificate);
-+		return -1;
-+	}
+ 		return -1;
+ 	}
 +	if (x509_cert_get_subject_public_key(client_cert, client_cert_len,
 +		&client_public_key) != 1) {
 +		error_print();
@@ -5038,19 +5079,21 @@
 +			&& client_public_key.algor != OID_ec_public_key)) {
 +		error_print();
 +		tls_send_alert(conn, TLS_alert_unsupported_certificate);
- 		return -1;
- 	}
++		return -1;
++	}
  	if ((ret = tls_cert_match_signature_algorithms(client_cert, client_cert_len,
-@@ -1775,7 +1880,7 @@
+ 		common_sig_algs, common_sig_algs_cnt, &client_sig_alg)) < 0) {
+ 		error_print();
+@@ -1775,7 +1907,7 @@
  int tls_send_certificate_verify(TLS_CONNECT *conn)
  {
  	int ret;
--	uint8_t sig[SM2_MAX_SIGNATURE_SIZE];
 +	uint8_t sig[RSA_MAX_MODULUS_SIZE];
+-	uint8_t sig[SM2_MAX_SIGNATURE_SIZE];
  	size_t siglen;
  
  	if (conn->verbose)
-@@ -1998,6 +2103,8 @@
+@@ -1998,6 +2130,8 @@
  	size_t trusted_authorities_len = 0;
  	const uint8_t *server_name = NULL;
  	size_t server_name_len = 0;
@@ -5059,7 +5102,7 @@
  	const uint8_t *renegotiation_info = NULL;
  	size_t renegotiation_info_len = 0;
  	int empty_renegotiation_info_scsv = 0;
-@@ -2140,6 +2247,15 @@
+@@ -2140,6 +2274,15 @@
  			server_name = ext_data;
  			server_name_len = ext_datalen;
  			break;
@@ -5075,7 +5118,7 @@
  		case TLS_extension_renegotiation_info:
  			if (renegotiation_info) {
  				error_print();
-@@ -2299,6 +2415,23 @@
+@@ -2299,6 +2442,23 @@
  		cert_signature_algorithms_cnt = common_signature_algorithms_cnt;
  	}
  
@@ -5099,48 +5142,47 @@
  	if (server_name) {
  		if (tls_server_name_from_bytes(&host_name, &host_name_len, server_name, server_name_len) != 1) {
  			error_print();
-@@ -2387,6 +2520,15 @@
- 		// trusted_ca_keys
- 		if (conn->trusted_ca_keys) {
- 			if (tls_ext_to_bytes(TLS_extension_trusted_ca_keys, NULL, 0, &pexts, &extslen) != 1) {
+@@ -2392,6 +2552,15 @@
+ 			}
+ 		}
+ 
++		// application_layer_protocol_negotiation
++		if (conn->alpn_selected) {
++			if (tls_application_layer_protocol_negotiation_selected_ext_to_bytes(
++				conn->alpn_selected, &pexts, &extslen) != 1) {
 +				error_print();
 +				return -1;
 +			}
 +		}
 +
-+		// application_layer_protocol_negotiation
-+		if (conn->alpn_selected) {
-+			if (tls_application_layer_protocol_negotiation_selected_ext_to_bytes(
-+				conn->alpn_selected, &pexts, &extslen) != 1) {
- 				error_print();
- 				return -1;
- 			}
-@@ -2492,7 +2634,7 @@
+ 		// renegotiation_info
+ 		if (conn->secure_renegotiation) {
+ 			uint8_t ext_data[1] = { 0 };
+@@ -2492,7 +2661,7 @@
  		X509_SIGN_CTX sign_ctx;
  		const void *sign_args = NULL;
  		size_t sign_argslen = 0;
--		uint8_t sig[X509_SIGNATURE_MAX_SIZE];
 +		uint8_t sig[RSA_MAX_MODULUS_SIZE];
+-		uint8_t sig[X509_SIGNATURE_MAX_SIZE];
  		size_t siglen;
  
  		// generate server ecdh_key
-@@ -2563,7 +2705,10 @@
+@@ -2563,7 +2732,10 @@
  	int ret;
  
  	// 如果要进行客户端证书验证，服务器要提供验证的证书，但是所有证书的
--	const uint8_t cert_types[] = { TLS_cert_type_ecdsa_sign };
 +	const uint8_t cert_types[] = {
 +		TLS_cert_type_rsa_sign,
 +		TLS_cert_type_ecdsa_sign
 +	};
+-	const uint8_t cert_types[] = { TLS_cert_type_ecdsa_sign };
  	const int *sig_algs = conn->ctx->signature_algorithms;
  	size_t sig_algs_cnt = conn->ctx->signature_algorithms_cnt;
  	uint8_t ca_names[TLS_MAX_CA_NAMES_SIZE] = {0}; // TODO: 根据客户端验证CA证书列计算缓冲大小，或直接输出到record缓冲
-@@ -2870,16 +3015,25 @@
+@@ -2870,16 +3042,25 @@
  		return -1;
  	}
  
--	if (client_sign_key.algor != OID_ec_public_key) {
 +	if (client_sign_key.algor == OID_rsa_encryption) {
 +		if (sig_alg != TLS_sig_rsa_pkcs1_sha256) {
 +			error_print();
@@ -5153,22 +5195,23 @@
 +			signer_idlen = SM2_DEFAULT_ID_LENGTH;
 +		}
 +	} else {
+-	if (client_sign_key.algor != OID_ec_public_key) {
  		error_print();
  		tls_send_alert(conn, TLS_alert_bad_certificate);
  		return -1;
  	}
++	if (x509_verify_init_ex(&sign_ctx, &client_sign_key,
++		tls_signature_scheme_algorithm_oid(sig_alg),
++		signer_id, signer_idlen, sig, siglen) != 1
 -	if (client_sign_key.algor_param == OID_sm2) {
 -		signer_id = (uint8_t *)SM2_DEFAULT_ID;
 -		signer_idlen = SM2_DEFAULT_ID_LENGTH;
 -	}
 -	if (x509_verify_init(&sign_ctx, &client_sign_key, signer_id, signer_idlen, sig, siglen) != 1
-+	if (x509_verify_init_ex(&sign_ctx, &client_sign_key,
-+		tls_signature_scheme_algorithm_oid(sig_alg),
-+		signer_id, signer_idlen, sig, siglen) != 1
  		|| x509_verify_update(&sign_ctx, conn->transcript, conn->transcript_len) != 1
  		|| x509_verify_finish(&sign_ctx) != 1) {
  		error_print();
-@@ -3157,6 +3311,7 @@
+@@ -3157,6 +3338,7 @@
  
  		case TLS_cipher_ecdhe_sm4_gcm_sm3:
  		case TLS_cipher_ecdhe_ecdsa_with_aes_128_gcm_sha256:
@@ -5482,7 +5525,31 @@
  	if ((ret = tls_recv_record(conn)) != 1) {
  		if (ret != TLS_ERROR_RECV_AGAIN) {
  			error_print();
-@@ -4432,8 +4535,11 @@
+@@ -4401,6 +4504,23 @@
+ 		return 0;
+ 	}
+ 
++	/* A TLS1.2 ServerHello in a TLS1.2-1.3 range is not a TLS1.3
++	 * HelloRetryRequest. Its extensions may be empty; parse it in the
++	 * selected protocol state below, where full verification still applies.
++	 * A TLS1.3 HRR has the fixed 32-byte random and is validated normally. */
++	if (handshake_type == TLS_handshake_server_hello
++		&& conn->ctx->min_protocol == TLS_protocol_tls12
++		&& conn->ctx->max_protocol == TLS_protocol_tls13) {
++		if (handshake_datalen < 34) {
++			error_print();
++			tls13_send_alert(conn, TLS_alert_decode_error);
++			return -1;
++		}
++		if (memcmp(handshake_data + 2, TLS13_HELLO_RETRY_REQUEST_RANDOM, 32) != 0) {
++			if (conn->verbose) tls_trace("    no HelloRetryRequest\\n\\n");
++			return 0;
++		}
++	}
+ 	if ((ret = tls13_record_get_handshake_hello_retry_request(conn->record,
+ 		&legacy_version, &random,
+ 		&legacy_session_id_echo, &legacy_session_id_echo_len,
+@@ -4432,8 +4552,11 @@
  	memcpy(conn->server_random, random, 32);
  
  	// legacy_session_id_echo
@@ -5496,7 +5563,7 @@
  		error_print();
  		tls13_send_alert(conn, TLS_alert_illegal_parameter);
  		return -1;
-@@ -5018,8 +5124,11 @@
+@@ -5018,8 +5141,11 @@
  	memcpy(conn->server_random, random, 32);
  
  	// legacy_session_id_echo
@@ -5510,7 +5577,7 @@
  		error_print();
  		tls13_send_alert(conn, TLS_alert_illegal_parameter);
  		return -1;
-@@ -5387,6 +5496,9 @@
+@@ -5387,6 +5513,9 @@
  	return 1;
  }
  
@@ -5520,7 +5587,7 @@
  int tls13_recv_encrypted_extensions(TLS_CONNECT *conn)
  {
  	int ret;
-@@ -5399,21 +5511,9 @@
+@@ -5399,21 +5528,9 @@
  	int early_data = 0;
  	int alpn = 0;
  
@@ -5543,7 +5610,7 @@
  
  
  	if (digest_update(&conn->dgst_ctx, conn->plain_record + 5, conn->plain_recordlen - 5) != 1) {
-@@ -5594,17 +5694,26 @@
+@@ -5594,17 +5711,26 @@
  		error_print();
  		return -1;
  	}
@@ -5581,7 +5648,7 @@
  	}
  
  	*first_matched_sig_alg = 0;
-@@ -5645,11 +5754,14 @@
+@@ -5645,11 +5771,14 @@
  			error_print();
  			return -1;
  		}
@@ -5601,7 +5668,7 @@
  		if (!(sig_alg = tls_signature_scheme_from_algorithm_and_group_oid(alg_oid, group_oid))) {
  			error_print();
  			return -1;
-@@ -5851,7 +5963,7 @@
+@@ -5851,7 +5980,7 @@
  	int handshake_type;
  	const uint8_t *handshake_data;
  	size_t handshake_datalen;
@@ -5610,7 +5677,7 @@
  
  	// certificate_request
  	const uint8_t *request_context;
-@@ -5874,28 +5986,15 @@
+@@ -5874,28 +6003,15 @@
  	int common_sig_algs[4];
  	size_t common_sig_algs_cnt;
  	int common_sig_algs_cert[4];
@@ -5641,7 +5708,7 @@
  
  	if (tls_record_get_handshake(conn->plain_record,
  		&handshake_type, &handshake_data, &handshake_datalen) != 1) {
-@@ -5904,6 +6003,7 @@
+@@ -5904,6 +6020,7 @@
  		return -1;
  	}
  	if (handshake_type != TLS_handshake_certificate_request) {
@@ -5649,7 +5716,7 @@
  		if(conn->verbose) tls_trace("    no {CertificateRequest}\n\n");
  		return 0;
  	}
-@@ -6025,9 +6125,9 @@
+@@ -6025,9 +6142,9 @@
  			break;
  
  		default:
@@ -5662,7 +5729,7 @@
  		}
  	}
  
-@@ -6162,25 +6262,8 @@
+@@ -6162,25 +6279,8 @@
  
  	int verify_result = X509_verify_ok;
  
@@ -5689,7 +5756,7 @@
  	}
  
  	if (digest_update(&conn->dgst_ctx, conn->plain_record + 5, conn->plain_recordlen - 5) != 1) {
-@@ -6233,7 +6316,7 @@
+@@ -6233,7 +6333,7 @@
  	// verify server cert_chain
  	ret = tls_cert_chain_verify(
  		conn->protocol, X509_cert_chain_server, conn->cipher_suite,
@@ -5698,7 +5765,7 @@
  		conn->peer_cert_chain, conn->peer_cert_chain_len,
  		conn->ctx->cacerts, conn->ctx->cacertslen,
  		NULL, 0,
-@@ -6297,22 +6380,9 @@
+@@ -6297,22 +6397,9 @@
  	size_t certlen;
  	X509_KEY public_key;
  
@@ -5722,7 +5789,7 @@
  	if(conn->verbose) tls13_record_print(stderr, 0, 0, conn->plain_record, conn->plain_recordlen);
  
  	if ((ret = tls13_record_get_handshake_certificate_verify(conn->plain_record,
-@@ -6372,22 +6442,9 @@
+@@ -6372,22 +6459,9 @@
  	size_t certlen;
  	X509_KEY public_key;
  
@@ -5746,7 +5813,7 @@
  	if(conn->verbose) tls13_record_print(stderr, 0, 0, conn->plain_record, conn->plain_recordlen);
  
  
-@@ -6455,23 +6512,8 @@
+@@ -6455,23 +6529,8 @@
  		return -1;
  	}
  
@@ -5772,7 +5839,7 @@
  	}
  	if(conn->verbose) tls_trace("recv server {Finished}\n");
  	if(conn->verbose) tls13_record_print(stderr, 0, 0, conn->plain_record, conn->plain_recordlen);
-@@ -6582,7 +6624,7 @@
+@@ -6582,7 +6641,7 @@
  
  	if (!conn->recordlen) {
  		X509_KEY *sign_key = &conn->ctx->x509_keys[conn->cert_chain_idx - 1];
@@ -5781,7 +5848,7 @@
  		size_t siglen;
  		size_t padding_len;
  
-@@ -6689,16 +6731,20 @@
+@@ -6689,16 +6748,20 @@
  	int digest_oid;
  	size_t i;
  
@@ -5811,7 +5878,7 @@
  	}
  
  	*selected_cnt = 0;
-@@ -6776,7 +6822,7 @@
+@@ -6776,7 +6839,7 @@
  	size_t common_sig_algs_cert_cnt = 0;
  
  	const uint8_t *host_name = NULL;
@@ -5820,7 +5887,7 @@
  
  	int common_key_exchange_modes = 0;
  
-@@ -7668,6 +7714,32 @@
+@@ -7668,6 +7731,32 @@
  		}
  		return ret;
  	}
@@ -5853,7 +5920,7 @@
  	if(conn->verbose) tls_trace("recv ClientHello again\n");
  	if(conn->verbose) tls13_record_print(stderr, 0, 0, conn->record, conn->recordlen);
  
-@@ -8174,6 +8246,12 @@
+@@ -8174,6 +8263,12 @@
  
  	if(conn->verbose) tls_trace("send {Alert}\n");
  
@@ -5866,7 +5933,7 @@
  	if (conn->recordlen == 0) {
  		tls_record_set_protocol(conn->plain_record, TLS_protocol_tls12);
  		tls_record_set_alert(conn->plain_record, &conn->plain_recordlen, TLS_alert_level_fatal, alert);
-@@ -8509,7 +8587,7 @@
+@@ -8509,7 +8604,7 @@
  
  	if (conn->recordlen == 0) {
  		X509_KEY *sign_key = &conn->ctx->x509_keys[conn->cert_chain_idx - 1];
@@ -5875,7 +5942,7 @@
  		size_t siglen;
  		size_t padding_len;
  
-@@ -8630,30 +8708,9 @@
+@@ -8630,30 +8725,9 @@
  
  	int verify_result = X509_verify_ok;
  
@@ -5907,7 +5974,7 @@
  
  	if(conn->verbose) tls13_record_print(stderr, 0, 0, conn->plain_record, conn->plain_recordlen);
  
-@@ -8771,30 +8828,9 @@
+@@ -8771,30 +8845,9 @@
  	const uint8_t *verify_data;
  	size_t verify_data_len;
  
@@ -5939,7 +6006,7 @@
  
  	if(conn->verbose) tls13_record_print(stderr, 0, 0, conn->plain_record, conn->plain_recordlen);
  
-@@ -9009,6 +9045,63 @@
+@@ -9009,6 +9062,63 @@
  	return ret;
  
  
@@ -6003,7 +6070,7 @@
  }
  
  int tls13_do_client_handshake(TLS_CONNECT *conn)
-@@ -9050,6 +9143,33 @@
+@@ -9050,6 +9160,33 @@
  		break;
  
  	case TLS_state_server_hello:
@@ -6037,7 +6104,7 @@
  		ret = tls13_recv_server_hello(conn);
  		if (tls13_ctx_accept_change_cipher_spec(conn->ctx))
  			next_state = TLS_state_server_change_cipher_spec;
-@@ -9149,6 +9269,78 @@
+@@ -9149,6 +9286,78 @@
  }
  
  
@@ -6116,7 +6183,7 @@
  int tls13_do_server_handshake(TLS_CONNECT *conn)
  {
  	int ret;
-@@ -9157,6 +9349,21 @@
+@@ -9157,6 +9366,21 @@
  
  	switch (conn->handshake_state) {
  	case TLS_state_client_hello:
@@ -6138,7 +6205,7 @@
  		ret = tls13_recv_client_hello(conn);
  		if (conn->early_data)
  			next_state = TLS_state_early_data;
-@@ -9284,7 +9491,11 @@
+@@ -9284,7 +9508,11 @@
  
  	conn->handshake_state = next_state;
  
@@ -6151,7 +6218,30 @@
  		tls_clean_record(conn);
  	}
  
-@@ -9320,6 +9531,11 @@
+@@ -9292,11 +9520,22 @@
+ }
+ 
++int tls12_client_handshake(TLS_CONNECT *conn);
++
+ int tls13_client_handshake(TLS_CONNECT *conn)
+ {
+ 	int ret;
+ 
+ 	while (conn->handshake_state != TLS_state_handshake_over) {
+ 
++		/* After a range-negotiated TLS1.2 ServerHello, stay in the
++		 * same physical Crypto connection but use its TLS1.2 state machine.
++		 * Never retry ClientHello or silently choose an alternate provider. */
++		if (conn->ctx->min_protocol == TLS_protocol_tls12
++			&& conn->ctx->max_protocol == TLS_protocol_tls13
++			&& conn->protocol == TLS_protocol_tls12) {
++			return tls12_client_handshake(conn);
++		}
++
+ 		ret = tls13_do_client_handshake(conn);
+ 
+ 		if (ret != 1) {
+@@ -9320,6 +9559,11 @@
  
  	while (conn->handshake_state != TLS_state_handshake_over) {
  
@@ -6524,6 +6614,37 @@
  			if (!tls_type_is_in_list(cert_group, supported_groups, supported_groups_cnt)) {
  				error_print();
  				tls_cert_verify_set_result(verify_result, X509_verify_err_tls_extensions);
+@@ -180,9 +190,27 @@
+ 		}
+ 	}
+ 
+-	if (signature_algorithms && signature_algorithms_cnt) {
+-		if ((ret = tls_cert_match_signature_algorithms(cert, certlen,
+-			signature_algorithms, signature_algorithms_cnt, &sig_alg)) < 0) {
++	if (signature_algorithms && signature_algorithms_cnt) {
++		/* A TLS1.2 server Certificate must use a scheme compatible with
++		 * the negotiated cipher suite, not the first certificate-matching
++		 * item in the joint TLS1.2/1.3 algorithms list (possibly RSA-PSS).
++		 * The complete chain, trust, EKU and hostname checks remain strict. */
++		const int *matching_algorithms = signature_algorithms;
++		size_t matching_algorithms_cnt = signature_algorithms_cnt;
++		int server_scheme = 0;
++		if (cert_chain_type == X509_cert_chain_server) {
++			server_scheme = tls12_signature_scheme_from_cipher_suite(cipher_suite);
++			if (server_scheme < 0 || !tls_type_is_in_list(server_scheme,
++				signature_algorithms, signature_algorithms_cnt)) {
++				error_print();
++				tls_cert_verify_set_result(verify_result, X509_verify_err_tls_extensions);
++				return 0;
++			}
++			matching_algorithms = &server_scheme;
++			matching_algorithms_cnt = 1;
++		}
++		if ((ret = tls_cert_match_signature_algorithms(cert, certlen,
++			matching_algorithms, matching_algorithms_cnt, &sig_alg)) < 0) {
+ 			error_print();
+ 			tls_cert_verify_set_result(verify_result, X509_verify_err_tls_extensions);
+ 			return -1;
 --- a/src/x509_cer.c
 +++ b/src/x509_cer.c
 @@ -188,7 +188,7 @@

@@ -285,7 +285,8 @@ if(TARGET Salts::CNet)
     "CORE_TLS_TEST_P384_CA=\"${_cnet_test_root_ca}\""
     "CORE_TLS_TEST_P384_WRONG_CA=\"${_cnet_test_wrong_ca}\""
     "CORE_TLS_TEST_P384_LEAF=\"${_cnet_test_cert}\""
-    "CORE_TLS_TEST_P384_KEY=\"${_cnet_test_key}\"")
+    "CORE_TLS_TEST_P384_KEY=\"${_cnet_test_key}\""
+    "CORE_TLS_TEST_EXTERNAL_CA=\"${PROJECT_SOURCE_DIR}/crypto/tests/fixtures/external-io-ca-cert.pem\"")
   add_test(NAME saltscore.cnet_tls_ca_san
     COMMAND saltscore_cnet_tls_ca_san_test)
   set_tests_properties(saltscore.cnet_tls_ca_san PROPERTIES TIMEOUT 65)
@@ -305,6 +306,21 @@ if(TARGET Salts::CNet)
         --work "${PROJECT_BINARY_DIR}/native-required-mtls")
     set_tests_properties(saltscore.cnet_production_required_mtls
       PROPERTIES TIMEOUT 180 RESOURCE_LOCK cnet_native_required_mtls)
+
+    # CNet *production* client linked once to independent Python stdlib ssl
+    # server. Each peer pins exactly one TLS version; positive DNS SAN must
+    # transfer application bytes, and wrong DNS SAN must reject at handshake.
+    foreach(_protocol IN ITEMS tls12 tls13)
+      add_test(NAME saltscore.cnet_python_ssl_peer_${_protocol}
+        COMMAND "${Python3_EXECUTABLE}" -B
+          "${PROJECT_SOURCE_DIR}/tests/cnet-crypto-static/external_san_peer.py"
+          --binary "$<TARGET_FILE:saltscore_cnet_tls_ca_san_test>"
+          --cert "${PROJECT_SOURCE_DIR}/crypto/tests/fixtures/external-io-server-cert.pem"
+          --key "${PROJECT_SOURCE_DIR}/crypto/tests/fixtures/external-io-server-key.pem"
+          --protocol "${_protocol}")
+      set_tests_properties(saltscore.cnet_python_ssl_peer_${_protocol}
+        PROPERTIES TIMEOUT 95 RESOURCE_LOCK cnet_native_python_ssl_peer)
+    endforeach()
   endif()
 endif()
 
