@@ -463,6 +463,9 @@ static int run_python_ssl_client(const char *protocol, const char *ca,
   bool server_live = false, listener_live = false;
   bool tls_live = false, accepted = false, receive_armed = false;
   bool reply_sent = false;
+  /* The borrowed peer identity is readable only while CNet is OPEN. */
+  char client_hash[CNET_TLS_PEER_CERTIFICATE_SHA256_CAPACITY] = {0};
+  bool client_hash_verified = false;
   mem_buffer_t *outgoing = NULL;
   uint64_t deadline;
   uint16_t port = 0u;
@@ -502,6 +505,13 @@ static int run_python_ssl_client(const char *protocol, const char *ca,
     if (!should_accept) continue;
     if (probe.terminal_count != 0u && !reply_sent) break;
     if (probe.connected_count == 1u && !receive_armed) {
+      /* Authenticate the peer leaf BEFORE publishing any receive demand
+       * or reply. Python may close immediately after reading Q, at which
+       * point CNet correctly rejects further metadata queries. */
+      REQUIRE(cnet_tls_peer_certificate_sha256(
+          &server, probe.connection, client_hash) == SALTS_OK);
+      REQUIRE(strlen(client_hash) == 64u);
+      client_hash_verified = true;
       REQUIRE(cnet_receive(&server, probe.connection, 1u) == SALTS_OK);
       receive_armed = true;
     }
@@ -521,13 +531,11 @@ static int run_python_ssl_client(const char *protocol, const char *ca,
 
   REQUIRE(accepted);
   if (should_accept) {
-    char client_hash[CNET_TLS_PEER_CERTIFICATE_SHA256_CAPACITY] = {0};
     REQUIRE(probe.connected_count == 1u && probe.failed == 0u);
     REQUIRE(probe.tls_version_status == SALTS_OK);
     REQUIRE(strcmp(probe.tls_version, expected_version) == 0);
     REQUIRE(probe.tls_cipher_status == SALTS_OK && probe.tls_cipher[0] != '\0');
-    REQUIRE(cnet_tls_peer_certificate_sha256(
-        &server, probe.connection, client_hash) == SALTS_OK);
+    REQUIRE(client_hash_verified);
     REQUIRE(strlen(client_hash) == 64u);
     REQUIRE(probe.received_count == 1u && probe.received_byte == 'P');
     REQUIRE(probe.sent_count == 1u);
