@@ -7,11 +7,13 @@
 #include <windows.h>
 #else
 #include <unistd.h>
+#include <sys/wait.h>
 #endif
 /* No new project, workflow, installer or consumer. Exercise real OS
  * namespace/descriptor operations in the existing Salts::FS native CTest.
- * This M0 test does NOT validate monotonic generation allocation, cross-
- * process leases, crashes or Windows durable publication. */
+ * This M1 test checks native competing OS processes and old-inode pins, but
+ * does NOT validate monotonic generation allocation, distributed leases,
+ * process crashes, or Windows durable publication. */
 static int stage_revision_file(
     salts_fs_root_t *root, const char *name,
     const char *data, size_t bytes) {
@@ -29,6 +31,163 @@ static int stage_revision_file(
   }
   return rc;
 }
+
+
+#ifndef _WIN32
+/* A distinct child process pins the old exact root-relative A1 inode before
+ * the parent unlinks its name. This tests real OS descriptor retention, not
+ * a simulated in-memory read or a second filesystem implementation. */
+static int test_child_pinned_revision(
+    salts_fs_root_t *root, const char *revision, const char *expected,
+    size_t expected_size) {
+  int ready[2] = {-1, -1}, release[2] = {-1, -1};
+  pid_t child;
+  char signal = 0;
+  int status = 0, rc = 0;
+  if (pipe(ready) != 0) return 201;
+  if (pipe(release) != 0) {
+    close(ready[0]); close(ready[1]);
+    return 202;
+  }
+  child = fork();
+  if (child < 0) {
+    close(ready[0]); close(ready[1]);
+    close(release[0]); close(release[1]);
+    return 203;
+  }
+  if (child == 0) {
+    salts_fs_root_file_t *reader = NULL;
+    char bytes[128] = {0};
+    int count;
+    close(ready[0]);
+    close(release[1]);
+    if (expected_size > sizeof(bytes) ||
+        salts_fs_root_file_open(root, revision, SALTS_FS_O_RDONLY,
+                                0, &reader) != 0 || !reader)
+      _exit(4);
+    if (write(ready[1], "R", 1) != 1) _exit(5);
+    close(ready[1]);
+    if (read(release[0], &signal, 1) != 1 || signal != 'G') _exit(6);
+    close(release[0]);
+    count = salts_fs_root_file_read(reader, bytes, expected_size);
+    if (salts_fs_root_file_close(reader) != 0 ||
+        count != (int)expected_size ||
+        memcmp(bytes, expected, expected_size) != 0)
+      _exit(7);
+    _exit(0);
+  }
+  close(ready[1]);
+  close(release[0]);
+  /* If child fails before pinning, read reaches EOF; never unlink first. */
+  if (read(ready[0], &signal, 1) != 1 || signal != 'R') {
+    rc = 204;
+  } else if (salts_fs_root_unlink(root, revision) != 0) {
+    rc = 205;
+  }
+  close(ready[0]);
+  if (rc == 0 && write(release[1], "G", 1) != 1)
+    rc = 206;
+  close(release[1]);
+  if (waitpid(child, &status, 0) != child)
+    return 207;
+  if (rc != 0) return rc;
+  if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return 208;
+  return 0;
+}
+
+/* Two actual child processes simultaneously attempt the exact same absent
+ * destination. Native RENAME_NOREPLACE / RENAME_EXCL must give exactly one
+ * durable success and one EEXIST, even though both sources were prepared.
+ * The losing stage remains intact. */
+static int test_concurrent_noreplace(
+    salts_fs_root_t *root, unsigned long pid) {
+  char stage[2][96], target[96], observed[64] = {0}, token = 0;
+  const char first[] = "parallel-version-A";
+  const char second[] = "parallel-version-B";
+  int start[2] = {-1, -1};
+  pid_t children[2];
+  int status[2] = {0, 0};
+  int success = 0, conflict = 0;
+  salts_fs_root_file_t *reader = NULL;
+  salts_fs_stat_t info;
+  int count;
+  for (int i = 0; i < 2; ++i) {
+    if (snprintf(stage[i], sizeof(stage[i]), "fs-race-%lu-stage-%d",
+                 pid, i) <= 0)
+      return 220;
+  }
+  if (snprintf(target, sizeof(target), "fs-race-%lu-revision", pid) <= 0)
+    return 221;
+  if (stage_revision_file(root, stage[0], first, sizeof(first)-1u) != 0 ||
+      stage_revision_file(root, stage[1], second, sizeof(second)-1u) != 0)
+    return 222;
+  if (pipe(start) != 0) return 223;
+  for (int i = 0; i < 2; ++i) {
+    children[i] = fork();
+    if (children[i] < 0) {
+      close(start[0]);
+      /* Release the already-forked child, then reap it. */
+      if (i == 1) {
+        (void)write(start[1], "X", 1);
+        (void)waitpid(children[0], &status[0], 0);
+      }
+      close(start[1]);
+      return 224;
+    }
+    if (children[i] == 0) {
+      salts_fs_replace_state_t result = SALTS_FS_REPLACE_NOT_PUBLISHED;
+      int rc;
+      close(start[1]);
+      if (read(start[0], &token, 1) != 1) _exit(10);
+      close(start[0]);
+      rc = salts_fs_root_publish_file_noreplace(
+          root, stage[i], target, &result);
+      if (rc == 0 && result == SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+        _exit(0);
+      if (rc == -EEXIST && result == SALTS_FS_REPLACE_NOT_PUBLISHED)
+        _exit(1);
+      _exit(11);
+    }
+  }
+  close(start[0]);
+  if (write(start[1], "XX", 2) != 2) {
+    close(start[1]);
+    (void)waitpid(children[0], &status[0], 0);
+    (void)waitpid(children[1], &status[1], 0);
+    return 225;
+  }
+  close(start[1]);
+  for (int i = 0; i < 2; ++i) {
+    if (waitpid(children[i], &status[i], 0) != children[i] ||
+        !WIFEXITED(status[i]))
+      return 226;
+    if (WEXITSTATUS(status[i]) == 0) ++success;
+    else if (WEXITSTATUS(status[i]) == 1) ++conflict;
+    else return 227;
+  }
+  if (success != 1 || conflict != 1)
+    return 228;
+  if (salts_fs_root_file_open(root, target, SALTS_FS_O_RDONLY,
+                              0, &reader) != 0 || !reader)
+    return 229;
+  count = salts_fs_root_file_read(reader, observed, sizeof(first)-1u);
+  if (salts_fs_root_file_close(reader) != 0 ||
+      count != (int)(sizeof(first)-1u) ||
+      (memcmp(observed, first, sizeof(first)-1u) != 0 &&
+       memcmp(observed, second, sizeof(second)-1u) != 0))
+    return 230;
+  for (int i = 0; i < 2; ++i) {
+    if (salts_fs_root_stat(root, stage[i], &info) == 0) {
+      if (salts_fs_root_unlink(root, stage[i]) != 0)
+        return 231;
+    } else if (salts_fs_root_stat(root, stage[i], &info) != -ENOENT) {
+      return 232;
+    }
+  }
+  if (salts_fs_root_unlink(root, target) != 0) return 233;
+  return 0;
+}
+#endif /* !_WIN32 */
 
 static int test_immutable_revision_file(salts_fs_root_t *root,
                                          unsigned long pid) {
@@ -85,7 +244,8 @@ static int test_immutable_revision_file(salts_fs_root_t *root,
       salts_fs_root_stat(root, collision, &statbuf) != 0)
     return 114;
   if (salts_fs_root_unlink(root, collision)) return 115;
-  if (salts_fs_root_unlink(root, version1)) return 116;
+  if (test_child_pinned_revision(root, version1, a, sizeof(a)-1u))
+    return 116;
   if (salts_fs_root_file_seek(pin_a, 0, SEEK_SET) != 0 ||
       salts_fs_root_file_read(pin_a, scratch, sizeof(a) - 1u) !=
           (int)(sizeof(a) - 1u) ||
@@ -104,7 +264,8 @@ static int test_immutable_revision_file(salts_fs_root_t *root,
   if (salts_fs_root_unlink(root, version2) ||
       salts_fs_root_unlink(root, version3))
     return 122;
-  puts("Salts::FS native durable file revisions A1/B2/A3 + pinned old descriptor PASS");
+  if (test_concurrent_noreplace(root, pid) != 0) return 123;
+  puts("Salts::FS native durable A1/B2/A3 + child pin + 2-process competing no-replace PASS");
   return 0;
 #endif
 }
