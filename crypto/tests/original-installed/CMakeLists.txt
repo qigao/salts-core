@@ -7,7 +7,7 @@ if(NOT TARGET Salts::Crypto)
   message(FATAL_ERROR "Installed Salts::Crypto target is missing")
 endif()
 
-add_executable(crypto_original_consumer_c main.c)
+add_executable(crypto_original_consumer_c main.c surface_smoke.c)
 target_link_libraries(crypto_original_consumer_c PRIVATE Salts::Crypto)
 set_target_properties(crypto_original_consumer_c PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
