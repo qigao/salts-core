@@ -36,6 +36,10 @@ typedef struct tls_probe {
   unsigned connected_count;
   unsigned terminal_count;
   unsigned failed;
+  unsigned handshaking_count;
+  int last_connection_state;
+  int last_error_status;
+  int last_native_status;
   unsigned sent_count;
   unsigned received_count;
   unsigned char received_byte;
@@ -52,6 +56,14 @@ static void state_callback(void *user, cnet_connection connection,
                            cnet_connection_state state, const cnet_error *error) {
   tls_probe *p = (tls_probe *)user;
   p->connection = connection;
+  p->last_connection_state = (int)state;
+  if (error != NULL) {
+    /* Numeric terminal metadata only: never print credential material. */
+    p->last_error_status = error->status;
+    p->last_native_status = error->native_status;
+  }
+  if (state == CNET_CONNECTION_TLS_HANDSHAKING)
+    ++p->handshaking_count;
   if (state == CNET_CONNECTION_CONNECTED) {
     ++p->connected_count;
     size_t version_size = 0u, cipher_size = 0u;
@@ -553,6 +565,23 @@ static int run_python_ssl_client(const char *port_path,
 
   REQUIRE(accepted);
   if (should_verify) {
+    if (probe.connected_count != 1u || probe.failed != 0u) {
+      /* Log only stable public CNet state on a real TLS/mTLS failure.
+       * A peer TLS 1.3 timeout must not hide whether NativeIO accepted
+       * TCP, published HANDSHAKING or emitted a terminal callback. */
+      fprintf(stderr,
+              "CNET_MTLS_PHASE protocol=%s expected=%s accepted=%u "
+              "handshaking=%u connected=%u terminal=%u failed=%u "
+              "last_state=%d status=%d native_status=%d stage=%s "
+              "polled_events=%zu armed=%u reply_sent=%u\n",
+              protocol, outcome, accepted ? 1u : 0u,
+              probe.handshaking_count, probe.connected_count,
+              probe.terminal_count, probe.failed,
+              probe.last_connection_state, probe.last_error_status,
+              probe.last_native_status,
+              probe.failure_stage[0] != '\0' ? probe.failure_stage : "none",
+              events, armed ? 1u : 0u, response_sent ? 1u : 0u);
+    }
     REQUIRE(probe.connected_count == 1u && probe.failed == 0u);
     REQUIRE(armed && response_sent && probe.sent_count == 1u);
     REQUIRE(probe.received_count == 1u && probe.received_byte == 0x46u);
