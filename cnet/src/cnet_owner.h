@@ -307,6 +307,10 @@ bool cnet_owner_test_can_progress_receive(bool tls, bool read_active,
 bool cnet_owner_test_tls_control_probe_allowed(
     bool authenticated, bool read_active,
     bool closing, size_t receive_demand);
+/** First direct TLS receive demand must run provider ring even with native read lease. */
+bool cnet_owner_test_receive_direct_should_rearm(bool tls,
+                                                 bool native_read_active,
+                                                 size_t previous_demand);
 #endif
 
 #if defined(CNET_INTERNAL_PROFILING)
