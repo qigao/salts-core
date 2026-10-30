@@ -595,6 +595,35 @@ static int cnet_owner_cancel_session_work(cnet_owner_impl *impl,
   return SALTS_OK;
 }
 
+/*
+ * TLS ciphertext and decrypted plaintext are owned by the private TLS
+ * engine, not the buffer leased to an outstanding NativeIO TLS_READ.
+ * An application receive admitted after CONNECTED must drive that buffered
+ * data even if an earlier handshake-era receive remains in flight.
+ *
+ * Plain TCP/IPC/VSOCK cannot issue a second receive on an active read lane.
+ * The TLS pump separately preserves the same rule when it arms NativeIO.
+ */
+static bool cnet_owner_can_progress_receive(
+    const cnet_owner_session *session) {
+  return session != NULL && session->receive_demand != 0u &&
+         !session->close_requested &&
+         (session->peer.scheme == CNET_URI_TLS || !session->read_active);
+}
+
+#if defined(CNET_INTERNAL_TESTING)
+bool cnet_owner_test_can_progress_receive(bool tls, bool read_active,
+                                          bool close_requested,
+                                          size_t receive_demand) {
+  cnet_owner_session session = {0};
+  session.peer.scheme = tls ? CNET_URI_TLS : CNET_URI_TCP;
+  session.read_active = read_active;
+  session.close_requested = close_requested;
+  session.receive_demand = receive_demand;
+  return cnet_owner_can_progress_receive(&session);
+}
+#endif
+
 static int cnet_owner_process_session_work(cnet_owner_impl *impl) {
   while (impl->session_work_count != 0u) {
     const cnet_session_handle handle = impl->session_work[impl->session_work_head];
@@ -627,7 +656,7 @@ static int cnet_owner_process_session_work(cnet_owner_impl *impl) {
       if (status != SALTS_OK) return status;
       continue;
     }
-    if (session->receive_demand == 0u || session->read_active) continue;
+    if (!cnet_owner_can_progress_receive(session)) continue;
     status = cnet_owner_arm_receive(impl, session);
     if (status != SALTS_OK) return status;
   }
@@ -926,8 +955,7 @@ static int cnet_owner_arm_receive(cnet_owner_impl *impl, cnet_owner_session *ses
   native_io_operation_kind operation_kind;
   int status;
 
-  if (session->receive_demand == 0u || session->read_active || session->close_requested)
-    return SALTS_OK;
+  if (!cnet_owner_can_progress_receive(session)) return SALTS_OK;
   status = cnet_owner_ensure_receive_buffer(impl, session);
   if (status != SALTS_OK) return status;
   if (session->peer.scheme == CNET_URI_TLS) return cnet_owner_tls_pump(impl, session);
