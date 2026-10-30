@@ -138,6 +138,12 @@ install(FILES
 
 if(BUILD_TESTING)
   enable_language(CXX)
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  add_test(NAME crypto.original_surface_provenance
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_original_crypto_provenance.py")
+  set_tests_properties(crypto.original_surface_provenance
+    PROPERTIES ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1" TIMEOUT 30)
   add_subdirectory(tests/algorithms)
   add_subdirectory(tests/asn1)
   add_subdirectory(tests/x509)
