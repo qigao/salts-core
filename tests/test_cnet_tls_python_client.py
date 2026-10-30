@@ -48,6 +48,7 @@ def scenario(binary: Path, work: Path, crypto, fixtures, proto: str, case: str) 
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )
     failure = None
+    phase = "await-native-listen"
     peer_rejected = False
     peer_completed = False
     try:
@@ -61,22 +62,28 @@ def scenario(binary: Path, work: Path, crypto, fixtures, proto: str, case: str) 
         port = int(port_path.read_text(encoding="ascii").strip())
         if not 0 < port < 65536:
             raise AssertionError("native listener port invalid")
+        phase = "tcp-connect"
         with socket.create_connection(("127.0.0.1", port), timeout=8.0) as raw:
             raw.settimeout(9.0)
             try:
+                phase = "tls-handshake"
                 with ctx.wrap_socket(raw, server_hostname="localhost") as peer:
                     peer.settimeout(9.0)
+                    phase = "negotiated-version"
                     if peer.version() != VERSION[proto]:
                         raise AssertionError("Python negotiated a different TLS version")
                     # For TLS1.3 Python's wrap_socket() can complete before
                     # the CNet server validates the client's CertificateVerify.
                     # Always force application-layer progress for negatives.
+                    phase = "authenticated-request"
                     peer.sendall(b"F")
+                    phase = "authenticated-response"
                     response = peer.recv(1)
                     if expected == "accept":
                         if response != b"G":
                             raise AssertionError(f"valid mTLS app data missing: {response!r}")
                         peer_completed = True
+                        phase = "authenticated"
                     elif response == b"G":
                         raise AssertionError("invalid mTLS client received authenticated data")
                     else:
@@ -90,9 +97,9 @@ def scenario(binary: Path, work: Path, crypto, fixtures, proto: str, case: str) 
         if expected == "accept" and not peer_completed:
             raise AssertionError("valid bidirectional TLS data was not exchanged")
     except (socket.timeout, TimeoutError) as exc:
-        failure = f"deadline exceeded: {type(exc).__name__}"
+        failure = f"deadline exceeded during {phase}: {type(exc).__name__}"
     except Exception as exc:
-        failure = f"{type(exc).__name__}: {str(exc)[:300]}"
+        failure = f"{type(exc).__name__} during {phase}: {str(exc)[:300]}"
     finally:
         try:
             out, err = native.communicate(timeout=12)
@@ -104,7 +111,7 @@ def scenario(binary: Path, work: Path, crypto, fixtures, proto: str, case: str) 
         f"PASS production NativeIO CNet server / TLS{proto} / {expected}" not in out
     ):
         raise AssertionError(
-            f"TLS{proto} {case} failed: {failure or ''} "
+            f"TLS{proto} {case} failed at {phase}: {failure or ''} "
             f"native_exit={native.returncode} "
             f"stdout={out[-350:]} stderr={err[-1200:]}"
         )
