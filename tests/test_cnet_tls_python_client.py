@@ -27,24 +27,29 @@ CASES = ("client", "missing", "wrongca", "eku", "expired", "chain", "badsig")
 VERSION = {"12": "TLSv1.2", "13": "TLSv1.3"}
 
 
-def fragmented_tls13_exchange(ctx: ssl.SSLContext, raw: socket.socket) -> None:
-    """One real TLS1.3 client using Python's SSLObject and MemoryBIO.
+def fragmented_tls13_exchange(
+    ctx: ssl.SSLContext, raw: socket.socket, *, coalesced: bool = False
+) -> None:
+    """Actual SSLObject TLS1.3 Finished + first ApplicationData transition.
 
-    Carry Finished and the first application record in the same outbound
-    batch, then split ciphertext into bounded TCP writes. The native CNet
-    peer must finish authentication and deliver F before it can send G.
-    No plaintext/TLS keys are logged and no alternative native engine exists.
+    Preserve the existing TCP-fragmented case and separately admit their
+    complete encrypted records in one socket send. Neither case exposes
+    plaintext records or TLS secrets; both use one native production CNet.
     """
     incoming, outgoing = ssl.MemoryBIO(), ssl.MemoryBIO()
     peer = ctx.wrap_bio(incoming, outgoing, server_hostname="localhost")
     raw.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
-    def flush_ciphertext() -> None:
+    def flush_ciphertext(*, whole_batch: bool = False) -> None:
         while outgoing.pending:
             wire = outgoing.read()
+            if whole_batch:
+                # A single real TLS1.3 encrypted Finished+ApplicationData
+                # batch, with no Python side timing delay or fake record.
+                raw.sendall(wire)
+                continue
             offset = 0
-            # Split at record-header and payload boundaries. The tail is
-            # sent without sleeping or waiting for a handshake response.
+            # Preserve the original bounded TCP fragmentation acceptance.
             for n in (1, 2, 7, 31, 127):
                 if offset >= len(wire):
                     break
@@ -83,7 +88,7 @@ def fragmented_tls13_exchange(ctx: ssl.SSLContext, raw: socket.socket) -> None:
         raise AssertionError("TLS1.3 Finished already flushed; coalescing test invalid")
     if peer.write(b"F") != 1 or outgoing.pending <= finished_bytes:
         raise AssertionError("Python SSLObject did not queue app data after Finished")
-    flush_ciphertext()
+    flush_ciphertext(whole_batch=coalesced)
 
     while True:
         try:
@@ -102,12 +107,13 @@ def scenario(
     binary: Path, work: Path, crypto, fixtures, proto: str, case: str,
     *, fragmented: bool = False, idle: bool = False,
     orderly_close: bool = False, gated: bool = False,
+    coalesced: bool = False,
 ) -> None:
-    if (idle or orderly_close or gated) and (
-        fragmented or proto != "13" or case != "client" or
-        sum((idle, orderly_close, gated)) != 1
+    if (idle or orderly_close or gated or coalesced or fragmented) and (
+        proto != "13" or case != "client" or
+        sum((idle, orderly_close, gated, coalesced, fragmented)) != 1
     ):
-        raise AssertionError("idle/close/gated require separate real TLS1.3 credentials")
+        raise AssertionError("special TLS1.3 cases require distinct real client credentials")
     expected = (
         "gated" if gated else
         "close" if orderly_close else
@@ -120,6 +126,7 @@ def scenario(
         "-gated" if gated else
         "-close" if orderly_close else
         "-idle" if idle else
+        "-coalesced" if coalesced else
         "-fragmented" if fragmented else ""
     )
     port_path = work / f"native-{proto}-{case}{suffix}.port"
@@ -160,9 +167,13 @@ def scenario(
         with socket.create_connection(("127.0.0.1", port), timeout=8.0) as raw:
             raw.settimeout(9.0)
             try:
-                if fragmented:
-                    phase = "tls13-fragmented-finished-plus-application"
-                    fragmented_tls13_exchange(ctx, raw)
+                if fragmented or coalesced:
+                    phase = (
+                        "tls13-coalesced-finished-plus-application"
+                        if coalesced else
+                        "tls13-fragmented-finished-plus-application"
+                    )
+                    fragmented_tls13_exchange(ctx, raw, coalesced=coalesced)
                     peer_completed = True
                     phase = "authenticated"
                 else:
@@ -261,7 +272,8 @@ def scenario(
         )
     print(
         f"PASS independent Python ssl TLS{proto} {case} {expected}"
-        + (" Finished+ApplicationData fragmented" if fragmented else "")
+        + (" Finished+ApplicationData fragmented" if fragmented else
+           " Finished+ApplicationData coalesced" if coalesced else "")
     )
 
 
@@ -294,6 +306,14 @@ def main() -> int:
                 scenario(
                     args.binary, private, python_mtls, fixtures, "13", "client",
                     orderly_close=True,
+                )
+                # Before the immediate-send case, force the real encrypted
+                # ClientFinished+ApplicationData to arrive in a single
+                # socket write. Compare its verdict to the separately gated
+                # and fragmented modes without adding a new CTest.
+                scenario(
+                    args.binary, private, python_mtls, fixtures, "13", "client",
+                    coalesced=True,
                 )
             for case in CASES:
                 scenario(args.binary, private, python_mtls, fixtures, proto, case)
