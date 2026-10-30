@@ -5,11 +5,25 @@ on:
     paths-ignore:
       - "docs/**"
       - "**/*.md"
+      - "packaging/**"
+      - "tools/migration/**"
+      - "tools/check_full_source_migration.py"
+      - "tools/audit_original_utils_parity.py"
+      - "tools/check_migration_evidence.py"
+      - "tools/check_dependency_boundaries.py"
+      - "tools/check_module_layout.py"
   push:
     branches: [master]
     paths-ignore:
       - "docs/**"
       - "**/*.md"
+      - "packaging/**"
+      - "tools/migration/**"
+      - "tools/check_full_source_migration.py"
+      - "tools/audit_original_utils_parity.py"
+      - "tools/check_migration_evidence.py"
+      - "tools/check_dependency_boundaries.py"
+      - "tools/check_module_layout.py"
   workflow_dispatch:
 
 permissions:
@@ -49,7 +63,7 @@ jobs:
       - name: Pinned build prerequisites
         uses: ./.github/actions/setup-core-native
         with:
-          dependency-mode: source
+          dependency-mode: binary
           token: ${{ github.token }}
           features: simd,usb,playback,capture,zstd
       - name: Configure one full sanitizer graph
