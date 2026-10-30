@@ -3137,6 +3137,32 @@ int cnet_owner_send_buffer_close_direct(cnet_owner *owner,
   return cnet_owner_finish_write_admission(impl, session, handle);
 }
 
+/*
+ * Direct receive admission is distinct from the later Owner work-loop gate.
+ * TLS may have decrypted/application bytes retained in its private provider
+ * ring even while a pre-existing NativeIO ciphertext TLS_READ is active.
+ * The first plaintext receive demand must therefore queue an Owner pump
+ * regardless of that socket read lease. For plain streams, keep the
+ * single-read rule: an in-flight native receive already supplies progress.
+ */
+static bool cnet_owner_receive_direct_should_rearm(
+    const cnet_owner_session *session) {
+  return session != NULL && session->receive_demand == 0u &&
+         (session->peer.scheme == CNET_URI_TLS || !session->read_active);
+}
+
+#if defined(CNET_INTERNAL_TESTING)
+bool cnet_owner_test_receive_direct_should_rearm(bool tls,
+                                                 bool native_read_active,
+                                                 size_t previous_demand) {
+  cnet_owner_session session = {0};
+  session.peer.scheme = tls ? CNET_URI_TLS : CNET_URI_TCP;
+  session.read_active = native_read_active;
+  session.receive_demand = previous_demand;
+  return cnet_owner_receive_direct_should_rearm(&session);
+}
+#endif
+
 int cnet_owner_receive_direct(cnet_owner *owner, cnet_session_handle session_handle,
                               size_t demand) {
   cnet_owner_impl *impl = cnet_owner_get(owner);
@@ -3158,7 +3184,7 @@ int cnet_owner_receive_direct(cnet_owner *owner, cnet_session_handle session_han
     return SALTS_ESHUTDOWN;
   if (demand > SIZE_MAX - session->receive_demand) return SALTS_ERANGE;
 
-  queue_rearm = !session->read_active && session->receive_demand == 0u;
+  queue_rearm = cnet_owner_receive_direct_should_rearm(session);
   session->receive_demand += demand;
   if (!queue_rearm) return SALTS_OK;
 
