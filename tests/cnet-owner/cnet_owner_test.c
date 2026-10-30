@@ -2005,6 +2005,19 @@ spec("CNet owner shard") {
         true, true, false, 1u));
   }
 
+  it("schedules first direct TLS receive despite an active NativeIO read") {
+    /* Reproduce the immediate/coalesced app-data handoff missed by the
+     * original direct admission guard. A live native TLS_READ owns a
+     * different buffer and MUST NOT suppress provider ring progression. */
+    check_true(cnet_owner_test_receive_direct_should_rearm(true, true, 0u));
+    check_true(cnet_owner_test_receive_direct_should_rearm(true, false, 0u));
+    check_false(cnet_owner_test_receive_direct_should_rearm(true, true, 1u));
+    /* Plain TCP still relies on its one existing NativeIO read. */
+    check_false(cnet_owner_test_receive_direct_should_rearm(false, true, 0u));
+    check_true(cnet_owner_test_receive_direct_should_rearm(false, false, 0u));
+    check_false(cnet_owner_test_receive_direct_should_rearm(false, false, 1u));
+  }
+
   it("drains buffered TLS input despite an active handshake-era NativeIO read") {
     /* TLS private ring/plaintext is independent of the in-flight recv buffer.
      * Receive admission must pump it without submitting a duplicate read. */
