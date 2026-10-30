@@ -12,6 +12,14 @@ on:
       - "tools/check_migration_evidence.py"
       - "tools/check_dependency_boundaries.py"
       - "tools/check_module_layout.py"
+      - "**/*provenance.py"
+      - "crypto/tools/check_local_native_source.py"
+      - "tests/test_local_native_crypto_source.py"
+      - "tests/test_full_source_migration.py"
+      - "tests/test_migration_evidence.py"
+      - ".github/workflows/migration-gate.yml"
+      - ".github/workflows/portable-compiler-abi.yml"
+      - ".github/workflows/sanitizers.yml"
   push:
     branches: [master]
     paths-ignore:
@@ -24,6 +32,14 @@ on:
       - "tools/check_migration_evidence.py"
       - "tools/check_dependency_boundaries.py"
       - "tools/check_module_layout.py"
+      - "**/*provenance.py"
+      - "crypto/tools/check_local_native_source.py"
+      - "tests/test_local_native_crypto_source.py"
+      - "tests/test_full_source_migration.py"
+      - "tests/test_migration_evidence.py"
+      - ".github/workflows/migration-gate.yml"
+      - ".github/workflows/portable-compiler-abi.yml"
+      - ".github/workflows/sanitizers.yml"
   workflow_dispatch:
 
 permissions:
@@ -46,10 +62,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - {os: ubuntu-24.04, dependency_mode: binary}
-          - {os: macos-15, dependency_mode: binary}
-          - {os: windows-2025, dependency_mode: binary}
+        os: [ubuntu-24.04, macos-15, windows-2025]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
@@ -76,7 +89,7 @@ jobs:
       - name: Pinned build prerequisites
         uses: ./.github/actions/setup-core-native
         with:
-          dependency-mode: ${{ matrix.dependency_mode }}
+          dependency-mode: binary
           token: ${{ github.token }}
           features: simd,usb,playback,capture,zstd
       - name: Configure full Core graph

@@ -72,7 +72,6 @@ def check_core(owner: Path = ROOT) -> list[str]:
     scan = contents["core/src/re_scan.h"]
     cmake = contents["core/CMakeLists.txt"]
     suite = contents["tests/CMakeLists.txt"]
-    installed = contents[]
     for symbol in PUBLIC:
         pattern = r"\b" + re.escape(symbol) + r"\s*\("
         if not re.search(pattern, h):
@@ -83,7 +82,7 @@ def check_core(owner: Path = ROOT) -> list[str]:
     if found != CASES:
         errors.append("Original 25 regex TinyTest cases changed/missing")
     if cmake.count("src/re.c") != 1 or cmake.count("include/re.h") != 1:
-        errors.append("Core must compile and install ONE original regex owner")
+        errors.append("Core must compile and expose ONE original regex owner")
     for marker in ("saltscore.original_re_smoke",
                    "saltscore.original_re_25_case_contract",
                    "Salts::Core", "Salts::TinyTest"):

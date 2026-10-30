@@ -12,6 +12,14 @@ on:
       - "tools/check_migration_evidence.py"
       - "tools/check_dependency_boundaries.py"
       - "tools/check_module_layout.py"
+      - "**/*provenance.py"
+      - "crypto/tools/check_local_native_source.py"
+      - "tests/test_local_native_crypto_source.py"
+      - "tests/test_full_source_migration.py"
+      - "tests/test_migration_evidence.py"
+      - ".github/workflows/migration-gate.yml"
+      - ".github/workflows/portable-compiler-abi.yml"
+      - ".github/workflows/ci.yml"
   push:
     branches: [master]
     paths-ignore:
@@ -24,6 +32,14 @@ on:
       - "tools/check_migration_evidence.py"
       - "tools/check_dependency_boundaries.py"
       - "tools/check_module_layout.py"
+      - "**/*provenance.py"
+      - "crypto/tools/check_local_native_source.py"
+      - "tests/test_local_native_crypto_source.py"
+      - "tests/test_full_source_migration.py"
+      - "tests/test_migration_evidence.py"
+      - ".github/workflows/migration-gate.yml"
+      - ".github/workflows/portable-compiler-abi.yml"
+      - ".github/workflows/ci.yml"
   workflow_dispatch:
 
 permissions:

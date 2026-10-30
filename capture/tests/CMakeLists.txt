@@ -14,13 +14,24 @@ if(WIN32)
   add_executable(capture_exposure_windows_test test_capture_exposure_windows.c)
   target_compile_features(capture_exposure_windows_test PRIVATE c_std_11)
   target_compile_definitions(capture_exposure_windows_test PRIVATE SALTS_CAPTURE_BUILD)
+  # Compile the exact backend body in this executable; linking the complete
+  # Capture DLL duplicates the same Windows provider and can keep hosted
+  # processes alive after the fake-COM assertions finish.
   target_link_libraries(capture_exposure_windows_test PRIVATE
-    Salts::Capture Salts::Core Salts::TinyTest yuv
+    Salts::Core Salts::TinyTest yuv
     mfplat mf mfuuid mfreadwrite strmiids ole32 oleaut32)
   add_test(NAME capture_exposure_windows_test COMMAND capture_exposure_windows_test)
   set_target_properties(capture_exposure_windows_test PROPERTIES FOLDER "capture/tests")
   set_tests_properties(capture_exposure_windows_test PROPERTIES TIMEOUT 60)
-  salts_capture_original_test(capture_windows_test test_capture_windows.c)
+  # This executable enumerates physical audio/video/screen/GPU devices and may
+  # open camera modes. Build it on Windows to protect the API/ABI, but do not
+  # register it in generic hosted-runner CTest. Device-backed qualification
+  # belongs on an explicit hardware environment.
+  add_executable(capture_windows_test test_capture_windows.c)
+  target_compile_features(capture_windows_test PRIVATE c_std_11)
+  set_target_properties(capture_windows_test PROPERTIES
+    C_STANDARD_REQUIRED ON C_EXTENSIONS OFF FOLDER "capture/tests")
+  target_link_libraries(capture_windows_test PRIVATE Salts::Capture Salts::TinyTest)
 endif()
 
 if(ANDROID)
