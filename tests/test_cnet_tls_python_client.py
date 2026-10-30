@@ -101,13 +101,25 @@ def fragmented_tls13_exchange(ctx: ssl.SSLContext, raw: socket.socket) -> None:
 def scenario(
     binary: Path, work: Path, crypto, fixtures, proto: str, case: str,
     *, fragmented: bool = False, idle: bool = False,
+    orderly_close: bool = False,
 ) -> None:
-    if idle and (fragmented or proto != "13" or case != "client"):
-        raise AssertionError("idle peer requires a genuine TLS1.3 client certificate")
-    expected = "idle" if idle else "accept" if case == "client" else "reject"
+    if (idle or orderly_close) and (
+        fragmented or proto != "13" or case != "client" or
+        (idle and orderly_close)
+    ):
+        raise AssertionError("idle/close require separate real TLS1.3 client credentials")
+    expected = (
+        "close" if orderly_close else
+        "idle" if idle else
+        "accept" if case == "client" else "reject"
+    )
     if fragmented and (proto != "13" or case != "client"):
         raise AssertionError("fragmented ciphertext gate is valid TLS1.3 only")
-    suffix = "-idle" if idle else "-fragmented" if fragmented else ""
+    suffix = (
+        "-close" if orderly_close else
+        "-idle" if idle else
+        "-fragmented" if fragmented else ""
+    )
     port_path = work / f"native-{proto}-{case}{suffix}.port"
     if port_path.exists():
         raise AssertionError("stale private port marker")
@@ -177,17 +189,26 @@ def scenario(
                             peer.sendall(b"F")
                             phase = "authenticated-response"
                             response = peer.recv(1)
-                            if expected == "accept":
+                            if expected in ("accept", "close"):
                                 if response != b"G":
                                     raise AssertionError(f"valid mTLS app data missing: {response!r}")
+                                if orderly_close:
+                                    # A real TLS1.3 close_notify handshake,
+                                    # not a socket shutdown or EOF disguised
+                                    # as successful TLS termination. This
+                                    # waits for the CNet server's close_notify.
+                                    phase = "authenticated-close-notify"
+                                    peer.unwrap()
+                                    phase = "authenticated-close-complete"
+                                else:
+                                    phase = "authenticated"
                                 peer_completed = True
-                                phase = "authenticated"
                             elif response == b"G":
                                 raise AssertionError("invalid mTLS client received authenticated data")
                             else:
                                 peer_rejected = True
             except (ssl.SSLError, ConnectionError, EOFError):
-                if expected == "accept":
+                if expected in ("accept", "close"):
                     raise
                 if idle:
                     # Native's exact READ-stage timeout assertion below is
@@ -197,7 +218,7 @@ def scenario(
                     peer_rejected = True
         if expected == "reject" and not peer_rejected:
             raise AssertionError("invalid client was not rejected")
-        if expected in ("accept", "idle") and not peer_completed:
+        if expected in ("accept", "idle", "close") and not peer_completed:
             raise AssertionError("authenticated peer did not reach required terminal")
     except (socket.timeout, TimeoutError) as exc:
         failure = f"deadline exceeded during {phase}: {type(exc).__name__}"
@@ -255,6 +276,13 @@ def main() -> int:
         scenario(
             args.binary, private, python_mtls, fixtures, "13", "client",
             idle=True,
+        )
+        # One actual authenticated application exchange followed by a
+        # bidirectional TLS1.3 close_notify, retaining the same NativeIO
+        # request ownership. Python unwrap() cannot accept EOF as closure.
+        scenario(
+            args.binary, private, python_mtls, fixtures, "13", "client",
+            orderly_close=True,
         )
     print("PASS Python ssl client -> one production CNet REQUIRED-mTLS server on both TLS versions")
     return 0
