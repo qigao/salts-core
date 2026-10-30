@@ -7,8 +7,8 @@
   "blockers": [
     {
       "platform": "ios-arm64",
-      "status": "unresolved",
-      "kind": "missing-original-public-implementations",
+      "status": "implemented-pending-exact-head-ci",
+      "kind": "frozen-source-public-surface-gap",
       "symbols": [
         "salts_capture_list_gpu_devices",
         "salts_video_capture_get_control_range",
@@ -17,7 +17,7 @@
         "salts_video_capture_set_crop",
         "salts_video_capture_get_crop"
       ],
-      "evidence": "The frozen public header declares these APIs; the frozen iOS source set has no definitions. Installed consumers retain real references to every common API and must not omit these symbols."
+      "evidence": "The frozen public header declares these APIs and the seven frozen iOS donor files still have no definitions. The active iOS CMake graph now generates one bounded C11 translation unit defining exactly these six symbols with the sibling Apple/POSIX unsupported/empty-list semantics. Exact-head iOS link and installed-consumer CI are still required before acceptance."
     },
     {
       "platform": "linux",
