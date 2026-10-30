@@ -191,8 +191,26 @@ static int tls12_cert_chain_match(
 	}
 
 	if (signature_algorithms && signature_algorithms_cnt) {
+		/* A TLS1.2 server Certificate must use a scheme compatible with
+		 * the negotiated cipher suite, not the first certificate-matching
+		 * item in the joint TLS1.2/1.3 algorithms list (possibly RSA-PSS).
+		 * The complete chain, trust, EKU and hostname checks remain strict. */
+		const int *matching_algorithms = signature_algorithms;
+		size_t matching_algorithms_cnt = signature_algorithms_cnt;
+		int server_scheme = 0;
+		if (cert_chain_type == X509_cert_chain_server) {
+			server_scheme = tls12_signature_scheme_from_cipher_suite(cipher_suite);
+			if (server_scheme < 0 || !tls_type_is_in_list(server_scheme,
+				signature_algorithms, signature_algorithms_cnt)) {
+				error_print();
+				tls_cert_verify_set_result(verify_result, X509_verify_err_tls_extensions);
+				return 0;
+			}
+			matching_algorithms = &server_scheme;
+			matching_algorithms_cnt = 1;
+		}
 		if ((ret = tls_cert_match_signature_algorithms(cert, certlen,
-			signature_algorithms, signature_algorithms_cnt, &sig_alg)) < 0) {
+			matching_algorithms, matching_algorithms_cnt, &sig_alg)) < 0) {
 			error_print();
 			tls_cert_verify_set_result(verify_result, X509_verify_err_tls_extensions);
 			return -1;
