@@ -13,6 +13,10 @@ target_link_libraries(saltscore_fs PUBLIC Salts::Platform)
 
 if(WIN32)
   target_sources(saltscore_fs PRIVATE src/fs_watch_windows.c)
+  if(MSVC)
+    target_compile_options(saltscore_fs PRIVATE
+      $<$<COMPILE_LANGUAGE:C>:-experimental:c11atomics>)
+  endif()
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_sources(saltscore_fs PRIVATE src/fs_watch_linux.c)
 elseif(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
