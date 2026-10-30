@@ -74,10 +74,15 @@ def fragmented_tls13_exchange(ctx: ssl.SSLContext, raw: socket.socket) -> None:
 
     if peer.version() != "TLSv1.3":
         raise AssertionError(f"fragmented peer negotiated {peer.version()!r}")
-    # Deliberately queue ApplicationData BEFORE sending the queued Finished,
-    # so native TLS1.3 sees two sequential protected records in one batch.
-    if peer.write(b"F") != 1:
-        raise AssertionError("Python SSLObject did not accept application byte")
+    if not peer.getpeercert():
+        raise AssertionError("Python TLS1.3 peer did not verify server certificate")
+    # MemoryBIO must contain the encrypted client Finished from handshake.
+    # The application record is then added before EITHER is sent on TCP.
+    finished_bytes = outgoing.pending
+    if finished_bytes == 0:
+        raise AssertionError("TLS1.3 Finished already flushed; coalescing test invalid")
+    if peer.write(b"F") != 1 or outgoing.pending <= finished_bytes:
+        raise AssertionError("Python SSLObject did not queue app data after Finished")
     flush_ciphertext()
 
     while True:
