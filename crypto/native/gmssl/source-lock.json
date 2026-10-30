@@ -466,7 +466,7 @@
   "preparation": "Original pinned port recipe, with existing Core TLS12 empty-authority, TLS13 ticket-bound and strict handshake-reader adaptations. The checked-in patch reproduces the resulting source bytes; no provider binary is imported. The separately recorded local_hardening entries retain defined unsigned byte semantics under full implementation instrumentation.",
   "derivation_patch": {
     "path": "upstream-to-local.patch",
-    "git_blob": "349fb5130485c8cf8a3484807d1f6738c2e6a4bd"
+    "git_blob": "2b6d12d1241307d19ae6922d0c0ca23745b5599d"
   },
   "compile_definitions": [
     "ENABLE_AES",
@@ -1319,7 +1319,7 @@
     {
       "path": "src/tls13.c",
       "upstream_git_blob": "ca4452a2a0842309464c2b22f70255f482286757",
-      "local_git_blob": "2362c7a46b82c89cb196767d0cf5ae5d63fef5bd"
+      "local_git_blob": "3a63b9b45bade370b2e2f422827157da0755ae72"
     },
     {
       "path": "src/tls_alpn.c",

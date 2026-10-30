@@ -156,7 +156,7 @@ static int drive(cnet_client *client, cnet_client *server,
   if (!(expr)) {                                                              \
     fprintf(stderr, "CNet TLS case %s failed at %d: %s\n",                    \
             label, __LINE__, #expr);                                          \
-    result = __LINE__;                                                        \
+    result = 1;                                                        \
     goto cleanup;                                                             \
   }                                                                           \
 } while (0)
@@ -561,16 +561,16 @@ cleanup:
   if (listener_live) {
     (void)cnet_listener_close(&listener);
     if (cnet_listener_destroy(&listener) != SALTS_OK && result == 0)
-      result = __LINE__;
+      result = 1;
   }
   if (server_live) {
     if (cnet_client_stop(&server, 5000u) != SALTS_OK && result == 0)
-      result = __LINE__;
+      result = 1;
     if (cnet_client_destroy(&server) != SALTS_OK && result == 0)
-      result = __LINE__;
+      result = 1;
   }
   if (tls_live && cnet_tls_server_destroy(&tls_server) != SALTS_OK && result == 0)
-    result = __LINE__;
+    result = 1;
   return result;
 }
 

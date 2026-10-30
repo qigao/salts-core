@@ -9373,6 +9373,10 @@ int tls13_do_server_handshake(TLS_CONNECT *conn)
 			if (ret != 1) return ret;
 			if (selected_protocol == TLS_protocol_tls12) {
 				conn->protocol = TLS_protocol_tls12;
+				/* TLS1.3 initialization stores certificate_request, but the
+				 * TLS1.2 state machine uses client_certificate_verify.
+				 * Preserve REQUIRED mTLS when a range selects TLS1.2. */
+				conn->client_certificate_verify = conn->ctx->certificate_request ? 1 : 0;
 				next_state = TLS_state_client_hello;
 				break;
 			}

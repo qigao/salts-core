@@ -6230,7 +6230,7 @@
  int tls13_do_server_handshake(TLS_CONNECT *conn)
  {
  	int ret;
-@@ -9157,6 +9366,21 @@
+@@ -9157,6 +9366,25 @@
  
  	switch (conn->handshake_state) {
  	case TLS_state_client_hello:
@@ -6241,6 +6241,10 @@
 +			if (ret != 1) return ret;
 +			if (selected_protocol == TLS_protocol_tls12) {
 +				conn->protocol = TLS_protocol_tls12;
++				/* TLS1.3 initialization stores certificate_request, but the
++				 * TLS1.2 state machine uses client_certificate_verify.
++				 * Preserve REQUIRED mTLS when a range selects TLS1.2. */
++				conn->client_certificate_verify = conn->ctx->certificate_request ? 1 : 0;
 +				next_state = TLS_state_client_hello;
 +				break;
 +			}
@@ -6252,7 +6256,7 @@
  		ret = tls13_recv_client_hello(conn);
  		if (conn->early_data)
  			next_state = TLS_state_early_data;
-@@ -9284,7 +9508,11 @@
+@@ -9284,7 +9512,11 @@
  
  	conn->handshake_state = next_state;
  
@@ -6265,7 +6269,7 @@
  		tls_clean_record(conn);
  	}
  
-@@ -9292,11 +9520,22 @@
+@@ -9292,11 +9524,22 @@
  }
  
 +int tls12_client_handshake(TLS_CONNECT *conn);
@@ -6288,7 +6292,7 @@
  		ret = tls13_do_client_handshake(conn);
  
  		if (ret != 1) {
-@@ -9320,6 +9559,11 @@
+@@ -9320,6 +9563,11 @@
  
  	while (conn->handshake_state != TLS_state_handshake_over) {
  
