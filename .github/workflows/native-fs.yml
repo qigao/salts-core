@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - "fs/src/**"
+      - "fs/original/**"
       - "fs/include/salts/fs.h"
       - "fs/include/salts/fs_watch.h"
       - "fs/CMakeLists.txt"
