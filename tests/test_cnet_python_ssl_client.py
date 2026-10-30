@@ -58,7 +58,8 @@ def one_case(binary: Path, fixtures: dict, protocol: str,
                     tls.sendall(b"P")
                     saw_reply = tls.recv(1) == b"Q"
         except (ssl.SSLError, ConnectionError, OSError) as exc:
-            failure = type(exc).__name__
+            # Only the SSL alert/reason is reported, never certificate or key bytes.
+            failure = f"{type(exc).__name__}: {str(exc)[:220]}"
         except ValueError as exc:
             failure = str(exc)
         try:
