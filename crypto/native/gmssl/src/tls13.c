@@ -4504,6 +4504,23 @@ int tls13_recv_hello_retry_request(TLS_CONNECT *conn)
 		return 0;
 	}
 
+	/* A TLS1.2 ServerHello in a TLS1.2-1.3 range is not a TLS1.3
+	 * HelloRetryRequest. Its extensions may be empty; parse it in the
+	 * selected protocol state below, where full verification still applies.
+	 * A TLS1.3 HRR has the fixed 32-byte random and is validated normally. */
+	if (handshake_type == TLS_handshake_server_hello
+		&& conn->ctx->min_protocol == TLS_protocol_tls12
+		&& conn->ctx->max_protocol == TLS_protocol_tls13) {
+		if (handshake_datalen < 34) {
+			error_print();
+			tls13_send_alert(conn, TLS_alert_decode_error);
+			return -1;
+		}
+		if (memcmp(handshake_data + 2, TLS13_HELLO_RETRY_REQUEST_RANDOM, 32) != 0) {
+			if (conn->verbose) tls_trace("    no HelloRetryRequest\\n\\n");
+			return 0;
+		}
+	}
 	if ((ret = tls13_record_get_handshake_hello_retry_request(conn->record,
 		&legacy_version, &random,
 		&legacy_session_id_echo, &legacy_session_id_echo_len,
@@ -9502,11 +9519,22 @@ int tls13_do_server_handshake(TLS_CONNECT *conn)
 	return 1;
 }
 
+int tls12_client_handshake(TLS_CONNECT *conn);
+
 int tls13_client_handshake(TLS_CONNECT *conn)
 {
 	int ret;
 
 	while (conn->handshake_state != TLS_state_handshake_over) {
+
+		/* After a range-negotiated TLS1.2 ServerHello, stay in the
+		 * same physical Crypto connection but use its TLS1.2 state machine.
+		 * Never retry ClientHello or silently choose an alternate provider. */
+		if (conn->ctx->min_protocol == TLS_protocol_tls12
+			&& conn->ctx->max_protocol == TLS_protocol_tls13
+			&& conn->protocol == TLS_protocol_tls12) {
+			return tls12_client_handshake(conn);
+		}
 
 		ret = tls13_do_client_handshake(conn);
 
