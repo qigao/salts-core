@@ -129,7 +129,10 @@ def cert(
     return obj.sign(private_key=issuer_key, algorithm=hashes.SHA256())
 
 
-def make_fixtures(folder: Path, *, include_ip_san: bool = False) -> dict[str, Path]:
+def make_fixtures(
+    folder: Path, *, include_ip_san: bool = False,
+    include_windows_ca_anchor: bool = False,
+) -> dict[str, Path]:
     root_key, wrong_key, intermediate_key = (
         rsa_identity(), rsa_identity(), rsa_identity()
     )
@@ -157,6 +160,13 @@ def make_fixtures(folder: Path, *, include_ip_san: bool = False) -> dict[str, Pa
         # The intermediate is deliberately OMITTED from the on-wire PEM leaf.
         "chain": (intermediate_name, intermediate_key, ExtendedKeyUsageOID.CLIENT_AUTH, False, False),
     }
+    if include_windows_ca_anchor:
+        # The untrusted intermediate is deliberately NOT installed into
+        # Windows ROOT: putting it into CA must never confer root authority.
+        subjects["server-chain"] = (
+            intermediate_name, intermediate_key,
+            ExtendedKeyUsageOID.SERVER_AUTH, False, True
+        )
     if include_ip_san:
         subjects["server-ip"] = (
             root_name, root_key, ExtendedKeyUsageOID.SERVER_AUTH, False, False
@@ -168,7 +178,8 @@ def make_fixtures(folder: Path, *, include_ip_san: bool = False) -> dict[str, Pa
         key = rsa_identity()
         leaf = cert(
             ("127.0.0.1" if label in ("server-ip", "server-ip-dns") else
-             "localhost" if label == "server" else "mtls-" + label),
+             "localhost" if label in ("server", "server-chain")
+             else "mtls-" + label),
             key.public_key(), issuer, signing_key,
             eku=usage, expired=expired, server_san=san,
             server_ip_san=label == "server-ip",
@@ -191,7 +202,12 @@ def make_fixtures(folder: Path, *, include_ip_san: bool = False) -> dict[str, Pa
                 raise GateFailure("invalid-signature test fixture still verifies")
         pem = folder / (label + ".pem")
         private = folder / (label + "-key.pem")
-        pem.write_bytes(leaf.public_bytes(serialization.Encoding.PEM))
+        wire_pem = leaf.public_bytes(serialization.Encoding.PEM)
+        if label == "server-chain":
+            # Peer sends its real intermediate; the sole trust anchor
+            # remains the separate root, never the CA-store intermediate.
+            wire_pem += intermediate.public_bytes(serialization.Encoding.PEM)
+        pem.write_bytes(wire_pem)
         private.write_bytes(
             key.private_bytes(
                 encoding=serialization.Encoding.PEM,
