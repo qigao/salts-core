@@ -475,8 +475,10 @@ static int run_python_ssl_client(const char *port_path,
   const char *expected_version = strcmp(protocol, "12") == 0
                                      ? "TLSv1.2" : "TLSv1.3";
   const bool expect_idle_read_timeout = strcmp(outcome, "idle") == 0;
+  const bool expect_orderly_close = strcmp(outcome, "close") == 0;
   const bool should_verify =
-      strcmp(outcome, "accept") == 0 || expect_idle_read_timeout;
+      strcmp(outcome, "accept") == 0 || expect_idle_read_timeout ||
+      expect_orderly_close;
   cnet_client server = {0};
   cnet_listener listener = {0};
   cnet_tls_server tls_server = {0};
@@ -565,12 +567,26 @@ static int run_python_ssl_client(const char *port_path,
       outgoing = NULL;
       response_sent = true;
     }
-    if (should_verify && response_sent && probe.sent_count) break;
+    /* For close_notify acceptance, keep the real owner alive until the peer's
+     * authenticated close and the matching local close_notify are complete.
+     * A successful one-byte echo is not sufficient evidence of retirement. */
+    if (should_verify && !expect_orderly_close &&
+        response_sent && probe.sent_count) break;
     if (probe.terminal_count) break;
   }
 
   REQUIRE(accepted);
-  if (expect_idle_read_timeout) {
+  if (expect_orderly_close) {
+    /* Python ssl.unwrap() requires the native server's authenticated
+     * close_notify. It does not count TCP EOF as normal TLS shutdown.
+     * CNet must also retire its old NativeIO TLS_READ lease exactly once,
+     * without a post-auth READ timeout or terminal failure. */
+    REQUIRE(armed && probe.connected_count == 1u);
+    REQUIRE(probe.received_count == 1u && probe.received_byte == 0x46u);
+    REQUIRE(response_sent && probe.sent_count == 1u);
+    REQUIRE(probe.terminal_count == 1u && probe.failed == 0u);
+    REQUIRE(probe.last_connection_state == CNET_CONNECTION_CLOSED);
+  } else if (expect_idle_read_timeout) {
     /* A real, authenticated idle peer keeps TCP open while CNet owns a
      * post-handshake TLS_READ. Never accept a late socket EOF or handshake
      * failure as proof of READ timeout; all public identity checks above
