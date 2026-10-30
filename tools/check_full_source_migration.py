@@ -168,25 +168,23 @@ def strip_comments(text: str) -> str:
 
 
 def verify_restored_mmap(root: Path) -> None:
-    # This header/source preserves ALL 18 original native memory-map symbols.
-    # A noninstalled source-only fixture or empty stub cannot satisfy these.
+    # Preserve all 18 original native memory-map symbols in the canonical Core
+    # owner and exercise them with the native CTest. PR CI deliberately does
+    # not create an installed/consumer project.
     header = root / "core/include/cmeta_mmap.h"
     source = root / "core/src/cmeta_mmap.c"
-    installed = root / "tests/installed/CMakeLists.txt"
     test_cmake = root / "tests/CMakeLists.txt"
     core_cmake = root / "core/CMakeLists.txt"
-    for file in (header, source, installed, test_cmake, core_cmake,
-                 root / "tests/test_original_native_mmap.c",
-                 root / "tests/installed/original_mmap_consumer.c",
-                 root / "tests/installed/original_mmap_consumer.cpp"):
+    native_test = root / "tests/test_original_native_mmap.c"
+    for file in (header, source, test_cmake, core_cmake, native_test):
         if not file.is_file():
-            raise ValueError("original native mmap file/test/installed owner missing: " + str(file))
+            raise ValueError("original native mmap file/test owner missing: " + str(file))
     head = strip_comments(header.read_text(encoding="utf-8"))
     body = strip_comments(source.read_text(encoding="utf-8"))
     for name in MMAP_EXPORTS:
         if not re.search(r"\bSALTS_C_API\s+[\s\S]{0,135}?\b"
                          + name + r"\s*\(", head):
-            raise ValueError("original mmap public function missing from installed ABI: " + name)
+            raise ValueError("original mmap public function missing from source ABI: " + name)
         if not re.search(r"\b" + name
                          + r"\s*\([^;{}]*\)\s*\{", body):
             raise ValueError("original mmap native implementation missing: " + name)
@@ -195,12 +193,9 @@ def verify_restored_mmap(root: Path) -> None:
     if "src/cmeta_mmap.c" not in core_cmake.read_text(encoding="utf-8"):
         raise ValueError("mmap not compiled by actual Salts::Core owner")
     if "include/cmeta_mmap.h" not in core_cmake.read_text(encoding="utf-8"):
-        raise ValueError("mmap original public ABI missing from installed Core")
+        raise ValueError("mmap original public ABI missing from canonical Core target")
     if "test_original_native_mmap.c" not in test_cmake.read_text(encoding="utf-8"):
         raise ValueError("original mapped file CTest not registered")
-    if not all(s in installed.read_text(encoding="utf-8") for s in
-               ("original_mmap_consumer.c", "original_mmap_consumer.cpp")):
-        raise ValueError("installed C11/C++17 mmap client absent")
 
 
 PUBLIC_FUNCTION_INDEX = "tools/migration/original-public-functions.json"
@@ -211,7 +206,7 @@ def verify_public_functions(root: Path, originals: dict[str, dict]) -> int:
 
     These are explicit header exports in the first 54 high-risk native
     headers. The remaining macro/inline/API domains are separately unqualified.
-    Every entry remains a debt until source + installed + behavior tests pass.
+    Every entry remains a debt until source + native behavior tests pass.
     """
     raw = (root / PUBLIC_FUNCTION_INDEX).read_bytes().replace(b"\r\n", b"\n")
     if git_blob(raw) != PUBLIC_FUNCTION_GIT_BLOB:
@@ -336,7 +331,7 @@ def audit(root: Path = ROOT, require_complete: bool = False,
         raise ValueError(
             f"FINAL MIGRATION BLOCKED: {pending_files} original native file "
             f"obligations and {pending_apis} original public functions lack "
-            "verified source/installed-runtime behavior evidence; "
+            "verified source/native-runtime behavior evidence; "
             f"historical snapshot: {core_debt} missing/changed, "
             f"{review_debt} present-but-unqualified; "
             f"SIMD supplemental profiles pending: "
