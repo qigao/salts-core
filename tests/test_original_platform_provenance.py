@@ -136,6 +136,11 @@ def main() -> int:
             "Windows Platform system dependencies are incomplete")
     require("SALTS_C_API" not in header,
             "restored Platform header reintroduced DLL decoration")
+    for token in ("SALTS_WIN32", "_SSIZE_T_DEFINED", "UNUSED", "likely", "unlikely"):
+        require(token in header, "restored Platform public macro missing: " + token)
+    require("#include <salts/clock.h>" in header and
+            "#include <salts/random.h>" in header,
+            "restored Platform umbrella clock/random includes are incomplete")
     require("TLOG_" not in source and '#include "tlog.h"' not in source,
             "Platform reintroduced reverse TLog/Core dependency")
     require('#include "cmeta_' not in source and '#include "platform.h"' not in source,
