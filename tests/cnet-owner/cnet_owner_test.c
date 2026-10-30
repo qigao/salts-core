@@ -1990,6 +1990,21 @@ spec("CNet owner shard") {
     check_equal(cnet_owner_test_tls_pending_deadline_rollover(), SALTS_OK);
   }
 
+  it("probes TLS control data only after authentication, even with an active read") {
+    check_false(cnet_owner_test_tls_control_probe_allowed(
+        false, false, false, 0u));
+    check_false(cnet_owner_test_tls_control_probe_allowed(
+        false, true, false, 0u));
+    check_true(cnet_owner_test_tls_control_probe_allowed(
+        true, false, false, 0u));
+    check_true(cnet_owner_test_tls_control_probe_allowed(
+        true, true, false, 0u));
+    check_false(cnet_owner_test_tls_control_probe_allowed(
+        true, true, true, 0u));
+    check_false(cnet_owner_test_tls_control_probe_allowed(
+        true, true, false, 1u));
+  }
+
   it("drains buffered TLS input despite an active handshake-era NativeIO read") {
     /* TLS private ring/plaintext is independent of the in-flight recv buffer.
      * Receive admission must pump it without submitting a duplicate read. */
