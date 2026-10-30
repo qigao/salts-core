@@ -515,7 +515,10 @@ static int tls12_record_get_handshake_certificate_verify(const uint8_t *record,
 
 int tls12_ctx_set_renegotiation_info(TLS_CTX *ctx, int enable)
 {
-	if (!ctx || ctx->protocol != TLS_protocol_tls12) {
+	if (!ctx || (ctx->protocol != TLS_protocol_tls12
+		&& !(ctx->protocol == TLS_protocol_tls13
+			&& ctx->min_protocol == TLS_protocol_tls12
+			&& ctx->max_protocol == TLS_protocol_tls13))) {
 		error_print();
 		return -1;
 	}
@@ -525,7 +528,10 @@ int tls12_ctx_set_renegotiation_info(TLS_CTX *ctx, int enable)
 
 int tls12_ctx_set_empty_renegotiation_info_scsv(TLS_CTX *ctx, int enable)
 {
-	if (!ctx || ctx->protocol != TLS_protocol_tls12) {
+	if (!ctx || (ctx->protocol != TLS_protocol_tls12
+		&& !(ctx->protocol == TLS_protocol_tls13
+			&& ctx->min_protocol == TLS_protocol_tls12
+			&& ctx->max_protocol == TLS_protocol_tls13))) {
 		error_print();
 		return -1;
 	}
