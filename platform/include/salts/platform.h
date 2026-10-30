@@ -1,6 +1,8 @@
 #ifndef SALTS_PLATFORM_UTILS_H
 #define SALTS_PLATFORM_UTILS_H
 
+#include <salts/clock.h>
+#include <salts/random.h>
 #include <salts/timeval.h>
 
 #include <stddef.h>
