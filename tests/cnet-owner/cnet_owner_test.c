@@ -1986,6 +1986,10 @@ static void cnet_owner_test_init_cleanup_after_backend(
 
 spec("CNet owner shard") {
 #if defined(CNET_INTERNAL_TESTING)
+  it("transfers pending TLS I/O deadlines after the handshake exactly once") {
+    check_equal(cnet_owner_test_tls_pending_deadline_rollover(), SALTS_OK);
+  }
+
   it("attributes a late TLS read/write completion after authentication") {
     check_equal(cnet_owner_test_tls_completion_stage(
                     false, false, CNET_SESSION_STAGE_HANDSHAKE),
