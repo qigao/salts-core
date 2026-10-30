@@ -45,9 +45,9 @@ jobs:
             exit 1
           fi
 
-          if find . -type d \( -name installed -o -name install_""consumer \) -print -quit | grep -q .; then
+          if find . -type d \( -name installed -o -name install_""consu""mer \) -print -quit | grep -q .; then
             echo "Installed/consume test project scaffolding is forbidden in salts-core."
-            find . -type d \( -name installed -o -name install_""consumer \) -print
+            find . -type d \( -name installed -o -name install_""consu""mer \) -print
             exit 1
           fi
 
