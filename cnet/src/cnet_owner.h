@@ -303,6 +303,10 @@ int cnet_owner_test_tls_pending_deadline_rollover(void);
 bool cnet_owner_test_can_progress_receive(bool tls, bool read_active,
                                           bool close_requested,
                                           size_t receive_demand);
+/** Keep TLS control probing post-auth, but independent of active NativeIO READ. */
+bool cnet_owner_test_tls_control_probe_allowed(
+    bool authenticated, bool read_active,
+    bool closing, size_t receive_demand);
 #endif
 
 #if defined(CNET_INTERNAL_PROFILING)
