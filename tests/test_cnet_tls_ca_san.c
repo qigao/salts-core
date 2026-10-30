@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #ifndef CORE_TLS_TEST_P384_CA
@@ -24,6 +25,9 @@
 #endif
 #ifndef CORE_TLS_TEST_P384_KEY
 #error CORE_TLS_TEST_P384_KEY is required
+#endif
+#ifndef CORE_TLS_TEST_EXTERNAL_CA
+#error CORE_TLS_TEST_EXTERNAL_CA is required
 #endif
 
 typedef struct tls_probe {
@@ -317,7 +321,107 @@ cleanup:
   return result;
 }
 
+
+/*
+ * Native, production Salts::CNet client to independent Python stdlib ssl
+ * server. Python fixes TLS1.2 or TLS1.3 and supplies the same valid X.509
+ * leaf for both SAN-positive and SAN-negative controls. This mode never
+ * imports the alternate test-only CNet TLS facade or its Provider.
+ */
+static int run_python_ssl_server(const char *port_text,
+                                 const char *protocol,
+                                 const char *identity) {
+  const char *label = "production CNet -> pinned Python ssl TLS peer";
+  const bool approved_identity = strcmp(identity, "localhost") == 0;
+  const char *expected_version = strcmp(protocol, "tls12") == 0
+                                     ? "TLSv1.2" : "TLSv1.3";
+  char *end = NULL;
+  unsigned long port = strtoul(port_text, &end, 10);
+  cnet_client client = {0};
+  cnet_connection outbound = {0};
+  tls_probe probe = {0};
+  cnet_connect_options connect_options = {0};
+  cnet_client_config client_cfg = config();
+  const cnet_tls_client_config tls_config = {
+      .size = sizeof(cnet_tls_client_config),
+      .ca_file = CORE_TLS_TEST_EXTERNAL_CA,
+      .server_name = identity};
+  char uri[96] = {0};
+  bool initialized = false;
+  mem_buffer_t *outgoing = NULL;
+  uint64_t deadline;
+  size_t events = 0u;
+  int result = 0;
+
+  if (end == port_text || *end != '\0' || port == 0u || port > 65535u ||
+      (strcmp(protocol, "tls12") != 0 && strcmp(protocol, "tls13") != 0) ||
+      (!approved_identity && strcmp(identity, "wrong.example") != 0))
+    return 2;
+
+  probe.client = &client;
+  REQUIRE(cnet_client_init(&client, &client_cfg) == SALTS_OK);
+  initialized = true;
+  REQUIRE(snprintf(uri, sizeof(uri), "tls://127.0.0.1:%lu", port) > 0);
+  connect_options = (cnet_connect_options){
+      .uri = uri,
+      .observer = {state_callback, receive_callback, &probe, send_callback},
+      .tls = &tls_config};
+  REQUIRE(cnet_connect(&client, &connect_options, &outbound) == SALTS_OK);
+
+  deadline = cmeta_monotonic_ms() + 9000u;
+  while (!probe.connected_count && !probe.terminal_count &&
+         cmeta_monotonic_ms() < deadline)
+    REQUIRE(cnet_client_poll(&client, 1u, &events) == SALTS_OK);
+
+  if (!approved_identity) {
+    /* This must be a post-TCP handshake authentication rejection, not
+     * a timeout, refused connect, or successful encrypted connection. */
+    REQUIRE(probe.terminal_count == 1u);
+    REQUIRE(probe.failed != 0u);
+    REQUIRE(probe.connected_count == 0u);
+    REQUIRE(probe.received_count == 0u && probe.sent_count == 0u);
+    REQUIRE(strcmp(probe.failure_stage, "handshake") == 0);
+  } else {
+    char digest[CNET_TLS_PEER_CERTIFICATE_SHA256_CAPACITY] = {0};
+    REQUIRE(probe.connected_count == 1u && probe.failed == 0u);
+    REQUIRE(probe.tls_version_status == SALTS_OK);
+    REQUIRE(strcmp(probe.tls_version, expected_version) == 0);
+    REQUIRE(probe.tls_cipher_status == SALTS_OK);
+    REQUIRE(probe.tls_cipher[0] != '\0');
+    REQUIRE(cnet_tls_peer_certificate_sha256(&client, outbound, digest) == SALTS_OK);
+    REQUIRE(strlen(digest) == 64u);
+    REQUIRE(cnet_receive(&client, outbound, 1u) == SALTS_OK);
+
+    outgoing = mem_get_buffer(mem_global(), 1u);
+    REQUIRE(outgoing != NULL);
+    *mem_buffer_data(outgoing) = 0x46u;
+    mem_set_used(outgoing, 1u);
+    REQUIRE(cnet_send_buffer(&client, outbound, outgoing) == SALTS_OK);
+    mem_buffer_release(outgoing);
+    outgoing = NULL;
+    deadline = cmeta_monotonic_ms() + 9000u;
+    while ((!probe.received_count || !probe.sent_count) &&
+           !probe.terminal_count && cmeta_monotonic_ms() < deadline)
+      REQUIRE(cnet_client_poll(&client, 1u, &events) == SALTS_OK);
+    /* Independent Python ssl writes "ok" over the negotiated record;
+     * one byte of explicit NativeIO receive demand must deliver 'o'. */
+    REQUIRE(probe.received_count == 1u && probe.received_byte == 'o');
+    REQUIRE(probe.sent_count == 1u && probe.failed == 0u);
+    REQUIRE(cnet_close(&client, outbound) == SALTS_OK);
+  }
+
+cleanup:
+  if (outgoing != NULL) mem_buffer_release(outgoing);
+  if (initialized) {
+    (void)cnet_client_stop(&client, 5000u);
+    (void)cnet_client_destroy(&client);
+  }
+  return result;
+}
+
 int main(int argc, char **argv) {
+  if (argc == 5 && strcmp(argv[1], "--external-san") == 0)
+    return run_python_ssl_server(argv[2], argv[3], argv[4]);
   int result;
   if (argc == 8 && strcmp(argv[1], "--required-mtls") == 0) {
     const bool expect_success = strcmp(argv[7], "accept") == 0;
