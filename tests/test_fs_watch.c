@@ -9,6 +9,12 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef _WIN32
+  #include <windows.h>
+#else
+  #include <unistd.h>
+#endif
+
 enum {
   WATCH_EVENT_CAPACITY = 64,
   WATCH_PATH_CAPACITY = 256
@@ -20,6 +26,14 @@ typedef struct watch_probe {
   char old_paths[WATCH_EVENT_CAPACITY][WATCH_PATH_CAPACITY];
   size_t count;
 } watch_probe;
+
+static unsigned long watch_test_pid(void) {
+#ifdef _WIN32
+  return (unsigned long)GetCurrentProcessId();
+#else
+  return (unsigned long)getpid();
+#endif
+}
 
 static void watch_event(void *user, const cflow_fs_watch_event *event) {
   watch_probe *probe = (watch_probe *)user;
@@ -105,7 +119,7 @@ static int make_unique_root(char *root, size_t root_size, const char *tag) {
   if (salts_fs_get_tmpdir(tmp, sizeof(tmp)) != SALTS_OK) return SALTS_EIO;
   for (attempt = 0u; attempt < 32u; ++attempt) {
     int written = snprintf(name, sizeof(name), "saltscore-watch-%s-%d-%llu-%u",
-                           tag, cmeta_getpid(),
+                           tag, (int)watch_test_pid(),
                            (unsigned long long)cmeta_monotonic_ms(), attempt);
     if (written <= 0 || (size_t)written >= sizeof(name)) return SALTS_ERANGE;
     if (join_path(root, root_size, tmp, name) != SALTS_OK) return SALTS_ERANGE;
