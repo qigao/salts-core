@@ -91,12 +91,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            owner_threads=OFF
+          else
+            owner_threads=ON
+          fi
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTING=ON \
             -DSALTSCORE_BUILD_URI=ON \
             -DSALTSCORE_BUILD_WEBSOCKET_PARSER=ON \
             -DSALTSCORE_BUILD_SCTP=ON \
+            "-DCNET_SCTP_TEST_OWNER_THREADS=$owner_threads" \
             -DSALTSCORE_BUILD_FS=ON \
             -DSALTSCORE_BUILD_PROCESS=ON \
             -DSALTSCORE_BUILD_TINYTEST=ON \
@@ -115,9 +121,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 tools/check_dependency_boundaries.py
+          # Consolidated single-host source gates from retired module workflows.
           python3 tools/check_module_layout.py
           python3 tools/check_original_module_paths.py
+          python3 tools/audit_cnet_sctp_source.py
+          python3 tools/check_cnet_ci_triggers.py
+          python3 -m unittest discover -s tests -p 'test_cnet_ci_triggers.py' -v
+          python3 -m unittest discover -s tests -p 'test_dependency_boundaries.py' -v
+          if grep -nE 'cmeta_|CMETA_|SALTS_C_API|TLOG_|#include "platform.h"' fs/src/*.c fs/include/salts/fs.h; then
+            echo "FS original native API boundary violated" >&2
+            exit 1
+          fi
+          if grep -nE 'cmeta_process|tstr_|vstr_|SALTS_C_API|#include "cmeta_|#include "platform.h"' process/src/process.c process/include/salts/process.h; then
+            echo "Process original native API boundary violated" >&2
+            exit 1
+          fi
+          # Baseline master still has a known Crypto/ASN1 policy RED. Never skip it.
+          python3 tools/check_dependency_boundaries.py
       - name: Cache statistics
         if: always()
         shell: bash
