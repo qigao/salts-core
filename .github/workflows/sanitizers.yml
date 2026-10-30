@@ -36,15 +36,9 @@ concurrency:
 
 jobs:
   sanitize:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {name: asan-ubsan, cc: clang, cxx: clang++, flags: "-fsanitize=address,undefined"}
-          - {name: tsan, cc: gcc, cxx: g++, flags: "-fsanitize=thread"}
-    name: ${{ matrix.name }}
+    name: ASan/UBSan + TSan
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    timeout-minutes: 80
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,7 +47,7 @@ jobs:
       - name: Compiler cache
         uses: qigao/stun/.github/actions/setup-ccache@6498e9710609820da7d99a938627cc44f17f00ed
         with:
-          profile: saltscore-sanitizers-${{ matrix.name }}
+          profile: saltscore-sanitizers
           source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Linux system SDKs
         run: |
@@ -66,19 +60,25 @@ jobs:
           dependency-mode: binary
           token: ${{ github.token }}
           features: simd,usb,playback,capture,zstd
-      - name: Configure one full sanitizer graph
+
+      - name: ASan/UBSan full graph
+        id: asan
+        continue-on-error: true
         shell: bash
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: |
           set -euo pipefail
-          cmake -S . -B build-sanitize -G Ninja \
+          cmake -S . -B build-asan -G Ninja \
             "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" \
             "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" \
             "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" \
             "-DVCPKG_MANIFEST_FEATURES=simd;usb;playback;capture;zstd" \
-            "-DCMAKE_C_COMPILER=${{ matrix.cc }}" \
-            "-DCMAKE_CXX_COMPILER=${{ matrix.cxx }}" \
-            "-DCMAKE_C_FLAGS=${{ matrix.flags }} -fno-omit-frame-pointer -g -O1" \
-            "-DCMAKE_CXX_FLAGS=${{ matrix.flags }} -fno-omit-frame-pointer -g -O1" \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            "-DCMAKE_C_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1" \
+            "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1" \
             -DCMAKE_BUILD_TYPE=Debug \
             -DBUILD_TESTING=ON \
             -DSALTSCORE_BUILD_PROCESS=ON \
@@ -93,15 +93,54 @@ jobs:
             -DSALTSCORE_BUILD_TINYTEST=ON \
             -DSALTSCORE_BUILD_SCTP=ON \
             -DSALTSCORE_BUILD_WEBSOCKET_PARSER=ON
-      - name: Build
-        run: cmake --build build-sanitize --parallel 2
-      - name: Run sanitizer tests once
+          cmake --build build-asan --parallel 2
+          ctest --test-dir build-asan --output-on-failure --no-tests=error --timeout 120
+
+      - name: TSan full graph
+        id: tsan
+        continue-on-error: true
         shell: bash
         env:
-          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
-          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
           TSAN_OPTIONS: halt_on_error=1
-        run: ctest --test-dir build-sanitize --output-on-failure --no-tests=error --timeout 120
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-tsan -G Ninja \
+            "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" \
+            "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" \
+            "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" \
+            "-DVCPKG_MANIFEST_FEATURES=simd;usb;playback;capture;zstd" \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER=g++ \
+            "-DCMAKE_C_FLAGS=-fsanitize=thread -fno-omit-frame-pointer -g -O1" \
+            "-DCMAKE_CXX_FLAGS=-fsanitize=thread -fno-omit-frame-pointer -g -O1" \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_TESTING=ON \
+            -DSALTSCORE_BUILD_PROCESS=ON \
+            -DSALTSCORE_BUILD_SIMD=ON \
+            -DSALTSCORE_BUILD_USB=ON \
+            -DSALTSCORE_BUILD_PLAYBACK=ON \
+            -DSALTSCORE_BUILD_SERIAL=ON \
+            -DSALTSCORE_BUILD_CAPTURE=ON \
+            -DSALTSCORE_BUILD_UNICODE=ON \
+            -DSALTSCORE_BUILD_IDNA=ON \
+            -DSALTSCORE_BUILD_CSERDE=ON \
+            -DSALTSCORE_BUILD_TINYTEST=ON \
+            -DSALTSCORE_BUILD_SCTP=ON \
+            -DSALTSCORE_BUILD_WEBSOCKET_PARSER=ON
+          cmake --build build-tsan --parallel 2
+          ctest --test-dir build-tsan --output-on-failure --no-tests=error --timeout 120
+
+      - name: Require both sanitizer gates
+        if: always()
+        shell: bash
+        env:
+          ASAN_RESULT: ${{ steps.asan.outcome }}
+          TSAN_RESULT: ${{ steps.tsan.outcome }}
+        run: |
+          set -euo pipefail
+          test "$ASAN_RESULT" = success
+          test "$TSAN_RESULT" = success
+
       - name: Cache statistics
         if: always()
         shell: bash

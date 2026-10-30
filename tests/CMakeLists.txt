@@ -431,12 +431,7 @@ target_link_libraries(saltscore_original_spsc_smoke PRIVATE Salts::Concurrency)
 add_test(NAME saltscore.original_spsc_smoke COMMAND saltscore_original_spsc_smoke)
 
 # The original seven-function MPMC API is owned by the existing concurrency
-# module. Its original test and independent delivery oracle exercise that DSO.
-add_executable(saltscore_mpmc_contract installed/mpmc_consumer.c)
-target_compile_features(saltscore_mpmc_contract PRIVATE c_std_11)
-target_link_libraries(saltscore_mpmc_contract PRIVATE Salts::Concurrency)
-add_test(NAME saltscore.mpmc_delivery_contract COMMAND saltscore_mpmc_contract)
-set_tests_properties(saltscore.mpmc_delivery_contract PROPERTIES TIMEOUT 30)
+# module. The original native TinyTest contract exercises that canonical owner.
 if(TARGET Salts::TinyTest)
   add_executable(saltscore_original_bucket_mpmc_test test_bucket_priority_queue_mpmc.c)
   target_compile_features(saltscore_original_bucket_mpmc_test PRIVATE c_std_11)

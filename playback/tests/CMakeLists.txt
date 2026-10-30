@@ -45,7 +45,3 @@ set_tests_properties(saltscore.playback_original_buffer
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(NAME saltscore.playback_source_provenance
   COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/test_source_provenance.py")
-add_executable(playback_production_contract installed/playback_consumer.c)
-target_compile_features(playback_production_contract PRIVATE c_std_11)
-target_link_libraries(playback_production_contract PRIVATE Salts::Playback)
-add_test(NAME saltscore.playback_production_contract COMMAND playback_production_contract)

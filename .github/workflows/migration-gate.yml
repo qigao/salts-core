@@ -51,6 +51,11 @@ jobs:
             exit 1
           fi
 
+          if grep -RFn --include='CMakeLists.txt' -- 'installed/' .; then
+            echo "Native CMake must not generate installed/consumer test targets."
+            exit 1
+          fi
+
           forbidden=(
             "cmake --in""stall"
             "ins""taller"
