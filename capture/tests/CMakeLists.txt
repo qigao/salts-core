@@ -17,16 +17,21 @@ if(WIN32)
   target_compile_features(capture_exposure_windows_test PRIVATE c_std_11)
   target_include_directories(capture_exposure_windows_test PRIVATE
     "${PROJECT_SOURCE_DIR}/capture/include")
-  # Link only the original control entrypoints exercised by fake-COM tests.
-  # /Gy + /OPT:REF discards the unused device/MF backend functions, so the
-  # test does not load Media Foundation or the production Capture DLL.
+  # Keep the exact production backend in the fake-COM test. Some MF helper
+  # references remain live under MSVC even with function-level dead stripping.
+  # Resolve those references through their native libraries, but delay-load
+  # MF DLLs so the control-only cases cannot initialize real capture services
+  # through a process-start import.
   if(MSVC)
     target_compile_options(capture_exposure_windows_test PRIVATE /Gy)
-    target_link_options(capture_exposure_windows_test PRIVATE /OPT:REF)
+    target_link_options(capture_exposure_windows_test PRIVATE
+      /OPT:REF /DELAYLOAD:mfplat.dll /DELAYLOAD:mf.dll
+      /DELAYLOAD:mfreadwrite.dll)
   endif()
   target_compile_definitions(capture_exposure_windows_test PRIVATE TT_PRINT_TRACE)
   target_link_libraries(capture_exposure_windows_test PRIVATE
-    Salts::Core Salts::TinyTest yuv)
+    Salts::Core Salts::TinyTest yuv
+    mfplat mf mfuuid mfreadwrite strmiids ole32 oleaut32 delayimp)
   add_test(NAME capture_exposure_windows_test COMMAND capture_exposure_windows_test)
   set_target_properties(capture_exposure_windows_test PROPERTIES FOLDER "capture/tests")
   set_tests_properties(capture_exposure_windows_test PROPERTIES TIMEOUT 15)
