@@ -100,12 +100,14 @@ def fragmented_tls13_exchange(ctx: ssl.SSLContext, raw: socket.socket) -> None:
 
 def scenario(
     binary: Path, work: Path, crypto, fixtures, proto: str, case: str,
-    *, fragmented: bool = False,
+    *, fragmented: bool = False, idle: bool = False,
 ) -> None:
-    expected = "accept" if case == "client" else "reject"
+    if idle and (fragmented or proto != "13" or case != "client"):
+        raise AssertionError("idle peer requires a genuine TLS1.3 client certificate")
+    expected = "idle" if idle else "accept" if case == "client" else "reject"
     if fragmented and (proto != "13" or case != "client"):
         raise AssertionError("fragmented ciphertext gate is valid TLS1.3 only")
-    suffix = "-fragmented" if fragmented else ""
+    suffix = "-idle" if idle else "-fragmented" if fragmented else ""
     port_path = work / f"native-{proto}-{case}{suffix}.port"
     if port_path.exists():
         raise AssertionError("stale private port marker")
@@ -155,29 +157,48 @@ def scenario(
                         phase = "negotiated-version"
                         if peer.version() != VERSION[proto]:
                             raise AssertionError("Python negotiated a different TLS version")
-                        # TLS1.3 wrap_socket can finish before the server
-                        # verifies CertificateVerify; require real app data.
-                        phase = "authenticated-request"
-                        peer.sendall(b"F")
-                        phase = "authenticated-response"
-                        response = peer.recv(1)
-                        if expected == "accept":
-                            if response != b"G":
-                                raise AssertionError(f"valid mTLS app data missing: {response!r}")
+                        if idle:
+                            # Remain connected and intentionally send zero
+                            # application bytes. Native CNet MUST establish
+                            # mTLS and then publish its own READ timeout.
+                            # Socket closure alone is not sufficient: the
+                            # native process verifies status and read stage.
+                            phase = "authenticated-idle-read-timeout"
+                            response = peer.recv(1)
+                            if response:
+                                raise AssertionError(
+                                    f"idle TLS13 peer received unexpected data: {response!r}"
+                                )
                             peer_completed = True
-                            phase = "authenticated"
-                        elif response == b"G":
-                            raise AssertionError("invalid mTLS client received authenticated data")
                         else:
-                            peer_rejected = True
+                            # TLS1.3 wrap_socket can finish before the server
+                            # verifies CertificateVerify; require real app data.
+                            phase = "authenticated-request"
+                            peer.sendall(b"F")
+                            phase = "authenticated-response"
+                            response = peer.recv(1)
+                            if expected == "accept":
+                                if response != b"G":
+                                    raise AssertionError(f"valid mTLS app data missing: {response!r}")
+                                peer_completed = True
+                                phase = "authenticated"
+                            elif response == b"G":
+                                raise AssertionError("invalid mTLS client received authenticated data")
+                            else:
+                                peer_rejected = True
             except (ssl.SSLError, ConnectionError, EOFError):
                 if expected == "accept":
                     raise
-                peer_rejected = True
+                if idle:
+                    # Native's exact READ-stage timeout assertion below is
+                    # authoritative; SSL's EOF behavior varies by platform.
+                    peer_completed = True
+                else:
+                    peer_rejected = True
         if expected == "reject" and not peer_rejected:
             raise AssertionError("invalid client was not rejected")
-        if expected == "accept" and not peer_completed:
-            raise AssertionError("valid bidirectional TLS data was not exchanged")
+        if expected in ("accept", "idle") and not peer_completed:
+            raise AssertionError("authenticated peer did not reach required terminal")
     except (socket.timeout, TimeoutError) as exc:
         failure = f"deadline exceeded during {phase}: {type(exc).__name__}"
     except Exception as exc:
@@ -227,6 +248,13 @@ def main() -> int:
         scenario(
             args.binary, private, python_mtls, fixtures, "13", "client",
             fragmented=True,
+        )
+        # One real idle, mutually authenticated TLS1.3 client. CNet's
+        # read_timeout_ms, not Python's socket EOF, must terminate the
+        # native owner on its documented post-handshake READ stage.
+        scenario(
+            args.binary, private, python_mtls, fixtures, "13", "client",
+            idle=True,
         )
     print("PASS Python ssl client -> one production CNet REQUIRED-mTLS server on both TLS versions")
     return 0
