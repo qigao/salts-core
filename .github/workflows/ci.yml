@@ -92,11 +92,19 @@ jobs:
           dependency-mode: binary
           token: ${{ github.token }}
           features: simd,usb,playback,capture,zstd
+      - name: Pinned Python binary wheel for public NativeIO mTLS tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --no-cache-dir \
+            --only-binary=:all: "cryptography==46.0.4"
+
       - name: Configure full Core graph
         shell: bash
         run: |
           set -euo pipefail
           cmake -S . -B build -G Ninja \
+            -DSALTSCORE_CNET_PRODUCTION_REQUIRED_MTLS_TEST=ON \
             "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" \
             "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" \
             "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" \
