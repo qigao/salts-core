@@ -1009,6 +1009,28 @@ static int cnet_tls_cipher_record_ready(const cnet_tls_gmssl_state *engine,
   return SALTS_OK;
 }
 
+#if defined(CNET_INTERNAL_TESTING)
+/* Reproduce CNet's real receive gate with provider-owned TLS1.3 progress.
+ * The caller supplies only inert bytes; no certificate or plaintext is read
+ * and no second TLS engine is instantiated by this regression. */
+int cnet_test_tls_receive_record_gate(unsigned phase, const uint8_t *cipher,
+                                      size_t size, bool *out_ready) {
+  unsigned char ring[32] = {0};
+  cnet_tls_gmssl_state engine = {0};
+  if (out_ready == NULL || cipher == NULL || size > sizeof(ring) || phase > 3u)
+    return SALTS_EINVAL;
+  memcpy(ring, cipher, size);
+  engine.cipher_input = ring;
+  engine.capacity = sizeof(ring);
+  engine.input_size = size;
+  engine.connection.protocol = TLS_protocol_tls13;
+  if (phase == 1u) engine.connection.recv_state = TLS_state_recv_record_header;
+  if (phase == 2u) engine.connection.recv_state = TLS_state_recv_record_data;
+  if (phase == 3u) engine.connection.datalen = 1u;
+  return cnet_tls_cipher_record_ready(&engine, out_ready);
+}
+#endif
+
 static tls_ret_t cnet_tls_io_send(void *user, const void *buffer, size_t length,
                                   int flags) {
   cnet_tls_gmssl_state *engine = (cnet_tls_gmssl_state *)user;
