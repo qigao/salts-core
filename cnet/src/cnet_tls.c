@@ -976,6 +976,24 @@ static int cnet_tls_cipher_record_ready(const cnet_tls_gmssl_state *engine,
   size_t record_size;
   if (engine == NULL || out_ready == NULL) return SALTS_EINVAL;
   *out_ready = false;
+  /*
+   * TLS 1.3 can consume one post-handshake control record and immediately
+   * begin reading the next record inside a single tls13_recv() call. On
+   * WANT_READ its provider recv_state/record_offset already own that next
+   * record's header or payload. The CNet ring then starts with a *suffix*
+   * of that record, not a fresh TLS header. Parsing the suffix as a header
+   * (or requiring five new bytes) can strand the authenticated connection
+   * until its peer closes. Let the single provider resume its own partial
+   * frame; the provider still validates the entire authenticated record.
+   */
+  if (engine->connection.protocol == TLS_protocol_tls13 &&
+      (engine->connection.recv_state == TLS_state_recv_record_header ||
+       engine->connection.recv_state == TLS_state_recv_record_data ||
+       engine->connection.datalen != 0u)) {
+    *out_ready = engine->input_size != 0u ||
+                 engine->connection.datalen != 0u;
+    return SALTS_OK;
+  }
   if (engine->input_size < TLS_RECORD_HEADER_SIZE) return SALTS_OK;
   if (cnet_tls_ring_peek(engine->cipher_input, engine->capacity,
                          engine->input_head, engine->input_size,
@@ -990,6 +1008,28 @@ static int cnet_tls_cipher_record_ready(const cnet_tls_gmssl_state *engine,
   *out_ready = engine->input_size >= record_size;
   return SALTS_OK;
 }
+
+#if defined(CNET_INTERNAL_TESTING)
+/* Reproduce CNet's real receive gate with provider-owned TLS1.3 progress.
+ * The caller supplies only inert bytes; no certificate or plaintext is read
+ * and no second TLS engine is instantiated by this regression. */
+int cnet_test_tls_receive_record_gate(unsigned phase, const uint8_t *cipher,
+                                      size_t size, bool *out_ready) {
+  unsigned char ring[32] = {0};
+  cnet_tls_gmssl_state engine = {0};
+  if (out_ready == NULL || cipher == NULL || size > sizeof(ring) || phase > 3u)
+    return SALTS_EINVAL;
+  memcpy(ring, cipher, size);
+  engine.cipher_input = ring;
+  engine.capacity = sizeof(ring);
+  engine.input_size = size;
+  engine.connection.protocol = TLS_protocol_tls13;
+  if (phase == 1u) engine.connection.recv_state = TLS_state_recv_record_header;
+  if (phase == 2u) engine.connection.recv_state = TLS_state_recv_record_data;
+  if (phase == 3u) engine.connection.datalen = 1u;
+  return cnet_tls_cipher_record_ready(&engine, out_ready);
+}
+#endif
 
 static tls_ret_t cnet_tls_io_send(void *user, const void *buffer, size_t length,
                                   int flags) {
