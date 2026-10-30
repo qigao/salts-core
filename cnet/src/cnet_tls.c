@@ -659,7 +659,13 @@ static int cnet_tls_configure_variant(cnet_tls_context *context,
       tls_ctx_set_signature_algorithms(tls, signatures, signature_count) != 1)
     return SALTS_EIO;
 
-  if (variant == CNET_TLS_VARIANT_1_2) {
+  /* The default STANDARD TLS1.2-to-TLS1.3 range must also advertise
+   * RFC5746 secure renegotiation on a negotiated TLS1.2 handshake.
+   * Without this, Python/OpenSSL correctly rejects the server as
+   * UNSAFE_LEGACY_RENEGOTIATION_DISABLED even though TLS1.3 works.
+   * GmSSL supports initial handshakes only: no legacy renegotiation mode,
+   * fallback or weakening of peer verification is permitted. */
+  if (variant == CNET_TLS_VARIANT_1_2 || variant == CNET_TLS_VARIANT_RANGE) {
     if (context->server) {
       if (tls12_ctx_set_renegotiation_info(tls, 1) != 1)
         return SALTS_EIO;
