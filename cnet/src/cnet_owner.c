@@ -1274,6 +1274,19 @@ static int cnet_owner_tls_begin_peer_close(cnet_owner_impl *impl,
   session->close_requested = true;
   session->receive_demand = 0u;
   session->tls_shutdown_after_flush = true;
+  /*
+   * An authenticated close_notify can already be in the private TLS ring
+   * while a newer NativeIO TLS_READ remains outstanding. The peer may keep
+   * TCP open until our close_notify arrives; therefore the old read lease
+   * cannot be left to wait for EOF or its READ deadline. Cancel ONLY that
+   * receive lease, preserve its generation until NativeIO completion, and
+   * keep the bounded ciphertext close-notify write independently owned.
+   */
+  {
+    const int cancel_status =
+        cnet_owner_cancel_receive_requests(impl, session->handle);
+    if (cancel_status != SALTS_OK) return cancel_status;
+  }
   if (status == SALTS_OK) {
     status = cnet_owner_queue_state_event(impl, session->handle, CNET_EVENT_STATE_CLOSING,
                                           SALTS_OK, CNET_SESSION_STAGE_NONE);
@@ -1296,7 +1309,13 @@ static int cnet_owner_tls_background_progress(cnet_owner_impl *impl,
    * already owned by exactly one final terminal completion. */
   if (session->pending_status != SALTS_OK)
     return cnet_owner_finalize_session(impl, session);
-  if (session->close_requested || session->read_active || session->receive_demand != 0u)
+  /*
+   * NativeIO's in-flight TLS_READ buffer is separate from the bounded TLS
+   * ciphertext/control ring. A pending kernel receive is no reason to leave
+   * an already authenticated close_notify unprocessed. Only a new kernel
+   * receive must respect read_active (see the guard below/start_read).
+   */
+  if (session->close_requested || session->receive_demand != 0u)
     return SALTS_OK;
 
   status = cnet_tls_probe_peer_close(&session->tls, &peer_closed, &plaintext_pending);
