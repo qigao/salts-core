@@ -320,6 +320,20 @@ if(TARGET Salts::CNet)
           --protocol "${_protocol}")
       set_tests_properties(saltscore.cnet_python_ssl_peer_${_protocol}
         PROPERTIES TIMEOUT 95 RESOURCE_LOCK cnet_native_python_ssl_peer)
+
+      # Reverse independent peer: Python ssl TLS client must authenticate
+      # into one production CNet REQUIRED-mTLS NativeIO server. Positive
+      # Finished + app data and six genuine rejection cases per version.
+      add_test(NAME saltscore.cnet_python_ssl_client_${_protocol}
+        COMMAND "${Python3_EXECUTABLE}" -B
+          "${PROJECT_SOURCE_DIR}/tests/test_cnet_python_ssl_client.py"
+          --binary "$<TARGET_FILE:saltscore_cnet_tls_ca_san_test>"
+          --fixture-generator
+            "${PROJECT_SOURCE_DIR}/crypto/tests/sdk/python_mtls.py"
+          --protocol "${_protocol}"
+          --work "${PROJECT_BINARY_DIR}/native-python-ssl-client")
+      set_tests_properties(saltscore.cnet_python_ssl_client_${_protocol}
+        PROPERTIES TIMEOUT 185 RESOURCE_LOCK cnet_native_python_ssl_peer)
     endforeach()
   endif()
 endif()
