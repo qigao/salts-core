@@ -44,8 +44,11 @@ def git_blob(data: bytes) -> str:
 
 
 def public_declarations(text: str) -> list[str]:
+    # Strip comments first so documentation mentions do not count as API.
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    text = re.sub(r"//.*?$", "", text, flags=re.M)
     return sorted(set(re.findall(
-        r"\b(cmeta_[A-Za-z0-9_]+)\s*\([^;{}]*\)\s*;", text, re.S)))
+        r"\b(cmeta_[A-Za-z0-9_]+)\s*\(", text)))
 
 
 def definitions(text: str) -> list[str]:
