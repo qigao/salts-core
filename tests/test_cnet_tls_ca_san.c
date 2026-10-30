@@ -434,7 +434,149 @@ cleanup:
   return result;
 }
 
+
+/*
+ * Production CNet server against a genuinely separate Python stdlib ssl
+ * client. The server retains exactly one Salts::CNet native owner; Python
+ * supplies ephemeral client credentials and pins TLS 1.2 or TLS 1.3.
+ * Port handoff is a private test file to avoid any extra server/consumer app.
+ */
+static int run_python_ssl_client(const char *port_path,
+                                 const char *ca_file,
+                                 const char *cert_file,
+                                 const char *key_file,
+                                 const char *protocol,
+                                 const char *outcome) {
+  const char *label = "production CNet <- Python ssl TLS REQUIRED-mTLS";
+  const char *expected_version = strcmp(protocol, "12") == 0
+                                     ? "TLSv1.2" : "TLSv1.3";
+  const bool should_verify = strcmp(outcome, "accept") == 0;
+  cnet_client server = {0};
+  cnet_listener listener = {0};
+  cnet_tls_server tls_server = {0};
+  tls_probe probe = {0};
+  const cnet_client_config client_cfg = config();
+  const cnet_listener_config listener_cfg = {
+      client_cfg.backend, "127.0.0.1", 0u, 2u};
+  const cnet_tls_server_config tls_cfg = {
+      .size = sizeof(cnet_tls_server_config),
+      .cert_file = cert_file,
+      .key_file = key_file,
+      .ca_file = ca_file,
+      .client_auth = CNET_TLS_CLIENT_AUTH_REQUIRED};
+  bool tls_live = false, server_live = false, listener_live = false;
+  bool accepted = false, armed = false, response_sent = false;
+  mem_buffer_t *outgoing = NULL;
+  FILE *port_file = NULL;
+  uint16_t port = 0u;
+  uint64_t deadline;
+  size_t events = 0u;
+  int result = 0;
+
+  if (port_path == NULL || !*port_path || ca_file == NULL ||
+      cert_file == NULL || key_file == NULL ||
+      (strcmp(protocol, "12") != 0 && strcmp(protocol, "13") != 0) ||
+      (!should_verify && strcmp(outcome, "reject") != 0))
+    return 2;
+  probe.client = &server;
+  REQUIRE(cnet_tls_server_init(&tls_server, &tls_cfg) == SALTS_OK);
+  tls_live = true;
+  REQUIRE(cnet_client_init(&server, &client_cfg) == SALTS_OK);
+  server_live = true;
+  REQUIRE(cnet_listener_init(&listener, &listener_cfg) == SALTS_OK);
+  listener_live = true;
+  REQUIRE(cnet_listener_port(&listener, &port) == SALTS_OK && port != 0u);
+  /* Only the test driver knows this private path; publish after bind. */
+  port_file = fopen(port_path, "wb");
+  REQUIRE(port_file != NULL);
+  REQUIRE(fprintf(port_file, "%u\n", (unsigned int)port) > 0);
+  REQUIRE(fclose(port_file) == 0);
+  port_file = NULL;
+
+  deadline = cmeta_monotonic_ms() + 15000u;
+  while (cmeta_monotonic_ms() < deadline) {
+    int ready = 0;
+    if (!accepted) {
+      REQUIRE(cnet_listener_wait(&listener, 0u, &ready) == SALTS_OK);
+      if (ready) {
+        const cnet_observer observer = {
+            state_callback, receive_callback, &probe, send_callback};
+        REQUIRE(cnet_listener_accept_tls(
+            &listener, &server, &tls_server, &observer,
+            &probe.connection) == SALTS_OK);
+        accepted = true;
+      }
+    }
+    REQUIRE(cnet_client_poll(&server, 1u, &events) == SALTS_OK);
+    if (!should_verify && probe.terminal_count) break;
+    if (should_verify && probe.connected_count && !armed) {
+      char fingerprint[CNET_TLS_PEER_CERTIFICATE_SHA256_CAPACITY] = {0};
+      REQUIRE(probe.connected_count == 1u && probe.failed == 0u);
+      REQUIRE(probe.tls_version_status == SALTS_OK);
+      REQUIRE(strcmp(probe.tls_version, expected_version) == 0);
+      REQUIRE(probe.tls_cipher_status == SALTS_OK);
+      REQUIRE(probe.tls_cipher[0] != '\0');
+      REQUIRE(cnet_tls_peer_certificate_sha256(
+          &server, probe.connection, fingerprint) == SALTS_OK);
+      REQUIRE(strlen(fingerprint) == 64u);
+      REQUIRE(cnet_receive(&server, probe.connection, 1u) == SALTS_OK);
+      armed = true;
+    }
+    if (should_verify && probe.received_count && !response_sent) {
+      REQUIRE(probe.received_count == 1u && probe.received_byte == 0x46u);
+      REQUIRE(probe.failed == 0u);
+      outgoing = mem_get_buffer(mem_global(), 1u);
+      REQUIRE(outgoing != NULL);
+      *mem_buffer_data(outgoing) = 0x47u;
+      mem_set_used(outgoing, 1u);
+      REQUIRE(cnet_send_buffer(
+          &server, probe.connection, outgoing) == SALTS_OK);
+      mem_buffer_release(outgoing);
+      outgoing = NULL;
+      response_sent = true;
+    }
+    if (should_verify && response_sent && probe.sent_count) break;
+    if (probe.terminal_count) break;
+  }
+
+  REQUIRE(accepted);
+  if (should_verify) {
+    REQUIRE(probe.connected_count == 1u && probe.failed == 0u);
+    REQUIRE(armed && response_sent && probe.sent_count == 1u);
+    REQUIRE(probe.received_count == 1u && probe.received_byte == 0x46u);
+  } else {
+    /* A bad peer may never publish an authenticated connection or plaintext.
+     * This must be a TLS handshake failure, not a timeout or socket refusal. */
+    REQUIRE(probe.terminal_count == 1u);
+    REQUIRE(probe.failed != 0u && probe.connected_count == 0u);
+    REQUIRE(probe.sent_count == 0u && probe.received_count == 0u);
+    REQUIRE(strcmp(probe.failure_stage, "handshake") == 0);
+  }
+
+cleanup:
+  if (outgoing != NULL) mem_buffer_release(outgoing);
+  if (port_file != NULL) (void)fclose(port_file);
+  if (accepted && !probe.terminal_count && server_live)
+    (void)cnet_close(&server, probe.connection);
+  if (listener_live) {
+    (void)cnet_listener_close(&listener);
+    (void)cnet_listener_destroy(&listener);
+  }
+  if (server_live) {
+    (void)cnet_client_stop(&server, 5000u);
+    (void)cnet_client_destroy(&server);
+  }
+  if (tls_live) (void)cnet_tls_server_destroy(&tls_server);
+  if (result == 0)
+    printf("PASS production NativeIO CNet server / TLS%s / %s\n",
+           protocol, outcome);
+  return result;
+}
+
 int main(int argc, char **argv) {
+  if (argc == 8 && strcmp(argv[1], "--python-ssl-client") == 0)
+    return run_python_ssl_client(
+        argv[2], argv[3], argv[4], argv[5], argv[6], argv[7]);
   if (argc == 5 && strcmp(argv[1], "--external-san") == 0)
     return run_python_ssl_server(argv[2], argv[3], argv[4]);
   int result;
