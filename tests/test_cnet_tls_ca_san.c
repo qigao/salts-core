@@ -476,9 +476,10 @@ static int run_python_ssl_client(const char *port_path,
                                      ? "TLSv1.2" : "TLSv1.3";
   const bool expect_idle_read_timeout = strcmp(outcome, "idle") == 0;
   const bool expect_orderly_close = strcmp(outcome, "close") == 0;
+  const bool expect_gated_receive = strcmp(outcome, "gated") == 0;
   const bool should_verify =
       strcmp(outcome, "accept") == 0 || expect_idle_read_timeout ||
-      expect_orderly_close;
+      expect_orderly_close || expect_gated_receive;
   cnet_client server = {0};
   cnet_listener listener = {0};
   cnet_tls_server tls_server = {0};
@@ -494,6 +495,8 @@ static int run_python_ssl_client(const char *port_path,
       .client_auth = CNET_TLS_CLIENT_AUTH_REQUIRED};
   bool tls_live = false, server_live = false, listener_live = false;
   bool accepted = false, armed = false, response_sent = false;
+  bool gated_ready_published = false;
+  unsigned polls_after_receive_admission = 0u;
   mem_buffer_t *outgoing = NULL;
   FILE *port_file = NULL;
   uint16_t port = 0u;
@@ -553,6 +556,24 @@ static int run_python_ssl_client(const char *port_path,
       REQUIRE(cnet_receive(&server, probe.connection, 1u) == SALTS_OK);
       armed = true;
     }
+    if (expect_gated_receive && armed && !gated_ready_published) {
+      /* The next poll has processed the receive command on the production
+       * CNet Owner before the independent peer sends its first app record.
+       * This specifically tests the already-armed NativeIO TLS_READ path. */
+      ++polls_after_receive_admission;
+      if (polls_after_receive_admission >= 2u) {
+        char ready_path[1024];
+        FILE *ready_marker;
+        const int name_size =
+            snprintf(ready_path, sizeof(ready_path), "%s.ready", port_path);
+        REQUIRE(name_size > 0 && (size_t)name_size < sizeof(ready_path));
+        ready_marker = fopen(ready_path, "wb");
+        REQUIRE(ready_marker != NULL);
+        REQUIRE(fputs("ready\\n", ready_marker) >= 0);
+        REQUIRE(fclose(ready_marker) == 0);
+        gated_ready_published = true;
+      }
+    }
     if (should_verify && !expect_idle_read_timeout &&
         probe.received_count && !response_sent) {
       REQUIRE(probe.received_count == 1u && probe.received_byte == 0x46u);
@@ -598,6 +619,7 @@ static int run_python_ssl_client(const char *port_path,
     REQUIRE(probe.received_count == 0u && probe.sent_count == 0u);
     REQUIRE(!response_sent);
   } else if (should_verify) {
+    if (expect_gated_receive) REQUIRE(gated_ready_published);
     if (probe.connected_count != 1u || probe.failed != 0u) {
       /* Log only stable public CNet state on a real TLS/mTLS failure.
        * A peer TLS 1.3 timeout must not hide whether NativeIO accepted
