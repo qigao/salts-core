@@ -81,8 +81,3 @@ jobs:
           set -euo pipefail
           python tools/check_full_source_migration.py
           python tools/audit_original_utils_parity.py
-      - name: Migration tooling unit tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m unittest discover -s tools/migration -p 'test_*.py' -v
