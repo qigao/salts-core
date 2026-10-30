@@ -52,7 +52,7 @@ jobs:
           fi
 
           if grep -RFn --include='CMakeLists.txt' -- 'installed/' .; then
-            echo "Native CMake must not generate installed/consumer test targets."
+            echo "Native CMake must not generate installed test-project targets."
             exit 1
           fi
 
