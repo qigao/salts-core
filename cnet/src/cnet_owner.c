@@ -1295,6 +1295,28 @@ static int cnet_owner_tls_begin_peer_close(cnet_owner_impl *impl,
   return cnet_owner_tls_pump(impl, session);
 }
 
+static bool cnet_owner_tls_control_probe_allowed(
+    const cnet_owner_session *session) {
+  return session != NULL &&
+         cnet_tls_state_handshake_complete(&session->tls) &&
+         !session->close_requested && session->receive_demand == 0u;
+}
+
+#if defined(CNET_INTERNAL_TESTING)
+/* Uses the same production admission predicate, never a duplicate TLS
+ * implementation; an active NativeIO read is intentionally allowed. */
+bool cnet_owner_test_tls_control_probe_allowed(
+    bool authenticated, bool read_active,
+    bool closing, size_t receive_demand) {
+  cnet_owner_session session = {0};
+  session.tls.handshake_complete = authenticated;
+  session.read_active = read_active;
+  session.close_requested = closing;
+  session.receive_demand = receive_demand;
+  return cnet_owner_tls_control_probe_allowed(&session);
+}
+#endif
+
 static int cnet_owner_tls_background_progress(cnet_owner_impl *impl,
                                               cnet_owner_session *session) {
   bool peer_closed = false;
@@ -1321,9 +1343,7 @@ static int cnet_owner_tls_background_progress(cnet_owner_impl *impl,
    * terminating a perfectly valid TLS handshake. read_active does NOT
    * inhibit a probe after authentication: provider ciphertext is separately
    * owned from the leased NativeIO receive buffer. */
-  if (!cnet_tls_state_handshake_complete(&session->tls) ||
-      session->close_requested || session->receive_demand != 0u)
-    return SALTS_OK;
+  if (!cnet_owner_tls_control_probe_allowed(session)) return SALTS_OK;
 
   status = cnet_tls_probe_peer_close(&session->tls, &peer_closed, &plaintext_pending);
   if (status != SALTS_OK) {
