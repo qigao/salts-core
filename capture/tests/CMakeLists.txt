@@ -13,8 +13,7 @@ if(WIN32)
   # This is an isolated regression, not a replacement production provider.
   add_executable(capture_exposure_windows_test
     test_capture_exposure_windows.c
-    capture_exposure_destroy_stub.c
-    capture_exposure_entry.c)
+    capture_exposure_destroy_stub.c)
   target_compile_features(capture_exposure_windows_test PRIVATE c_std_11)
   target_include_directories(capture_exposure_windows_test PRIVATE
     "${PROJECT_SOURCE_DIR}/capture/include")
@@ -29,8 +28,6 @@ if(WIN32)
       /OPT:REF /DELAYLOAD:mfplat.dll /DELAYLOAD:mf.dll
       /DELAYLOAD:mfreadwrite.dll)
   endif()
-  target_compile_definitions(capture_exposure_windows_test PRIVATE
-    TINYTEST_NO_MAIN TT_PRINT_TRACE)
   target_link_libraries(capture_exposure_windows_test PRIVATE
     Salts::Core Salts::TinyTest yuv
     mfplat mf mfuuid mfreadwrite strmiids ole32 oleaut32 delayimp)
