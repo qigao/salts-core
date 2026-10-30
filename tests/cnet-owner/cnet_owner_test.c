@@ -1986,6 +1986,21 @@ static void cnet_owner_test_init_cleanup_after_backend(
 
 spec("CNet owner shard") {
 #if defined(CNET_INTERNAL_TESTING)
+  it("transfers pending TLS I/O deadlines after the handshake exactly once") {
+    check_equal(cnet_owner_test_tls_pending_deadline_rollover(), SALTS_OK);
+  }
+
+  it("drains buffered TLS input despite an active handshake-era NativeIO read") {
+    /* TLS private ring/plaintext is independent of the in-flight recv buffer.
+     * Receive admission must pump it without submitting a duplicate read. */
+    check_true(cnet_owner_test_can_progress_receive(true, true, false, 1u));
+    check_true(cnet_owner_test_can_progress_receive(true, false, false, 1u));
+    check_false(cnet_owner_test_can_progress_receive(false, true, false, 1u));
+    check_true(cnet_owner_test_can_progress_receive(false, false, false, 1u));
+    check_false(cnet_owner_test_can_progress_receive(true, true, false, 0u));
+    check_false(cnet_owner_test_can_progress_receive(true, true, true, 1u));
+  }
+
   it("attributes a late TLS read/write completion after authentication") {
     check_equal(cnet_owner_test_tls_completion_stage(
                     false, false, CNET_SESSION_STAGE_HANDSHAKE),

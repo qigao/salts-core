@@ -474,7 +474,9 @@ static int run_python_ssl_client(const char *port_path,
   const char *label = "production CNet <- Python ssl TLS REQUIRED-mTLS";
   const char *expected_version = strcmp(protocol, "12") == 0
                                      ? "TLSv1.2" : "TLSv1.3";
-  const bool should_verify = strcmp(outcome, "accept") == 0;
+  const bool expect_idle_read_timeout = strcmp(outcome, "idle") == 0;
+  const bool should_verify =
+      strcmp(outcome, "accept") == 0 || expect_idle_read_timeout;
   cnet_client server = {0};
   cnet_listener listener = {0};
   cnet_tls_server tls_server = {0};
@@ -549,7 +551,8 @@ static int run_python_ssl_client(const char *port_path,
       REQUIRE(cnet_receive(&server, probe.connection, 1u) == SALTS_OK);
       armed = true;
     }
-    if (should_verify && probe.received_count && !response_sent) {
+    if (should_verify && !expect_idle_read_timeout &&
+        probe.received_count && !response_sent) {
       REQUIRE(probe.received_count == 1u && probe.received_byte == 0x46u);
       REQUIRE(probe.failed == 0u);
       outgoing = mem_get_buffer(mem_global(), 1u);
@@ -567,7 +570,18 @@ static int run_python_ssl_client(const char *port_path,
   }
 
   REQUIRE(accepted);
-  if (should_verify) {
+  if (expect_idle_read_timeout) {
+    /* A real, authenticated idle peer keeps TCP open while CNet owns a
+     * post-handshake TLS_READ. Never accept a late socket EOF or handshake
+     * failure as proof of READ timeout; all public identity checks above
+     * must already have passed before receive demand was armed. */
+    REQUIRE(armed && probe.connected_count == 1u);
+    REQUIRE(probe.terminal_count == 1u && probe.failed == 1u);
+    REQUIRE(probe.last_error_status == SALTS_ETIMEDOUT);
+    REQUIRE(strcmp(probe.failure_stage, "read") == 0);
+    REQUIRE(probe.received_count == 0u && probe.sent_count == 0u);
+    REQUIRE(!response_sent);
+  } else if (should_verify) {
     if (probe.connected_count != 1u || probe.failed != 0u) {
       /* Log only stable public CNet state on a real TLS/mTLS failure.
        * A peer TLS 1.3 timeout must not hide whether NativeIO accepted
