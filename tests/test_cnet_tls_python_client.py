@@ -101,14 +101,15 @@ def fragmented_tls13_exchange(ctx: ssl.SSLContext, raw: socket.socket) -> None:
 def scenario(
     binary: Path, work: Path, crypto, fixtures, proto: str, case: str,
     *, fragmented: bool = False, idle: bool = False,
-    orderly_close: bool = False,
+    orderly_close: bool = False, gated: bool = False,
 ) -> None:
-    if (idle or orderly_close) and (
+    if (idle or orderly_close or gated) and (
         fragmented or proto != "13" or case != "client" or
-        (idle and orderly_close)
+        sum((idle, orderly_close, gated)) != 1
     ):
-        raise AssertionError("idle/close require separate real TLS1.3 client credentials")
+        raise AssertionError("idle/close/gated require separate real TLS1.3 credentials")
     expected = (
+        "gated" if gated else
         "close" if orderly_close else
         "idle" if idle else
         "accept" if case == "client" else "reject"
@@ -116,11 +117,13 @@ def scenario(
     if fragmented and (proto != "13" or case != "client"):
         raise AssertionError("fragmented ciphertext gate is valid TLS1.3 only")
     suffix = (
+        "-gated" if gated else
         "-close" if orderly_close else
         "-idle" if idle else
         "-fragmented" if fragmented else ""
     )
     port_path = work / f"native-{proto}-{case}{suffix}.port"
+    ready_path = Path(str(port_path) + ".ready")
     if port_path.exists():
         raise AssertionError("stale private port marker")
     # Exact-head Python fixture generator and standard-library ssl client.
@@ -183,13 +186,30 @@ def scenario(
                                 )
                             peer_completed = True
                         else:
-                            # TLS1.3 wrap_socket can finish before the server
-                            # verifies CertificateVerify; require real app data.
+                            # Compare the independently negotiated TLS1.3
+                            # client Finished against an already-admitted
+                            # NativeIO TLS_READ on the real CNet server.
+                            # Merely receiving CONNECTED on the client does
+                            # not prove the native Owner armed application
+                            # receive demand, so wait for its private marker.
+                            if gated:
+                                phase = "native-receive-admission"
+                                ready_deadline = time.monotonic() + 5.0
+                                while not ready_path.exists():
+                                    if native.poll() is not None:
+                                        raise AssertionError(
+                                            "native TLS owner exited before receive admission"
+                                        )
+                                    if time.monotonic() >= ready_deadline:
+                                        raise AssertionError(
+                                            "native TLS receive admission never published"
+                                        )
+                                    time.sleep(0.005)
                             phase = "authenticated-request"
                             peer.sendall(b"F")
                             phase = "authenticated-response"
                             response = peer.recv(1)
-                            if expected in ("accept", "close"):
+                            if expected in ("accept", "close", "gated"):
                                 if response != b"G":
                                     raise AssertionError(f"valid mTLS app data missing: {response!r}")
                                 if orderly_close:
@@ -208,7 +228,7 @@ def scenario(
                             else:
                                 peer_rejected = True
             except (ssl.SSLError, ConnectionError, EOFError):
-                if expected in ("accept", "close"):
+                if expected in ("accept", "close", "gated"):
                     raise
                 if idle:
                     # Native's exact READ-stage timeout assertion below is
@@ -218,7 +238,7 @@ def scenario(
                     peer_rejected = True
         if expected == "reject" and not peer_rejected:
             raise AssertionError("invalid client was not rejected")
-        if expected in ("accept", "idle", "close") and not peer_completed:
+        if expected in ("accept", "idle", "close", "gated") and not peer_completed:
             raise AssertionError("authenticated peer did not reach required terminal")
     except (socket.timeout, TimeoutError) as exc:
         failure = f"deadline exceeded during {phase}: {type(exc).__name__}"
@@ -262,6 +282,19 @@ def main() -> int:
         private.chmod(0o700)
         fixtures = python_mtls.make_fixtures(private)
         for proto in ("12", "13"):
+            if proto == "13":
+                # Qualify the retained NativeIO TLS_READ separately before
+                # the historically intermittent immediate-send case, and
+                # ensure close_notify evidence is not skipped when that case
+                # later reveals an unrelated scheduling RED.
+                scenario(
+                    args.binary, private, python_mtls, fixtures, "13", "client",
+                    gated=True,
+                )
+                scenario(
+                    args.binary, private, python_mtls, fixtures, "13", "client",
+                    orderly_close=True,
+                )
             for case in CASES:
                 scenario(args.binary, private, python_mtls, fixtures, proto, case)
         # A single additional real TLS1.3 connection, not a retry/stress
@@ -276,13 +309,6 @@ def main() -> int:
         scenario(
             args.binary, private, python_mtls, fixtures, "13", "client",
             idle=True,
-        )
-        # One actual authenticated application exchange followed by a
-        # bidirectional TLS1.3 close_notify, retaining the same NativeIO
-        # request ownership. Python unwrap() cannot accept EOF as closure.
-        scenario(
-            args.binary, private, python_mtls, fixtures, "13", "client",
-            orderly_close=True,
         )
     print("PASS Python ssl client -> one production CNet REQUIRED-mTLS server on both TLS versions")
     return 0
