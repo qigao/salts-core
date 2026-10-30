@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -15,6 +16,20 @@ ORIGINAL = {
     "utils/tests/test_platform.c": "0bb8954d6b5e78f0df160a8b7919fe684c6efc3a",
     "utils/tests/test_native_timer.c": "283fa3ee44f7c45322aaf3992cd670f80387ffab",
     "utils/tests/test_platform_header_cpp.cpp": "3220cbadbb738350b6ea8cbd5cc8b77513f92cf0",
+    "utils/tests/test_platform_build_state_contract.c": "e40095744908e5df43f9a4916275de3d79b7ad12",
+}
+
+ORIGINAL_COPIES = {
+    "utils/include/platform.h": "platform/original/include/platform.h.original",
+    "utils/src/platform.c": "platform/original/src/platform.c.original",
+    "utils/include/cmeta_thread.h": "platform/original/include/cmeta_thread.h.original",
+    "utils/src/cmeta_thread.c": "platform/original/src/cmeta_thread.c.original",
+    "utils/tests/test_platform.c": "platform/original/tests/test_platform.c.original",
+    "utils/tests/test_native_timer.c": "platform/original/tests/test_native_timer.c.original",
+    "utils/tests/test_platform_header_cpp.cpp":
+        "platform/original/tests/test_platform_header_cpp.cpp.original",
+    "utils/tests/test_platform_build_state_contract.c":
+        "platform/original/tests/test_platform_build_state_contract.c.original",
 }
 
 PLATFORM_API = [
@@ -56,6 +71,12 @@ def require(condition: bool, message: str) -> None:
         raise SystemExit(message)
 
 
+def git_blob(data: bytes) -> str:
+    return hashlib.sha1(
+        b"blob " + str(len(data)).encode("ascii") + b"\0" + data
+    ).hexdigest()
+
+
 def declared_names(text: str) -> set[str]:
     return set(re.findall(r"\b(cmeta_[A-Za-z0-9_]+)\s*\([^;{}]*\)\s*;", text))
 
@@ -76,6 +97,10 @@ def main() -> int:
         require(row is not None, f"frozen Platform donor path vanished: {path}")
         require(row["git_blob"] == blob,
                 f"frozen Platform donor blob changed: {path}")
+        copy = ROOT / ORIGINAL_COPIES[path]
+        require(copy.is_file(), f"frozen Platform donor copy missing: {path}")
+        require(git_blob(copy.read_bytes().replace(b"\r\n", b"\n")) == blob,
+                f"frozen Platform donor copy changed: {path}")
 
     public = json.loads(
         (ROOT / "tools/migration/original-public-functions.json").read_text())
