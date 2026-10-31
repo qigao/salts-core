@@ -812,6 +812,38 @@ int salts_fs_root_revision_pin_open(
     salts_fs_root_revision_pin_t **out_pin);
 int salts_fs_root_revision_pin_read(
     salts_fs_root_revision_pin_t *pin, char *buffer, size_t bytes);
+/* M12: bounded caller-owned, double-read CHECKED snapshot of an already
+ * pinned immutable revision. This is the bridge to a downstream producer's
+ * frozen encoded image: after a successful return, the complete byte COPY
+ * is owned by the caller and will not track the file if it is replaced,
+ * retired, or modified later. No heap allocation or backend decoder here.
+ *
+ * pin_open captures the original native file identity, full extent and
+ * high-resolution change/write times from its already-open descriptor.
+ * copy_checked() rechecks those observations, reads the COMPLETE extent
+ * into caller buffer, re-reads/compares every byte from the SAME handle,
+ * and rechecks observations before reporting success.
+ * -ERANGE: output capacity smaller than the pinned extent, no bytes copied.
+ * -EAGAIN: source extent/metadata/observed bytes changed; out_length=0,
+ *          any partially copied caller bytes cleared. Caller MUST NOT
+ *          accept that source as a published immutable revision.
+ * -EPERM: inherited pin used by a different process.
+ * Other negative errno: input or native I/O failure, no accepted output.
+ * Pin remains owned by the caller and must be explicitly closed.
+ *
+ * This only detects OBSERVABLE changes. It CANNOT stop or authenticate
+ * hostile in-place writers with open handles, provide a memory-atomic
+ * snapshot under an adversarial write race, or certify publication identity
+ * from content hash/mtime/inode. The producer still must enforce immutable
+ * writer ownership and independently validate expected manifest extent or
+ * cryptographic digest before exposing the copied bytes to gCanvas.
+ * Stun must use producer-issued (publisher,asset,generation), not this
+ * source's content equality, as its publication identity.
+ */
+int salts_fs_root_revision_pin_copy_checked(
+    salts_fs_root_revision_pin_t *pin,
+    char *buffer, size_t capacity, size_t *out_length);
+
 int64_t salts_fs_root_revision_pin_seek(
     salts_fs_root_revision_pin_t *pin, int64_t offset, int whence);
 int salts_fs_root_revision_pin_close(salts_fs_root_revision_pin_t *pin);

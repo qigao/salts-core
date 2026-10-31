@@ -2302,6 +2302,196 @@ static int test_revision_reader_process_death(
   return 0;
 }
 
+
+#ifdef _WIN32
+/* External process deliberately ignores the per-version readers lock.
+ * This is an adversarial test: it is permitted to mutate the inode by
+ * the existing native share contract. Checked-copy must DETECT the
+ * observed change and refuse the old producer snapshot, not pretend
+ * OS reader locks seal file contents. */
+static int win_m12_external_writer(unsigned long owner) {
+  char tmp[1024], revision[96];
+  salts_fs_root_t *root = NULL;
+  salts_fs_root_file_t *writer = NULL;
+  int rc;
+  if (snprintf(revision, sizeof(revision),
+               "fs-m12-%lu-A1", owner) <= 0)
+    return 1301;
+  if (salts_fs_get_tmpdir(tmp, sizeof(tmp)) != 0 ||
+      salts_fs_root_open(tmp, &root) != 0 || !root)
+    return 1302;
+  rc = salts_fs_root_file_open(
+      root, revision, SALTS_FS_O_WRONLY | SALTS_FS_O_APPEND,
+      0, &writer);
+  if (rc != 0 || !writer) return 1303;
+  rc = salts_fs_root_file_write(writer, "!", 1u);
+  if (rc != 1) return 1304;
+  if (salts_fs_root_file_fsync(writer) != 0 ||
+      salts_fs_root_file_close(writer) != 0 ||
+      salts_fs_root_close(root) != 0)
+    return 1305;
+  return 0;
+}
+#endif
+
+static int test_revision_checked_copy(
+    salts_fs_root_t *root, unsigned long pid) {
+  static const char red[] = "M12-original-pinned-encoded-red";
+  char stage[2][96], revision[2][96], locks[2][110];
+  char frozen[sizeof(red)] = {0}, observed[sizeof(red) + 8u];
+  salts_fs_root_revision_pin_t *pin = NULL;
+  salts_fs_replace_state_t state = SALTS_FS_REPLACE_NOT_PUBLISHED;
+  salts_fs_stat_t stats = {0};
+  size_t length = 99u;
+  int rc;
+  for (int i = 0; i < 2; ++i) {
+    if (snprintf(stage[i], sizeof(stage[i]),
+                 "fs-m12-%lu-stage%d", pid, i) <= 0 ||
+        snprintf(revision[i], sizeof(revision[i]),
+                 "fs-m12-%lu-%s", pid, i == 0 ? "A1" : "A3") <= 0 ||
+        snprintf(locks[i], sizeof(locks[i]),
+                 "%s.readers", revision[i]) <= 0)
+      return 1310;
+  }
+  if (stage_revision_file(root, stage[0], red, sizeof(red)-1u) != 0)
+    return 1311;
+#ifdef _WIN32
+  rc = salts_fs_root_rename_file_noreplace(
+      root, stage[0], revision[0]);
+  if (rc != 0) return 1312;
+#else
+  rc = salts_fs_root_publish_file_noreplace(
+      root, stage[0], revision[0], &state);
+  if (rc != 0 || state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+    return 1312;
+#endif
+  rc = salts_fs_root_revision_pin_open(root, revision[0], &pin);
+  if (rc != 0 || !pin) return 1313;
+  memset(observed, 0x5a, sizeof(observed));
+  rc = salts_fs_root_revision_pin_copy_checked(
+      pin, observed, sizeof(red)-2u, &length);
+  if (rc != -ERANGE || length != 0u ||
+      (unsigned char)observed[0] != 0x5au)
+    return 1314;
+  rc = salts_fs_root_revision_pin_copy_checked(
+      pin, frozen, sizeof(frozen), &length);
+  if (rc != 0 || length != sizeof(red)-1u ||
+      memcmp(frozen, red, sizeof(red)-1u) != 0)
+    return 1315;
+
+  /* A DIFFERENT process deliberately writes to the pinned inode
+   * without participating in cooperative reader/retire locking. */
+#ifdef _WIN32
+  {
+    wchar_t executable[32768], command[33000];
+    STARTUPINFOW si = {0};
+    PROCESS_INFORMATION pi = {0};
+    DWORD code = 99u;
+    const DWORD n = GetModuleFileNameW(
+        NULL, executable,
+        (DWORD)(sizeof(executable)/sizeof(executable[0])));
+    if (n == 0 || n >= sizeof(executable)/sizeof(executable[0]) ||
+        swprintf(command, sizeof(command)/sizeof(command[0]),
+                 L"\"%ls\" --fs-m12-external-writer %lu",
+                 executable, pid) < 0)
+      return 1316;
+    si.cb = sizeof(si);
+    if (!CreateProcessW(executable, command, NULL, NULL, FALSE,
+                        CREATE_NO_WINDOW, NULL, NULL, &si, &pi))
+      return 1317;
+    CloseHandle(pi.hThread);
+    if (WaitForSingleObject(pi.hProcess, 10000u) != WAIT_OBJECT_0 ||
+        !GetExitCodeProcess(pi.hProcess, &code) || code != 0u)
+      return 1318;
+    CloseHandle(pi.hProcess);
+  }
+#else
+  {
+    pid_t child = fork();
+    int status = 0;
+    if (child < 0) return 1316;
+    if (child == 0) {
+      char tmp[1024];
+      salts_fs_root_t *other = NULL;
+      salts_fs_root_file_t *writer = NULL;
+      if (salts_fs_get_tmpdir(tmp, sizeof(tmp)) != 0 ||
+          salts_fs_root_open(tmp, &other) != 0 || !other)
+        _exit(61);
+      if (salts_fs_root_file_open(
+            other, revision[0],
+            SALTS_FS_O_WRONLY | SALTS_FS_O_APPEND,
+            0, &writer) != 0 || !writer)
+        _exit(62);
+      if (salts_fs_root_file_write(writer, "!", 1u) != 1 ||
+          salts_fs_root_file_fsync(writer) != 0 ||
+          salts_fs_root_file_close(writer) != 0 ||
+          salts_fs_root_close(other) != 0)
+        _exit(63);
+      _exit(0);
+    }
+    if (waitpid(child, &status, 0) != child ||
+        !WIFEXITED(status) || WEXITSTATUS(status) != 0)
+      return 1318;
+  }
+#endif
+  /* The old pinned source was modified despite SHARED reader lease:
+   * this API must reject observed drift rather than returning an
+   * inconsistent 'immutable' image; the first accepted caller COPY
+   * is nevertheless safe and remains unchanged. */
+  length = 88u;
+  memset(observed, 0x5a, sizeof(observed));
+  rc = salts_fs_root_revision_pin_copy_checked(
+      pin, observed, sizeof(observed), &length);
+  if (rc != -EAGAIN || length != 0u ||
+      memcmp(frozen, red, sizeof(red)-1u) != 0)
+    return 1319;
+  if (salts_fs_root_revision_retire(root, revision[0]) != -EBUSY)
+    return 1320;
+  if (salts_fs_root_revision_pin_close(pin) != 0) return 1321;
+  pin = NULL;
+  if (salts_fs_root_revision_retire(root, revision[0]) != 0 ||
+      salts_fs_root_stat(root, revision[0], &stats) != -ENOENT)
+    return 1322;
+
+  /* A3 has the same *original* encoded bytes but its own immutable
+   * version filename and pin/GC lease. Source equality does not mint
+   * a new generation: identity still belongs to the M7-M10 publisher. */
+  if (stage_revision_file(root, stage[1], red, sizeof(red)-1u) != 0)
+    return 1323;
+#ifdef _WIN32
+  rc = salts_fs_root_rename_file_noreplace(
+      root, stage[1], revision[1]);
+  if (rc != 0) return 1324;
+#else
+  rc = salts_fs_root_publish_file_noreplace(
+      root, stage[1], revision[1], &state);
+  if (rc != 0 || state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+    return 1324;
+#endif
+  rc = salts_fs_root_revision_pin_open(root, revision[1], &pin);
+  if (rc != 0 || !pin) return 1325;
+  memset(observed, 0, sizeof(observed));
+  rc = salts_fs_root_revision_pin_copy_checked(
+      pin, observed, sizeof(observed), &length);
+  if (rc != 0 || length != sizeof(red)-1u ||
+      memcmp(observed, red, sizeof(red)-1u) != 0 ||
+      memcmp(frozen, observed, length) != 0)
+    return 1326;
+  if (salts_fs_root_revision_pin_close(pin) != 0)
+    return 1327;
+  pin = NULL;
+  if (salts_fs_root_revision_retire(root, revision[1]) != 0)
+    return 1328;
+  for (int i = 0; i < 2; ++i) {
+    if (salts_fs_root_stat(root, locks[i], &stats) != 0 ||
+        !stats.is_file ||
+        salts_fs_root_unlink(root, locks[i]) != 0)
+      return 1329;
+  }
+  puts("Salts::FS M12 bounded double-read producer copy; external inode mutation rejected; independent red A1/A3 copies PASS");
+  return 0;
+}
+
 int main(int argc, char **argv) {
   char tmp[1024] = {0}, path[1400] = {0}, name[120] = {0};
   const char body[] = "salts core fs native\n";
@@ -2312,6 +2502,12 @@ int main(int argc, char **argv) {
   char scratch[128] = {0};
   int bytes;
 #ifdef _WIN32
+  if (argc == 3 && strcmp(argv[1], "--fs-m12-external-writer") == 0) {
+    char *end = NULL;
+    unsigned long owner = strtoul(argv[2], &end, 10);
+    if (!end || *end != '\0' || owner == 0u) return 78;
+    return win_m12_external_writer(owner);
+  }
   if (argc == 3 && strcmp(argv[1], "--fs-m11-crashed-reader") == 0) {
     char *end = NULL;
     unsigned long owner = strtoul(argv[2], &end, 10);
@@ -2454,6 +2650,14 @@ int main(int argc, char **argv) {
       fprintf(stderr, "Salts::FS read-pin owner death FAIL: %d\n",
               exit_gc);
       return exit_gc;
+    }
+  }
+  {
+    const int checked = test_revision_checked_copy(root, pid);
+    if (checked != 0) {
+      fprintf(stderr, "Salts::FS checked revision copy M12 FAIL: %d\n",
+              checked);
+      return checked;
     }
   }
   if (salts_fs_root_close(root)) return 12;
