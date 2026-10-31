@@ -626,6 +626,32 @@ int salts_fs_root_publish_file_noreplace(
     const salts_fs_root_t *root, const char *staging_path,
     const char *revision_path, salts_fs_replace_state_t *state);
 
+/* Atomically switch a small, completed CURRENT manifest from one regular
+ * staging file, replacing the current regular file if it already exists.
+ * Unlike immutable generation data, the CURRENT pointer is replaceable.
+ * This API does NOT mint a generation, authenticate manifest bytes, perform
+ * an optimistic compare-and-swap or grant reader leases: exactly ONE trusted
+ * write owner must serialize the current pointer and publish immutable data
+ * BEFORE switching to it. Readers with an opened previous manifest handle
+ * retain that exact content across the switch on supported POSIX systems.
+ *
+ * Same admitted root-relative no-follow path traversal, same filesystem,
+ * regular single-link staging file, complete staging fsync, native renameat,
+ * dest/source parent fsync. No user-space copy, read-modify-rename race,
+ * absolute path construction or fallback. The final destination entry is
+ * replaced, never followed even when it is a symlink. If native rename
+ * succeeds but a later verification/sync fails, state is DURABILITY_UNKNOWN
+ * and caller must inspect the full manifest and its revision files.
+ *
+ * Windows: strictly -ENOSYS / NOT_PUBLISHED before namespace change until
+ * native root-relative parent durability and crash recovery are qualified.
+ * PUBLISHED_DURABLE success is POSIX/local filesystem only and does not
+ * prove physical power-cut behavior on every filesystem/volume.
+ */
+int salts_fs_root_replace_file_durable(
+    const salts_fs_root_t *root, const char *staging_path,
+    const char *current_path, salts_fs_replace_state_t *state);
+
 /*
  * stat is secure no-follow in capability v1: a final symlink/reparse point
  * returns -ELOOP. lstat reports the final link itself. Intermediate links are
