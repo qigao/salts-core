@@ -903,6 +903,238 @@ static int test_current_manifest_switch(
 #endif
 }
 
+
+/* A single-authorized-writer's crash-stable high-water is reserved
+ * BEFORE immutable A1/B2/A3 content and CURRENT publication. The same
+ * encoded red bytes at A1 and A3 still have distinct generation numbers.
+ * This is NOT an authenticated identity service or a multiwriter lock. */
+static int test_generation_reservation_before_current(
+    salts_fs_root_t *root, unsigned long pid) {
+  static const char *requests[4] = {
+    "00112233445566778899aabbccddeeff",
+    "10112233445566778899aabbccddeeff",
+    "20112233445566778899aabbccddeeff",
+    "30112233445566778899aabbccddeeff"
+  };
+  static const char red[] = "original-red-revision";
+  static const char green[] = "later-green-revision";
+  char highwater[100], current[100], stages[4][100];
+  char contents[3][100], revisions[3][100], manifests[3][100];
+  char expected[180] = {0}, bytes[180] = {0}, read_request[33] = {0};
+  salts_fs_replace_state_t state;
+  uint64_t id = 99u, read_generation = 0u;
+  salts_fs_stat_t statbuf;
+  salts_fs_root_file_t *reader = NULL;
+  int rc;
+  if (snprintf(highwater, sizeof(highwater),
+               "fs-gen-%lu-highwater", pid) <= 0 ||
+      snprintf(current, sizeof(current),
+               "fs-gen-%lu-current", pid) <= 0)
+    return 701;
+  for (int i = 0; i < 4; ++i) {
+    if (snprintf(stages[i], sizeof(stages[i]),
+                 "fs-gen-%lu-counter-stage%d", pid, i) <= 0)
+      return 702;
+    if (i < 3) {
+      if (snprintf(contents[i], sizeof(contents[i]),
+                   "fs-gen-%lu-encoded-stage%d", pid, i) <= 0 ||
+          snprintf(revisions[i], sizeof(revisions[i]),
+                   "fs-gen-%lu-immutable-revision%d", pid, i+1) <= 0 ||
+          snprintf(manifests[i], sizeof(manifests[i]),
+                   "fs-gen-%lu-manifest-stage%d", pid, i) <= 0)
+        return 703;
+    }
+  }
+  state = SALTS_FS_REPLACE_PUBLISHED_DURABLE;
+  rc = salts_fs_root_generation_read(
+      root, highwater, &read_generation, read_request);
+  if (rc != -ENOENT || read_generation != 0u || read_request[0] != '\0')
+    return 704;
+  rc = salts_fs_root_reserve_generation(
+      root, highwater, stages[0], "invalid-request",
+      &id, &state);
+  if (rc != -EINVAL || id != 0u ||
+      state != SALTS_FS_REPLACE_NOT_PUBLISHED)
+    return 705;
+#ifdef _WIN32
+  rc = salts_fs_root_reserve_generation(
+      root, highwater, stages[0], requests[0], &id, &state);
+  if (rc != -ENOSYS || state != SALTS_FS_REPLACE_NOT_PUBLISHED ||
+      id != 0u ||
+      salts_fs_root_stat(root, highwater, &statbuf) != -ENOENT ||
+      salts_fs_root_stat(root, stages[0], &statbuf) != -ENOENT)
+    return 706;
+  puts("Salts::FS durable high-water generation reserve UNSUPPORTED on Windows");
+  return 0;
+#else
+  for (int i = 0; i < 3; ++i) {
+    const char *payload = i == 1 ? green : red;
+    const size_t payload_len = strlen(payload);
+    const int expect = i+1;
+    const char *request = requests[i];
+    state = SALTS_FS_REPLACE_DURABILITY_UNKNOWN;
+    id = 0u;
+    rc = salts_fs_root_reserve_generation(
+        root, highwater, stages[i], request, &id, &state);
+    if (rc != 0 || id != (uint64_t)expect ||
+        state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+      return 707;
+    read_generation = 0u;
+    rc = salts_fs_root_generation_read(
+        root, highwater, &read_generation, read_request);
+    if (rc != 0 || read_generation != id ||
+        strcmp(read_request, request) != 0)
+      return 708;
+    if (i == 0) {
+      /* Repeated newest request is idempotent and does not create a stage. */
+      uint64_t repeated = 0u;
+      rc = salts_fs_root_reserve_generation(
+          root, highwater, stages[0], request, &repeated, &state);
+      if (rc != 0 || repeated != 1u ||
+          state != SALTS_FS_REPLACE_PUBLISHED_DURABLE ||
+          salts_fs_root_stat(root, stages[0], &statbuf) != -ENOENT)
+        return 709;
+    }
+
+    /* Real immutable content must be separately published durably
+     * AFTER the owner first reserves the matching generation. */
+    if (stage_revision_file(root, contents[i], payload, payload_len) != 0)
+      return 710;
+    rc = salts_fs_root_publish_file_noreplace(
+        root, contents[i], revisions[i], &state);
+    if (rc != 0 || state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+      return 711;
+    const int n = snprintf(expected, sizeof(expected),
+        "publisher=mesa;asset=icon;generation=%llu;revision=%s",
+        (unsigned long long)id, revisions[i]);
+    if (n <= 0 || n >= (int)sizeof(expected))
+      return 712;
+    if (stage_revision_file(root, manifests[i],
+                            expected, (size_t)n) != 0)
+      return 713;
+    rc = salts_fs_root_replace_file_durable(
+        root, manifests[i], current, &state);
+    if (rc != 0 || state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+      return 714;
+    if (salts_fs_root_file_open(root, current, SALTS_FS_O_RDONLY,
+                                0, &reader) != 0 || !reader)
+      return 715;
+    memset(bytes, 0, sizeof(bytes));
+    rc = salts_fs_root_file_read(reader, bytes, (size_t)n);
+    if (salts_fs_root_file_close(reader) != 0 ||
+        rc != n || memcmp(bytes, expected, (size_t)n) != 0)
+      return 716;
+    reader = NULL;
+  }
+  /* A distinct root capability observes the already-persisted high-water,
+   * as a restarted producer does, then allocates generation 4 despite
+   * content A3 == A1 and despite CURRENT still being generation 3. */
+  {
+    char parent_dir[1024] = {0};
+    salts_fs_root_t *reopened = NULL;
+    if (salts_fs_get_tmpdir(parent_dir, sizeof(parent_dir)) != 0 ||
+        salts_fs_root_open(parent_dir, &reopened) != 0 || !reopened)
+      return 717;
+    read_generation = 0u;
+    rc = salts_fs_root_generation_read(
+        reopened, highwater, &read_generation, read_request);
+    if (rc != 0 || read_generation != 3u ||
+        strcmp(read_request, requests[2]) != 0)
+      return 718;
+    rc = salts_fs_root_reserve_generation(
+        reopened, highwater, stages[3], requests[3], &id, &state);
+    if (rc != 0 || id != 4u ||
+        state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+      return 719;
+    if (salts_fs_root_close(reopened) != 0)
+      return 720;
+  }
+  read_generation = 0u;
+  rc = salts_fs_root_generation_read(
+      root, highwater, &read_generation, read_request);
+  if (rc != 0 || read_generation != 4u ||
+      strcmp(read_request, requests[3]) != 0)
+    return 721;
+  /* Original A1 and A3 source contents are equal; names and generation
+   * identity stay distinct. Content GC must NEVER delete highwater. */
+  for (int i = 0; i < 3; ++i) {
+    if (salts_fs_root_file_open(root, revisions[i], SALTS_FS_O_RDONLY,
+                                0, &reader) != 0 || !reader)
+      return 722;
+    const char *payload = i == 1 ? green : red;
+    const size_t length = strlen(payload);
+    memset(bytes, 0, sizeof(bytes));
+    rc = salts_fs_root_file_read(reader, bytes, length);
+    if (salts_fs_root_file_close(reader) != 0 ||
+        rc != (int)length || memcmp(bytes, payload, length) != 0)
+      return 723;
+    reader = NULL;
+    if (salts_fs_root_unlink(root, revisions[i]) != 0)
+      return 724;
+  }
+  /* Even after content GC, highwater remains at 4, preventing ABA reuse. */
+  rc = salts_fs_root_generation_read(
+      root, highwater, &read_generation, read_request);
+  if (rc != 0 || read_generation != 4u)
+    return 725;
+  /* Reject a malformed/torn highwater instead of silently resetting to 1.
+   * A saturated 64-bit record must fail rather than wrap to generation 0. */
+  {
+    char bad_path[100], max_path[100], unused_stage[100];
+    static const char max_record[] =
+        "SFS-GEN1 18446744073709551615 00112233445566778899aabbccddeeff\n";
+    if (snprintf(bad_path, sizeof(bad_path),
+                 "fs-gen-%lu-malformed", pid) <= 0 ||
+        snprintf(max_path, sizeof(max_path),
+                 "fs-gen-%lu-overflow", pid) <= 0 ||
+        snprintf(unused_stage, sizeof(unused_stage),
+                 "fs-gen-%lu-should-not-stage", pid) <= 0)
+      return 727;
+    if (stage_revision_file(
+            root, bad_path, "not-a-generation", 16u) != 0)
+      return 728;
+    read_generation = 99u;
+    read_request[0] = 'x';
+    rc = salts_fs_root_generation_read(
+        root, bad_path, &read_generation, read_request);
+    if (rc != -EINVAL || read_generation != 0u ||
+        read_request[0] != '\0')
+      return 729;
+    state = SALTS_FS_REPLACE_PUBLISHED_DURABLE;
+    id = 99u;
+    rc = salts_fs_root_reserve_generation(
+        root, bad_path, unused_stage, requests[0], &id, &state);
+    if (rc != -EINVAL || id != 0u ||
+        state != SALTS_FS_REPLACE_NOT_PUBLISHED)
+      return 730;
+    if (stage_revision_file(
+            root, max_path, max_record, sizeof(max_record)-1u) != 0)
+      return 731;
+    rc = salts_fs_root_generation_read(
+        root, max_path, &read_generation, read_request);
+    if (rc != 0 || read_generation != UINT64_MAX ||
+        strcmp(read_request, requests[0]) != 0)
+      return 732;
+    state = SALTS_FS_REPLACE_PUBLISHED_DURABLE;
+    id = 99u;
+    rc = salts_fs_root_reserve_generation(
+        root, max_path, unused_stage, requests[1], &id, &state);
+    if (rc != -EOVERFLOW || id != 0u ||
+        state != SALTS_FS_REPLACE_NOT_PUBLISHED ||
+        salts_fs_root_stat(root, unused_stage, &statbuf) != -ENOENT)
+      return 733;
+    if (salts_fs_root_unlink(root, bad_path) != 0 ||
+        salts_fs_root_unlink(root, max_path) != 0)
+      return 734;
+  }
+  if (salts_fs_root_unlink(root, current) != 0 ||
+      salts_fs_root_unlink(root, highwater) != 0)
+    return 726;
+  puts("Salts::FS durable single-writer highwater + A1/B2/A3 reserve-before-content + reopen + no ABA reuse PASS (POSIX)");
+  return 0;
+#endif
+}
+
 int main(int argc, char **argv) {
   char tmp[1024] = {0}, path[1400] = {0}, name[120] = {0};
   const char body[] = "salts core fs native\n";
@@ -981,6 +1213,14 @@ int main(int argc, char **argv) {
       fprintf(stderr, "Salts::FS CURRENT manifest switch FAIL: %d\n",
               manifest_result);
       return manifest_result;
+    }
+  }
+  {
+    int gen_result = test_generation_reservation_before_current(root, pid);
+    if (gen_result != 0) {
+      fprintf(stderr, "Salts::FS durable generation reserve FAIL: %d\n",
+              gen_result);
+      return gen_result;
     }
   }
   if (salts_fs_root_close(root)) return 12;
