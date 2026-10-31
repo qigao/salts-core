@@ -9,6 +9,7 @@
 #else
 #include <unistd.h>
 #include <sys/wait.h>
+#include <signal.h>
 #endif
 /* No new project, workflow, installer or consumer. Exercise real OS
  * namespace/descriptor operations in the existing Salts::FS native CTest.
