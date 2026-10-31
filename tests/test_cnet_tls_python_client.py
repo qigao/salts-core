@@ -226,10 +226,31 @@ def scenario(
                                 if response != b"G":
                                     raise AssertionError(f"valid mTLS app data missing: {response!r}")
                                 if orderly_close or local_close:
-                                    # A real TLS1.3 close_notify handshake,
-                                    # not a socket shutdown or EOF disguised
-                                    # as successful TLS termination. This
-                                    # waits for the CNet server's close_notify.
+                                    if local_close:
+                                        # Deterministic admission ordering:
+                                        # CNet must accept its own close
+                                        # command before the Python peer
+                                        # sends reciprocal close_notify.
+                                        # Actual NativeIO cancel completion
+                                        # remains asynchronous and may
+                                        # overlap the peer's TLS shutdown.
+                                        phase = "native-local-close-admission"
+                                        close_marker = Path(
+                                            str(port_path) + ".localclose"
+                                        )
+                                        close_deadline = time.monotonic() + 4.0
+                                        while not close_marker.exists():
+                                            if native.poll() is not None:
+                                                raise AssertionError(
+                                                    "native exited before local close admission"
+                                                )
+                                            if time.monotonic() >= close_deadline:
+                                                raise AssertionError(
+                                                    "native TLS close was not admitted"
+                                                )
+                                            time.sleep(0.005)
+                                    # A real TLS1.3 close_notify exchange,
+                                    # not EOF or a socket-only shutdown.
                                     phase = "authenticated-close-notify"
                                     peer.unwrap()
                                     phase = "authenticated-close-complete"
