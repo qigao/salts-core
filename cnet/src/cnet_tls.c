@@ -1752,14 +1752,18 @@ int cnet_tls_probe_peer_close(cnet_tls_state *state, bool *out_peer_closed,
   return SALTS_OK;
 }
 
-int cnet_tls_shutdown(cnet_tls_state *state, bool *out_notify_generated) {
+int cnet_tls_shutdown(cnet_tls_state *state, bool *out_notify_generated,
+                      bool *out_peer_notify_received) {
   cnet_tls_gmssl_state *engine;
   size_t output_before;
+  int received = 0;
   int result;
   if (state == NULL || out_notify_generated == NULL ||
+      out_peer_notify_received == NULL ||
       (engine = CNET_TLS_ENGINE(state)) == NULL)
     return SALTS_EINVAL;
   *out_notify_generated = state->close_notify_started;
+  *out_peer_notify_received = false;
   if (!state->handshake_complete) return SALTS_ENOTCONN;
 
   output_before = engine->output_size;
@@ -1767,10 +1771,19 @@ int cnet_tls_shutdown(cnet_tls_state *state, bool *out_notify_generated) {
   if (engine->output_size > output_before) state->close_notify_started = true;
   *out_notify_generated = state->close_notify_started;
 
-  if (result == 1 || result == TLS_ERROR_TCP_CLOSED ||
-      cnet_tls_retryable(result))
-    return SALTS_OK;
-  return SALTS_EPROTO;
+  if (result != 1 && result != TLS_ERROR_TCP_CLOSED &&
+      !cnet_tls_retryable(result))
+    return SALTS_EPROTO;
+
+  /* The TLS protocol owner alone authenticates close_notify. GmSSL may
+   * complete its shutdown API after raw TCP closure, but EOF cannot count
+   * as a reciprocal close_notify when our local application initiated it.
+   * Do not infer authentication from output flushing or socket status. */
+  if (tls_get_peer_close_notify(&engine->connection, &received) != 1)
+    return SALTS_EIO;
+  if (received) state->peer_close_notify = true;
+  *out_peer_notify_received = received != 0;
+  return SALTS_OK;
 }
 
 int cnet_tls_get_negotiated_alpn(const cnet_tls_state *state,
