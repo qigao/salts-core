@@ -50,6 +50,7 @@ typedef struct salts_fs_root_s salts_fs_root_t;
 typedef struct salts_fs_root_file_s salts_fs_root_file_t;
 typedef struct salts_fs_root_dir_s salts_fs_root_dir_t;
 typedef struct salts_fs_root_writer_lease_s salts_fs_root_writer_lease_t;
+typedef struct salts_fs_root_revision_pin_s salts_fs_root_revision_pin_t;
 
 typedef enum {
   SALTS_FS_DIRENT_UNKNOWN = 0,
@@ -775,6 +776,47 @@ int salts_fs_root_reserve_generation_recorded_owned(
     const char *unique_highwater_staging_path,
     const char *request_id, uint64_t *out_generation,
     salts_fs_replace_state_t *state);
+
+/* M11 — cooperative cross-process immutable revision pin and retirement.
+ * One permanent, root-relative "<revision>.readers" file is used for each
+ * immutable generation-specific revision. NEVER rename/unlink/replace that
+ * lock file during production GC; the same inode is the lock identity.
+ *
+ * pin_open: acquire a native SHARED lock (nonblocking) on .readers BEFORE
+ * opening the exact generation file, then hold both handles for the entire
+ * read. The caller receives an opaque, process-owned pin, not a pathname
+ * lookup that may follow a newer CURRENT. pin_read/seek never reopen.
+ * Missing revision returns -ENOENT; competing GC exclusive lock returns
+ * -EBUSY. An already-open pin remains valid after CURRENT changes.
+ *
+ * retire: acquire the same version's native EXCLUSIVE nonblocking lock
+ * BEFORE inspecting/unlinking the generation-specific regular file.
+ * A live managed reader produces -EBUSY with the destination unchanged.
+ * Only after all readers release (or owning processes exit) may GC unlink.
+ * GC does NOT remove .readers, the journal, CURRENT, or generation highwater.
+ * If unlink happened but a later native close fails, reconcile the name;
+ * do not infer the version still exists from a negative result.
+ *
+ * Both operations reuse original no-follow Salts::FS root capabilities;
+ * Linux/macOS use flock(LOCK_SH/LOCK_EX|LOCK_NB), Windows LockFileEx
+ * shared/exclusive byte locks. This is NOT a lease for CURRENT or a
+ * distributed/remote-FS lock protocol. All readers AND GC must cooperate;
+ * untrusted writers with existing handles can still mutate an inode.
+ * Pin and root must remain in the same process; close pin before root.
+ *
+ * Windows accepts this namespace/handle lifecycle ONLY. Durable Windows
+ * version publication, CURRENT and highwater remain -ENOSYS.
+ */
+int salts_fs_root_revision_pin_open(
+    const salts_fs_root_t *root, const char *revision_path,
+    salts_fs_root_revision_pin_t **out_pin);
+int salts_fs_root_revision_pin_read(
+    salts_fs_root_revision_pin_t *pin, char *buffer, size_t bytes);
+int64_t salts_fs_root_revision_pin_seek(
+    salts_fs_root_revision_pin_t *pin, int64_t offset, int whence);
+int salts_fs_root_revision_pin_close(salts_fs_root_revision_pin_t *pin);
+int salts_fs_root_revision_retire(
+    const salts_fs_root_t *root, const char *revision_path);
 
 /*
  * stat is secure no-follow in capability v1: a final symlink/reparse point
