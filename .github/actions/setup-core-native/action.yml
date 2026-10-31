@@ -50,16 +50,14 @@ runs:
           Linux/ARM64) native=arm64-linux ;;
           macOS/X64) native=x64-osx ;;
           macOS/ARM64) native=arm64-osx ;;
-          Windows/X64)
-            if [ "$CORE_DEPENDENCY_MODE" = binary ]; then
-              native=qigao-x64-windows-v145
-            else
-              # Original source-built CNet uses the standard triplet from
-              # these exact scripts; cache jobs retain their custom ABI triplet.
-              native=x64-windows
-            fi ;;
+          Windows/X64) native=qigao-x64-windows-llvm-mingw ;;
+          Windows/ARM64) native=qigao-arm64-windows-llvm-mingw ;;
           *) echo "Unsupported Core dependency host: $RUNNER_OS/$RUNNER_ARCH" >&2; exit 1 ;;
         esac
+        if [ "$RUNNER_OS" = Windows ] && [ "$CORE_DEPENDENCY_MODE" = source ]; then
+          echo "Windows source dependency builds belong to the explicit LLVM-MinGW cache producer" >&2
+          exit 1
+        fi
         triplet="${CORE_REQUESTED_TRIPLET:-$native}"
         host="${CORE_REQUESTED_HOST:-$native}"
         echo "triplet=$triplet" >> "$GITHUB_OUTPUT"
@@ -77,9 +75,21 @@ runs:
         token: ${{ inputs.token }}
         version: '4.6.5'
         sha256: 'dfdcf77dfd36e60500532a3fcc8a1bd32dc2232edeb63e053267a712bc4489ed'
-    - name: Require exact base and module binary packages
-      id: dependencies
-      if: inputs.dependency-mode == 'binary'
+    - name: Restore exact Windows LLVM-MinGW native ABI packages
+      id: windows_dependencies
+      if: inputs.dependency-mode == 'binary' && runner.os == 'Windows'
+      uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@2423c2a0b5fdf07ce502c29fcb3c202e5a8f1d89
+      env:
+        VCPKG_BINARY_CACHE: ${{ env.VCPKG_BINARY_CACHE || format('{0}/core-native-vcpkg-cache', runner.temp) }}
+      with:
+        token: ${{ inputs.token }}
+        triplet: ${{ steps.coordinates.outputs.triplet }}
+        host-triplet: ${{ steps.coordinates.outputs.host_triplet }}
+        manifest-root: ${{ inputs.manifest-root }}
+        features: ${{ inputs.features }}
+    - name: Restore exact POSIX native ABI packages
+      id: posix_dependencies
+      if: inputs.dependency-mode == 'binary' && runner.os != 'Windows'
       uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@7bb5b556a001bc82d2922a04a718e986a7f47f54
       env:
         VCPKG_BINARY_CACHE: ${{ env.VCPKG_BINARY_CACHE || format('{0}/core-native-vcpkg-cache', runner.temp) }}
@@ -141,12 +151,17 @@ runs:
       shell: bash
       env:
         CORE_DEPENDENCY_MODE: ${{ inputs.dependency-mode }}
-        CORE_BINARY_TOOLCHAIN: ${{ steps.dependencies.outputs.toolchain_file }}
+        CORE_WINDOWS_TOOLCHAIN: ${{ steps.windows_dependencies.outputs.toolchain_file }}
+        CORE_POSIX_TOOLCHAIN: ${{ steps.posix_dependencies.outputs.toolchain_file }}
         CORE_SOURCE_TOOLCHAIN: ${{ steps.source_dependencies.outputs.toolchain_file }}
       run: |
         set -euo pipefail
         if [ "$CORE_DEPENDENCY_MODE" = binary ]; then
-          toolchain="$CORE_BINARY_TOOLCHAIN"
+          case "$RUNNER_OS" in
+            Windows) toolchain="$CORE_WINDOWS_TOOLCHAIN" ;;
+            Linux|macOS) toolchain="$CORE_POSIX_TOOLCHAIN" ;;
+            *) echo "Unsupported Core binary dependency host" >&2; exit 1 ;;
+          esac
         else
           toolchain="$CORE_SOURCE_TOOLCHAIN"
         fi
