@@ -49,6 +49,7 @@ typedef struct salts_fs_dir_s salts_fs_dir_t;
 typedef struct salts_fs_root_s salts_fs_root_t;
 typedef struct salts_fs_root_file_s salts_fs_root_file_t;
 typedef struct salts_fs_root_dir_s salts_fs_root_dir_t;
+typedef struct salts_fs_root_writer_lease_s salts_fs_root_writer_lease_t;
 
 typedef enum {
   SALTS_FS_DIRENT_UNKNOWN = 0,
@@ -734,6 +735,44 @@ int salts_fs_root_reserve_generation(
 int salts_fs_root_reserve_generation_recorded(
     const salts_fs_root_t *root,
     const char *highwater_path, const char *highwater_staging_path,
+    const char *request_id, uint64_t *out_generation,
+    salts_fs_replace_state_t *state);
+
+/* M10: live cross-process, cooperative SOLE-WRITER lease.
+ * Each highwater has a permanent same-parent <highwater>.writer file,
+ * held through the ENTIRE producer transaction (generation reservation,
+ * immutable revision publication and CURRENT switch). Never unlink,
+ * rename or replace this lock file while a publisher namespace exists,
+ * including after GC or process restart; otherwise a second inode could
+ * admit an uncoordinated writer.
+ *
+ * Linux/macOS: native nonblocking flock on root-relative no-follow
+ * regular single-link file; Windows: LockFileEx on its NT handle.
+ * Acquire rejects competing processes with -EBUSY; OS releases the lock
+ * when the final owning handle is closed/process exits. A forked child
+ * cannot reuse the parent's lease as its own writer capability.
+ *
+ * The acquired lease is an opaque in-process capability tied to the
+ * exact admitted root and highwater path. It DOES NOT authenticate
+ * hostile external processes, enforce a distributed-fencing epoch,
+ * guarantee NFS/remote-FS lock coherence or provide crash durability
+ * for the lock namespace. It does not turn file operations into CAS.
+ * Root must remain open and lease must be released before root close.
+ */
+int salts_fs_root_writer_lease_acquire(
+    const salts_fs_root_t *root, const char *highwater_path,
+    salts_fs_root_writer_lease_t **out_lease);
+int salts_fs_root_writer_lease_release(salts_fs_root_writer_lease_t *lease);
+
+/* Prefer this strict owner-scoped entry point for production M9 journals:
+ * a live writer lease is required, tied to its stored highwater/root.
+ * The existing lower-level recorded reservation remains a trusted-owner
+ * primitive for source migration tests, not a competing FS implementation.
+ * Retain the lease through content and CURRENT publication after reserve.
+ */
+int salts_fs_root_reserve_generation_recorded_owned(
+    const salts_fs_root_writer_lease_t *lease,
+    const char *unique_highwater_staging_path,
     const char *request_id, uint64_t *out_generation,
     salts_fs_replace_state_t *state);
 
