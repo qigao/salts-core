@@ -7,6 +7,10 @@ set(SALTSCORE_NATIVE_SOVERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR
 # This is DLL discovery, not a copy of the runtime or a static fallback.
 if(WIN32)
   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin")
+  # Keep the published DLL identity independent of the selected LLVM driver.
+  # llvm-mingw otherwise adds a Unix-style `lib` prefix that differs from the
+  # MSVC ABI name and from the fail-closed installed-owner audit.
+  set(CMAKE_SHARED_LIBRARY_PREFIX "")
 endif()
 
 include(GNUInstallDirs)
