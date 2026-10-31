@@ -58,19 +58,19 @@ typedef struct cmeta_readiness_state_view {
   int orphaned;
 } cmeta_readiness_state_view;
 
-int cmeta_readiness_state_model_valid(
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_readiness_state_model_valid(
     const cmeta_readiness_state_view *view);
-int cmeta_readiness_callback_forms_valid(
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_readiness_callback_forms_valid(
     cmeta_readiness_callback callback,
     cmeta_readiness_continuation continuation);
-int cmeta_readiness_registration_admission_enter(uintptr_t *admission);
-int cmeta_readiness_registration_admission_reserve_register(
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_readiness_registration_admission_enter(uintptr_t *admission);
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_readiness_registration_admission_reserve_register(
     uintptr_t *admission);
-int cmeta_readiness_registration_admission_close(uintptr_t *admission);
-void cmeta_readiness_registration_admission_leave(uintptr_t *admission);
-int cmeta_readiness_registration_admission_reset(uintptr_t *admission);
-uintptr_t cmeta_readiness_registration_admission_max_entrants(void);
-uint32_t cmeta_readiness_registration_admission_entrants(
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_readiness_registration_admission_close(uintptr_t *admission);
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_readiness_registration_admission_leave(uintptr_t *admission);
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_readiness_registration_admission_reset(uintptr_t *admission);
+SALTS_CORE_PLATFORM_API uintptr_t SALTS_CORE_PLATFORM_CALL cmeta_readiness_registration_admission_max_entrants(void);
+SALTS_CORE_PLATFORM_API uint32_t SALTS_CORE_PLATFORM_CALL cmeta_readiness_registration_admission_entrants(
     const uintptr_t *admission);
 
 static inline int cmeta_readiness_generation_available(uint32_t generation) {
@@ -117,40 +117,40 @@ typedef struct cmeta_readiness_backend_ops {
   void (*destroy)(void *user);
 } cmeta_readiness_backend_ops;
 
-int cmeta_readiness_reactor_init_backend(cmeta_readiness_reactor *reactor,
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_readiness_reactor_init_backend(cmeta_readiness_reactor *reactor,
                                          const cmeta_readiness_config *config,
                                          const cmeta_readiness_backend_ops *backend_ops,
                                          void *backend_user);
-int cmeta_readiness_backend_dispatch(cmeta_readiness_reactor *reactor, uint64_t token,
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_readiness_backend_dispatch(cmeta_readiness_reactor *reactor, uint64_t token,
                                      cmeta_readiness_events events, int status);
-int cmeta_readiness_backend_dispatch_generation(cmeta_readiness_reactor *reactor,
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_readiness_backend_dispatch_generation(cmeta_readiness_reactor *reactor,
                                                 uint64_t token, uint64_t arm_token,
                                                 cmeta_readiness_events events, int status);
-int cmeta_readiness_backend_fail(cmeta_readiness_reactor *reactor, int status);
-int cmeta_readiness_backend_wait_admission_closed(cmeta_readiness_reactor *reactor);
-int cmeta_readiness_backend_wait_arm_waiter(
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_readiness_backend_fail(cmeta_readiness_reactor *reactor, int status);
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_readiness_backend_wait_admission_closed(cmeta_readiness_reactor *reactor);
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_readiness_backend_wait_arm_waiter(
     cmeta_readiness_registration *registration, uint32_t waiters,
     uint64_t timeout_ns);
-int cmeta_readiness_backend_wait_arm_waiter_observe(
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_readiness_backend_wait_arm_waiter_observe(
     cmeta_readiness_registration *registration, uint32_t waiters,
     uint64_t timeout_ns, uint32_t *api_borrows);
 
 #if defined(__linux__)
-uint32_t cmeta_readiness_epoll_interest_events(cmeta_readiness_events events);
+SALTS_CORE_PLATFORM_API uint32_t SALTS_CORE_PLATFORM_CALL cmeta_readiness_epoll_interest_events(cmeta_readiness_events events);
 #endif
 
 #if defined(SALTS_ENABLE_EPOLL_READINESS)
-int cmeta_readiness_epoll_init(cmeta_readiness_reactor *reactor,
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_readiness_epoll_init(cmeta_readiness_reactor *reactor,
                                const cmeta_readiness_config *config);
 #endif
 
 #if defined(SALTS_ENABLE_KQUEUE_READINESS)
-int cmeta_readiness_kqueue_init(cmeta_readiness_reactor *reactor,
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_readiness_kqueue_init(cmeta_readiness_reactor *reactor,
                                 const cmeta_readiness_config *config);
 #endif
 
 #if defined(SALTS_ENABLE_POLL_READINESS)
-int cmeta_readiness_poll_init(cmeta_readiness_reactor *reactor,
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_readiness_poll_init(cmeta_readiness_reactor *reactor,
                               const cmeta_readiness_config *config);
 #endif
 

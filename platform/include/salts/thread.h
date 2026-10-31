@@ -1,6 +1,7 @@
 #ifndef SALTS_THREAD_PRIMITIVES_H
 #define SALTS_THREAD_PRIMITIVES_H
 
+#include <salts_core/platform_api.h>
 #include <salts/error_codes.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -51,7 +52,9 @@ typedef struct cmeta_once_s {
 
 typedef void (*cmeta_thread_cb)(void *arg);
 
-const void *cmeta_thread_current_token(void);
+/* Compare tokens only while both OS threads are alive. Their addresses may
+ * be reused after thread exit. */
+SALTS_CORE_PLATFORM_API const void *SALTS_CORE_PLATFORM_CALL cmeta_thread_current_token(void);
 
 /*
  * Address-stable thread-affinity state owned by Salts::Platform.
@@ -97,35 +100,32 @@ static inline int cmeta_thread_affine_reset(cmeta_thread_affine_state *state, co
   return SALTS_OK;
 }
 
-void cmeta_mutex_init(cmeta_mutex_t *mutex);
-void cmeta_mutex_destroy(cmeta_mutex_t *mutex);
-void cmeta_mutex_lock(cmeta_mutex_t *mutex);
-void cmeta_mutex_unlock(cmeta_mutex_t *mutex);
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_mutex_init(cmeta_mutex_t *mutex);
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_mutex_destroy(cmeta_mutex_t *mutex);
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_mutex_lock(cmeta_mutex_t *mutex);
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_mutex_unlock(cmeta_mutex_t *mutex);
 
-int cmeta_rwlock_init(cmeta_rwlock_t *lock);
-void cmeta_rwlock_destroy(cmeta_rwlock_t *lock);
-void cmeta_rwlock_rdlock(cmeta_rwlock_t *lock);
-void cmeta_rwlock_rdunlock(cmeta_rwlock_t *lock);
-void cmeta_rwlock_wrlock(cmeta_rwlock_t *lock);
-void cmeta_rwlock_wrunlock(cmeta_rwlock_t *lock);
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_rwlock_init(cmeta_rwlock_t *lock);
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_rwlock_destroy(cmeta_rwlock_t *lock);
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_rwlock_rdlock(cmeta_rwlock_t *lock);
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_rwlock_rdunlock(cmeta_rwlock_t *lock);
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_rwlock_wrlock(cmeta_rwlock_t *lock);
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_rwlock_wrunlock(cmeta_rwlock_t *lock);
 
-void cmeta_cond_init(cmeta_cond_t *cond);
-void cmeta_cond_destroy(cmeta_cond_t *cond);
-void cmeta_cond_signal(cmeta_cond_t *cond);
-void cmeta_cond_broadcast(cmeta_cond_t *cond);
-void cmeta_cond_wait(cmeta_cond_t *cond, cmeta_mutex_t *mutex);
-int cmeta_cond_timedwait(cmeta_cond_t *cond, cmeta_mutex_t *mutex, uint64_t timeout_ns);
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_cond_init(cmeta_cond_t *cond);
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_cond_destroy(cmeta_cond_t *cond);
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_cond_signal(cmeta_cond_t *cond);
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_cond_broadcast(cmeta_cond_t *cond);
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_cond_wait(cmeta_cond_t *cond, cmeta_mutex_t *mutex);
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_cond_timedwait(cmeta_cond_t *cond, cmeta_mutex_t *mutex, uint64_t timeout_ns);
 
-int cmeta_thread_create(cmeta_thread_t *thread, cmeta_thread_cb entry, void *arg);
-int cmeta_thread_join(cmeta_thread_t *thread);
-void cmeta_thread_destroy(cmeta_thread_t *thread);
-void cmeta_once(cmeta_once_t *guard, void (*callback)(void));
-void cmeta_sleep_ms(uint32_t ms);
-void cmeta_thread_yield(void);
-/* Identity of the current live OS thread. Compare only while both threads
- * remain alive; token addresses may be reused after thread exit. */
-const void *cmeta_thread_current_token(void);
-int cmeta_cpu_count(void);
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_thread_create(cmeta_thread_t *thread, cmeta_thread_cb entry, void *arg);
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_thread_join(cmeta_thread_t *thread);
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_thread_destroy(cmeta_thread_t *thread);
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_once(cmeta_once_t *guard, void (*callback)(void));
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_sleep_ms(uint32_t ms);
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_thread_yield(void);
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_cpu_count(void);
 
 #ifdef __cplusplus
 }

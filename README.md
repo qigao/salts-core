@@ -107,3 +107,22 @@ python3 tools/check_dependency_boundaries.py
 The standalone install exports `Salts::Core` through
 `find_package(SaltsCore CONFIG REQUIRED)`. Optional targets will be exported
 only when their independent implementations and platform gates are qualified.
+
+## Native LLVM thread and scheduler contract
+
+The core-contract workflow uses the shared vcpkg-cache compiler setup on
+Linux/macOS x64 and ARM64 (runner-native Clang), and Windows x64 and ARM64
+(llvm-mingw/UCRT 20261020). It builds the original Core graph with TinyTest,
+runs its native tests, and installs the package. Existing public C11/C++17
+assertions run inside that graph; the workflow no longer builds a second
+installed-consumer project or runs compiler/source preflight probes.
+
+Platform public declarations explicitly export/import their one shared DLL
+owner, including native thread, clock, random, readiness and fast-key APIs.
+The coroutine scheduler uses the same compiler-selected thread-local storage
+contract as Platform/Executor. The existing coroutine test overlaps two live
+OS threads and verifies that each sees only its own scheduler, then restores
+an empty current-scheduler state on thread exit.
+
+This bounded compiler-ABI repair does not qualify CNet/TLS, merge the migration
+candidate, resolve original source/API inventories, or publish a Core SDK.
