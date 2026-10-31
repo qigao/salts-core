@@ -2157,6 +2157,151 @@ static int test_revision_reader_and_gc(
   return 0;
 }
 
+
+#ifdef _WIN32
+/* Parent must kill this independent read owner via TerminateProcess.
+ * Its native LockFileEx shared lease must be closed by the OS rather
+ * than a cooperative pin_close() call. */
+static int win_m11_crashed_reader_child(unsigned long owner_pid) {
+  char tmp[1024], revision[96];
+  wchar_t ready_name[96];
+  HANDLE ready = NULL;
+  salts_fs_root_t *root = NULL;
+  salts_fs_root_revision_pin_t *pin = NULL;
+  if (snprintf(revision, sizeof(revision),
+               "fs-m11-%lu-A4", owner_pid) <= 0 ||
+      swprintf(ready_name, sizeof(ready_name)/sizeof(ready_name[0]),
+               L"Local\\SaltsFSM11CrashReady-%lu", owner_pid) < 0)
+    return 1201;
+  if (salts_fs_get_tmpdir(tmp, sizeof(tmp)) != 0 ||
+      salts_fs_root_open(tmp, &root) != 0 || !root)
+    return 1202;
+  ready = OpenEventW(EVENT_MODIFY_STATE, FALSE, ready_name);
+  if (!ready) return 1203;
+  if (salts_fs_root_revision_pin_open(
+          root, revision, &pin) != 0 || !pin)
+    return 1204;
+  if (!SetEvent(ready)) return 1205;
+  /* TerminateProcess is mandatory. A normal return means the test
+   * did not exercise OS process-death lock retirement. */
+  Sleep(10000u);
+  return 1206;
+}
+#endif
+
+static int test_revision_reader_process_death(
+    salts_fs_root_t *root, unsigned long pid) {
+  const char content[] = "M11-dying-reader";
+  char stage[96], revision[96], lock_path[110];
+  salts_fs_root_revision_pin_t *pin = NULL;
+  salts_fs_stat_t info = {0};
+  int rc;
+  if (snprintf(stage, sizeof(stage),
+               "fs-m11-%lu-crash-stage", pid) <= 0 ||
+      snprintf(revision, sizeof(revision),
+               "fs-m11-%lu-A4", pid) <= 0 ||
+      snprintf(lock_path, sizeof(lock_path),
+               "%s.readers", revision) <= 0)
+    return 1210;
+  if (stage_revision_file(root, stage, content,
+                          sizeof(content)-1u) != 0)
+    return 1211;
+#ifdef _WIN32
+  rc = salts_fs_root_rename_file_noreplace(root, stage, revision);
+  if (rc != 0) return 1212;
+  wchar_t ready_name[96], executable[32768], command[33000];
+  HANDLE ready = NULL, child = NULL;
+  STARTUPINFOW si = {0};
+  PROCESS_INFORMATION pi = {0};
+  DWORD status = 99u;
+  if (swprintf(ready_name, sizeof(ready_name)/sizeof(ready_name[0]),
+               L"Local\\SaltsFSM11CrashReady-%lu", pid) < 0)
+    return 1213;
+  ready = CreateEventW(NULL, TRUE, FALSE, ready_name);
+  if (!ready) return 1214;
+  const DWORD n = GetModuleFileNameW(
+      NULL, executable,
+      (DWORD)(sizeof(executable)/sizeof(executable[0])));
+  if (n == 0 ||
+      n >= sizeof(executable)/sizeof(executable[0]) ||
+      swprintf(command, sizeof(command)/sizeof(command[0]),
+               L"\"%ls\" --fs-m11-crashed-reader %lu",
+               executable, pid) < 0)
+    return 1215;
+  si.cb = sizeof(si);
+  if (!CreateProcessW(executable, command, NULL, NULL, FALSE,
+                      CREATE_NO_WINDOW, NULL, NULL, &si, &pi))
+    return 1216;
+  child = pi.hProcess;
+  CloseHandle(pi.hThread);
+  if (WaitForSingleObject(ready, 10000u) != WAIT_OBJECT_0)
+    return 1217;
+#else
+  salts_fs_replace_state_t state = SALTS_FS_REPLACE_NOT_PUBLISHED;
+  rc = salts_fs_root_publish_file_noreplace(
+      root, stage, revision, &state);
+  if (rc != 0 || state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+    return 1212;
+  int ready[2] = {-1, -1};
+  pid_t child;
+  int status = 0;
+  char token = 0;
+  if (pipe(ready) != 0) return 1214;
+  child = fork();
+  if (child < 0) return 1216;
+  if (child == 0) {
+    char tmp[1024];
+    salts_fs_root_t *other = NULL;
+    salts_fs_root_revision_pin_t *owned = NULL;
+    close(ready[0]);
+    if (salts_fs_get_tmpdir(tmp, sizeof(tmp)) != 0 ||
+        salts_fs_root_open(tmp, &other) != 0 || !other ||
+        salts_fs_root_revision_pin_open(
+            other, revision, &owned) != 0 || !owned)
+      _exit(51);
+    if (write(ready[1], "H", 1) != 1) _exit(52);
+    close(ready[1]);
+    for (;;) pause();
+  }
+  close(ready[1]);
+  if (read(ready[0], &token, 1) != 1 || token != 'H')
+    return 1217;
+  close(ready[0]);
+#endif
+  /* The managed pin's shared lock proves GC will not delete A4
+   * while the other process is still actively holding the handle. */
+  if (salts_fs_root_revision_retire(root, revision) != -EBUSY ||
+      salts_fs_root_stat(root, revision, &info) != 0)
+    return 1218;
+#ifdef _WIN32
+  if (!TerminateProcess(child, 77u) ||
+      WaitForSingleObject(child, 10000u) != WAIT_OBJECT_0 ||
+      !GetExitCodeProcess(child, &status) || status != 77u)
+    return 1219;
+  CloseHandle(child);
+  CloseHandle(ready);
+#else
+  if (kill(child, SIGKILL) != 0 ||
+      waitpid(child, &status, 0) != child ||
+      !WIFSIGNALED(status) || WTERMSIG(status) != SIGKILL)
+    return 1219;
+#endif
+  /* The kernel has closed the dead reader's descriptor/handle.
+   * No memory registry or wall clock lease timeout is involved. */
+  if (salts_fs_root_revision_retire(root, revision) != 0 ||
+      salts_fs_root_stat(root, revision, &info) != -ENOENT)
+    return 1220;
+  rc = salts_fs_root_revision_pin_open(root, revision, &pin);
+  if (rc != -ENOENT || pin ||
+      salts_fs_root_stat(root, lock_path, &info) != 0 || !info.is_file)
+    return 1221;
+  /* Test-only isolated namespace cleanup, never production GC. */
+  if (salts_fs_root_unlink(root, lock_path) != 0)
+    return 1222;
+  puts("Salts::FS native SIGKILL/TerminateProcess read-pin GC EBUSY then reclaim PASS");
+  return 0;
+}
+
 int main(int argc, char **argv) {
   char tmp[1024] = {0}, path[1400] = {0}, name[120] = {0};
   const char body[] = "salts core fs native\n";
@@ -2167,6 +2312,12 @@ int main(int argc, char **argv) {
   char scratch[128] = {0};
   int bytes;
 #ifdef _WIN32
+  if (argc == 3 && strcmp(argv[1], "--fs-m11-crashed-reader") == 0) {
+    char *end = NULL;
+    unsigned long owner = strtoul(argv[2], &end, 10);
+    if (!end || *end != '\0' || owner == 0u) return 77;
+    return win_m11_crashed_reader_child(owner);
+  }
   if (argc == 3 && strcmp(argv[1], "--fs-m11-reader") == 0) {
     char *end = NULL;
     unsigned long owner = strtoul(argv[2], &end, 10);
@@ -2295,6 +2446,14 @@ int main(int argc, char **argv) {
       fprintf(stderr, "Salts::FS revision reader/GC M11 FAIL: %d\n",
               pin_gc_result);
       return pin_gc_result;
+    }
+  }
+  {
+    const int exit_gc = test_revision_reader_process_death(root, pid);
+    if (exit_gc != 0) {
+      fprintf(stderr, "Salts::FS read-pin owner death FAIL: %d\n",
+              exit_gc);
+      return exit_gc;
     }
   }
   if (salts_fs_root_close(root)) return 12;
