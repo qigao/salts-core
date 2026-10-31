@@ -1141,6 +1141,127 @@ int salts_fs_root_rename(
 #endif
 }
 
+/* One native no-replace namespace operation, reused by the POSIX durable
+ * publisher and public Windows/Linux/macOS namespace-only primitive.
+ * Never emulate with check-then-rename. */
+#ifndef _WIN32
+static int salts_fs_root_native_noreplace_posix(
+    int source_parent, const char *source,
+    int target_parent, const char *target) {
+#if defined(__linux__) && defined(SYS_renameat2)
+  if (syscall(SYS_renameat2, source_parent, source, target_parent,
+              target, RENAME_NOREPLACE) == 0)
+    return 0;
+  return (errno == ENOSYS || errno == EINVAL || errno == ENOTSUP)
+      ? -ENOSYS : -errno;
+#elif defined(__APPLE__) && defined(RENAME_EXCL)
+  if (renameatx_np(source_parent, source, target_parent,
+                   target, RENAME_EXCL) == 0)
+    return 0;
+  return (errno == ENOTSUP || errno == EINVAL)
+      ? -ENOSYS : -errno;
+#else
+  (void)source_parent; (void)source;
+  (void)target_parent; (void)target;
+  return -ENOSYS;
+#endif
+}
+#endif
+
+int salts_fs_root_rename_file_noreplace(
+    const salts_fs_root_t *root, const char *source_path,
+    const char *destination_path) {
+  char source_name[SALTS_FS_ROOT_COMPONENT_MAX];
+  char target_name[SALTS_FS_ROOT_COMPONENT_MAX];
+  int rc;
+  if (!root || !source_path || !destination_path ||
+      strcmp(source_path, destination_path) == 0)
+    return -EINVAL;
+  rc = salts_fs_root_validate_relative_path(source_path);
+  if (rc != 0) return rc;
+  rc = salts_fs_root_validate_relative_path(destination_path);
+  if (rc != 0) return rc;
+#ifdef _WIN32
+  HANDLE source_parent = INVALID_HANDLE_VALUE;
+  HANDLE target_parent = INVALID_HANDLE_VALUE;
+  HANDLE source = INVALID_HANDLE_VALUE;
+  bool source_owned = false, target_owned = false;
+  FILE_STANDARD_INFO standard;
+  rc = salts_fs_root_open_parent_win(root, source_path,
+      &source_parent, &source_owned, source_name);
+  if (rc == 0)
+    rc = salts_fs_root_open_parent_win(root, destination_path,
+        &target_parent, &target_owned, target_name);
+  if (rc == 0)
+    rc = salts_fs_root_open_component_win(source_parent, source_name,
+        DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE, FILE_OPEN,
+        FILE_NON_DIRECTORY_FILE, FILE_ATTRIBUTE_NORMAL, false, &source);
+  if (rc == 0 &&
+      !GetFileInformationByHandleEx(
+          source, FileStandardInfo, &standard, sizeof(standard)))
+    rc = salts_fs_root_win32_error(GetLastError());
+  if (rc == 0 && (standard.Directory || standard.NumberOfLinks != 1u))
+    rc = -EINVAL;
+  if (rc == 0) {
+    WCHAR wide[SALTS_FS_ROOT_COMPONENT_MAX];
+    USHORT bytes = 0u;
+    rc = salts_fs_root_utf8_component_to_wide(target_name, wide, &bytes);
+    if (rc == 0) {
+      const size_t size =
+          offsetof(FILE_RENAME_INFO, FileName) + bytes + sizeof(WCHAR);
+      FILE_RENAME_INFO *info = (FILE_RENAME_INFO *)calloc(1, size);
+      if (!info) rc = -ENOMEM;
+      else {
+        IO_STATUS_BLOCK io = {0};
+        NTSTATUS status;
+        info->ReplaceIfExists = FALSE;
+        info->RootDirectory = target_parent;
+        info->FileNameLength = bytes;
+        memcpy(info->FileName, wide, bytes);
+        /* No absolute or ANSI path, and no POSIX-style REPLACE flag.
+         * The NT namespace operation chooses at most one winner. */
+        status = salts_fs_root_nt_set_information(
+            source, &io, info, (ULONG)size,
+            (FILE_INFORMATION_CLASS)SALTS_FS_FILE_RENAME_INFORMATION);
+        if (status < 0) rc = salts_fs_root_nt_error(status);
+        free(info);
+      }
+    }
+  }
+  if (source != INVALID_HANDLE_VALUE) CloseHandle(source);
+  if (source_owned) CloseHandle(source_parent);
+  if (target_owned) CloseHandle(target_parent);
+  return rc;
+#else
+  int source_parent = -1, target_parent = -1, file = -1;
+  struct stat source_stat;
+  rc = salts_fs_root_open_parent_posix(root, source_path,
+      &source_parent, source_name);
+  if (rc == 0)
+    rc = salts_fs_root_open_parent_posix(root, destination_path,
+        &target_parent, target_name);
+  if (rc != 0) goto done;
+  file = openat(source_parent, source_name,
+      O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+  if (file < 0) { rc = -errno; goto done; }
+  if (fstat(file, &source_stat) != 0) {
+    rc = -errno;
+    goto done;
+  }
+  if (!S_ISREG(source_stat.st_mode) || source_stat.st_nlink != 1) {
+    rc = -EINVAL;
+    goto done;
+  }
+  rc = salts_fs_root_native_noreplace_posix(
+      source_parent, source_name, target_parent, target_name);
+done:
+  if (file >= 0) (void)close(file);
+  if (source_parent >= 0) (void)close(source_parent);
+  if (target_parent >= 0) (void)close(target_parent);
+  return rc;
+#endif
+}
+
 int salts_fs_root_publish_file_noreplace(
     const salts_fs_root_t *root, const char *staging_path,
     const char *revision_path, salts_fs_replace_state_t *state) {
@@ -1196,22 +1317,9 @@ int salts_fs_root_publish_file_noreplace(
   /* Retain the exact staged inode handle while the native atomic rename
    * runs. The source pathname alone cannot prove the renamed identity. */
 
-#if defined(__linux__) && defined(SYS_renameat2)
-  if (syscall(SYS_renameat2, old_parent, old_name, new_parent,
-              new_name, RENAME_NOREPLACE) != 0) {
-    rc = (errno == ENOSYS || errno == EINVAL) ? -ENOSYS : -errno;
-    goto done;
-  }
-#elif defined(__APPLE__) && defined(RENAME_EXCL)
-  if (renameatx_np(old_parent, old_name, new_parent,
-                   new_name, RENAME_EXCL) != 0) {
-    rc = (errno == ENOTSUP || errno == EINVAL) ? -ENOSYS : -errno;
-    goto done;
-  }
-#else
-  rc = -ENOSYS;
-  goto done;
-#endif
+  rc = salts_fs_root_native_noreplace_posix(
+      old_parent, old_name, new_parent, new_name);
+  if (rc != 0) goto done;
 
   /* Once rename succeeded, the namespace has changed. A later error is
    * UNKNOWN and may not be retried as if no publication took place. */

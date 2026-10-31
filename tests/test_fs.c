@@ -11,8 +11,8 @@
 #endif
 /* No new project, workflow, installer or consumer. Exercise real OS
  * namespace/descriptor operations in the existing Salts::FS native CTest.
- * This M1 test checks native competing OS processes and old-inode pins, but
- * does NOT validate monotonic generation allocation, distributed leases,
+ * This M1/M2 test adds native namespace-only no-replace on Windows too,
+ * but does NOT validate monotonic generation allocation, distributed leases,
  * process crashes, or Windows durable publication. */
 static int stage_revision_file(
     salts_fs_root_t *root, const char *name,
@@ -189,6 +189,58 @@ static int test_concurrent_noreplace(
 }
 #endif /* !_WIN32 */
 
+
+/* Namespace-only no-replace is portable on the real native FS but explicitly
+ * NOT crash durable. Especially on Windows, this cannot replace the separate
+ * ENOSYS/NOT_PUBLISHED durable publisher gate. */
+static int test_native_namespace_noreplace(
+    salts_fs_root_t *root, unsigned long pid) {
+  char first[100], contender[100], target[120];
+  const char content1[] = "noreplace-first";
+  const char content2[] = "noreplace-other";
+  char result[sizeof(content1)] = {0};
+  salts_fs_root_file_t *file = NULL;
+  salts_fs_stat_t info;
+  int rc;
+  if (snprintf(first, sizeof(first), "fs-namespace-%lu-stage1", pid) <= 0 ||
+      snprintf(contender, sizeof(contender), "fs-namespace-%lu-stage2", pid) <= 0 ||
+      snprintf(target, sizeof(target),
+          "fs-namespace-%lu-\xE7\x89\x88\xE6\x9C\xAC-A1", pid) <= 0)
+    return 301;
+  if (stage_revision_file(root, first, content1, sizeof(content1)-1u) != 0 ||
+      stage_revision_file(root, contender, content2, sizeof(content2)-1u) != 0)
+    return 302;
+  rc = salts_fs_root_rename_file_noreplace(root, "../escape", target);
+  if (rc != -EINVAL) return 303;
+  rc = salts_fs_root_rename_file_noreplace(root, first, first);
+  if (rc != -EINVAL) return 304;
+  rc = salts_fs_root_rename_file_noreplace(root, first, target);
+  if (rc != 0) {
+    fprintf(stderr, "native no-replace namespace move failed rc=%d\n", rc);
+    return 305;
+  }
+  if (salts_fs_root_stat(root, first, &info) != -ENOENT ||
+      salts_fs_root_stat(root, target, &info) != 0 || !info.is_file)
+    return 306;
+  rc = salts_fs_root_rename_file_noreplace(root, contender, target);
+  if (rc != -EEXIST ||
+      salts_fs_root_stat(root, contender, &info) != 0)
+    return 307;
+  if (salts_fs_root_file_open(root, target, SALTS_FS_O_RDONLY,
+                              0, &file) != 0 || !file)
+    return 308;
+  rc = salts_fs_root_file_read(file, result, sizeof(content1)-1u);
+  if (salts_fs_root_file_close(file) != 0 ||
+      rc != (int)(sizeof(content1)-1u) ||
+      memcmp(result, content1, sizeof(content1)-1u) != 0)
+    return 309;
+  if (salts_fs_root_unlink(root, target) != 0 ||
+      salts_fs_root_unlink(root, contender) != 0)
+    return 310;
+  puts("Salts::FS native NOREPLACE namespace + UTF-8 target + collision PASS (not durable)");
+  return 0;
+}
+
 static int test_immutable_revision_file(salts_fs_root_t *root,
                                          unsigned long pid) {
   char stage1[100], stage2[100], stage3[100], collision[100];
@@ -208,6 +260,7 @@ static int test_immutable_revision_file(salts_fs_root_t *root,
       snprintf(version2, sizeof(version2), "fs-m0-%lu-B2", pid) <= 0 ||
       snprintf(version3, sizeof(version3), "fs-m0-%lu-A3", pid) <= 0)
     return 101;
+  if (test_native_namespace_noreplace(root, pid) != 0) return 100;
   if (stage_revision_file(root, stage1, a, sizeof(a) - 1u)) return 102;
   state = SALTS_FS_REPLACE_PUBLISHED_DURABLE;
   rc = salts_fs_root_publish_file_noreplace(root, "../escape", version1, &state);
