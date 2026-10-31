@@ -670,6 +670,21 @@ static int cnet_owner_cancel_native_request(cnet_owner_impl *impl,
       !native_io_request_valid(request->native_request))
     return SALTS_EPROTO;
   status = native_io_backend_cancel(&impl->backend, request->native_request);
+  if (status == SALTS_OK || status == SALTS_EALREADY) {
+    /*
+     * NativeIO still owns this request until its matching terminal is
+     * observed, even when cancel reports EALREADY. But once cancellation
+     * was accepted (or the completion already won), the request's former
+     * READ/WRITE deadline must no longer race the deliberate close into
+     * a spurious FAILED terminal. Do not retire the lease or its buffer.
+     *
+     * The Owner remains the sole deadline-queue writer. A deadline already
+     * taken by process_deadlines was cleared before cancellation, so
+     * cancel_deadline is idempotent for that path.
+     */
+    const int deadline_status = cnet_owner_cancel_deadline(impl, &request->deadline);
+    if (deadline_status != SALTS_OK) return deadline_status;
+  }
 #if defined(CNET_INTERNAL_TESTING)
   if (impl->test_force_cancel_ealready_once &&
       (status == SALTS_OK || status == SALTS_EALREADY)) {
