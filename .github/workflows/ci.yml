@@ -70,10 +70,19 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - uses: ilammy/msvc-dev-cmd@v1
-        if: runner.os == 'Windows'
+      - name: Native Clang/LLVM toolchain
+        id: llvm_native
+        if: runner.os != 'Windows'
+        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-native@e2e915d8dc3b8170b7de9d3e999cdac6bc7efdf4
         with:
-          arch: x64
+          build-type: toolchain-only
+      - name: Windows LLVM-MinGW UCRT x64 toolchain
+        id: llvm_mingw
+        if: runner.os == 'Windows'
+        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@e2e915d8dc3b8170b7de9d3e999cdac6bc7efdf4
+        with:
+          target: x64
+          build-type: toolchain-only
       - name: Compiler cache
         uses: qigao/stun/.github/actions/setup-ccache@6498e9710609820da7d99a938627cc44f17f00ed
         with:
@@ -101,15 +110,22 @@ jobs:
 
       - name: Configure full Core graph
         shell: bash
+        env:
+          CORE_LLVM_C: ${{ steps.llvm_mingw.outputs.cc || steps.llvm_native.outputs.cc }}
+          CORE_LLVM_CXX: ${{ steps.llvm_mingw.outputs.cxx || steps.llvm_native.outputs.cxx }}
         run: |
           set -euo pipefail
+          test -n "$CORE_LLVM_C"
+          test -n "$CORE_LLVM_CXX"
           cmake -S . -B build -G Ninja \
+            "-DCMAKE_C_COMPILER=$CORE_LLVM_C" \
+            "-DCMAKE_CXX_COMPILER=$CORE_LLVM_CXX" \
             -DSALTSCORE_CNET_PRODUCTION_REQUIRED_MTLS_TEST=ON \
             "-DCMAKE_TOOLCHAIN_FILE=$CORE_CI_TOOLCHAIN" \
             "-DVCPKG_TARGET_TRIPLET=$CORE_CI_TRIPLET" \
             "-DVCPKG_HOST_TRIPLET=$CORE_CI_HOST_TRIPLET" \
             "-DVCPKG_MANIFEST_FEATURES=simd;usb;playback;capture;zstd" \
-            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_BUILD_TYPE=Debug \
             -DBUILD_TESTING=ON \
             -DSALTSCORE_BUILD_PROCESS=ON \
             -DSALTSCORE_BUILD_SIMD=ON \
