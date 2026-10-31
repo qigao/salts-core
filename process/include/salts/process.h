@@ -197,6 +197,68 @@ int salts_process_is_pid_alive(int pid, bool *out_alive);
 /** Terminate, reap, close, and free a process handle; no concurrent calls are allowed. */
 void salts_process_destroy(salts_process_t *process);
 
+/*
+ * Bounded native recovery owner for Process lifetimes. This is the Core-native
+ * owner used below the CFlow adapter; it does not create a worker, queue, or
+ * second process state machine. All retainer operations require one exclusive
+ * caller and are not thread-safe with each other.
+ */
+typedef struct salts_process_retainer {
+  void *impl;
+} salts_process_retainer_t;
+
+typedef struct salts_process_retainer_token {
+  size_t index;
+  uint64_t generation;
+} salts_process_retainer_token_t;
+
+/* Called exactly once after an adopted Process has reached a terminal state,
+ * been destroyed, and its retainer slot has been cleared. The callback must
+ * not reenter the same retainer.
+ */
+typedef void (*salts_process_retainer_release_fn)(void *payload);
+
+/** Allocate a fixed number of recovery slots. */
+int salts_process_retainer_init(salts_process_retainer_t *owner, size_t capacity);
+
+/** Reserve one slot before starting work that may require bounded recovery. */
+int salts_process_retainer_reserve(salts_process_retainer_t *owner,
+                                   salts_process_retainer_token_t *out_token);
+
+/** Return an unused exact-generation reservation. */
+int salts_process_retainer_release(salts_process_retainer_t *owner,
+                                   salts_process_retainer_token_t token);
+
+/**
+ * Transfer an already-closing or terminal Process into a reserved slot.
+ *
+ * The caller must have requested salts_process_terminate() first unless the
+ * Process is already terminal. On success, *source_process becomes NULL and
+ * the retainer exclusively owns the Process and payload. On failure ownership
+ * remains with the caller.
+ */
+int salts_process_retainer_adopt(salts_process_retainer_t *owner,
+                                 salts_process_retainer_token_t token,
+                                 salts_process_t **source_process,
+                                 void *payload,
+                                 salts_process_retainer_release_fn release);
+
+/**
+ * Advance at most max_steps adopted Process slots without blocking.
+ *
+ * Terminal Processes are destroyed and their payload is released exactly once.
+ * Reserved and still-running Processes remain pending. Returns SALTS_EBUSY
+ * while anything remains, otherwise SALTS_OK; a native terminate/poll error is
+ * returned without force-freeing the retained Process.
+ */
+int salts_process_retainer_run_ready(salts_process_retainer_t *owner,
+                                     size_t max_steps,
+                                     size_t *out_reaped,
+                                     size_t *out_pending);
+
+/** Refuse destruction while any slot is reserved or adopted. */
+int salts_process_retainer_destroy(salts_process_retainer_t *owner);
+
 #ifdef __cplusplus
 }
 #endif

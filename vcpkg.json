@@ -3,15 +3,67 @@
   "version-semver": "0.1.0",
   "builtin-baseline": "b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01",
   "features": {
-    "cnet": {
-      "description": "Explicit provider-backed C11 CNet transport, not part of base Core",
+    "capture": {
+      "description": "Original native audio, video and screen capture backends",
       "dependencies": [
-        { "name": "pkgconf", "host": true },
-        "simde",
-        "c-ares",
-        "kcp",
-        "gmssl"
+        {
+          "name": "miniaudio",
+          "platform": "!ios"
+        },
+        {
+          "name": "libyuv",
+          "platform": "windows | android | linux"
+        },
+        {
+          "name": "libjpeg-turbo",
+          "platform": "windows"
+        },
+        {
+          "name": "pkgconf",
+          "host": true,
+          "platform": "linux"
+        }
       ]
+    },
+    "zstd": {
+      "description": "Pinned private static Zstd provider for the original Core compression API",
+      "dependencies": [
+        "zstd"
+      ]
+    },
+    "playback": {
+      "description": "Private miniaudio implementation for native PCM playback",
+      "dependencies": [
+        "miniaudio"
+      ]
+    },
+    "usb": {
+      "description": "Private libusb provider for the native USB module",
+      "dependencies": [
+        {
+          "name": "pkgconf",
+          "host": true
+        },
+        "libusb"
+      ]
+    },
+    "simd": {
+      "description": "Private SIMDe implementation headers for the independent SIMD module",
+      "dependencies": [
+        "simde"
+      ]
+    },
+    "cnet": {
+      "description": "Compatibility feature: CNet is always built with local Crypto; networking dependencies belong to the base SDK"
     }
-  }
+  },
+  "dependencies": [
+    {
+      "name": "pkgconf",
+      "host": true
+    },
+    "simde",
+    "c-ares",
+    "kcp"
+  ]
 }

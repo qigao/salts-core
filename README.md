@@ -46,55 +46,74 @@ The **installed** C11/C++17 SDK maintains documented include spellings
 flat root source ownership. `tools/check_module_layout.py` gates this
 invariant on Linux, Windows and macOS.
 
-## Planned modules
+## Default and optional modules
 
 | Mandatory | Optional on supported platforms |
 |---|---|
-| Core byte views, Platform, Concurrency, Coroutine, NativeIO | URI (re2c build-time), CNet, Crypto, FS, Process, Unicode, IDNA, Serial, USB, Capture, Playback |
+| Core byte views, Platform, Concurrency, FS, Coroutine, NativeIO, ASN1, Crypto, URI, CNet | Process, Unicode, IDNA, SIMD, Serial, USB, Capture, Playback |
 
 Unicode stays pinned to Unicode 17.0.0 with re2c as a **build-time** tool only;
 IDNA depends only on the new Unicode module. FS and Process are native system
 components; they **must not require** CFlow IO Actors or CMeta Reflection.
 Advanced CMeta/CFlow/CSTL/Component/ACE functionality remains in `qigao/salts`
 and consumes the new Core, never the other way round. The plain CNet transport
-implementation will migrate to optional `Salts::CNet`; CMeta/ACE-specific
-CNet integrations stay in Salts.
+implementation is part of the default Core candidate; CMeta/ACE-specific
+CNet integrations stay in Salts. Enabling a module does not establish its
+cross-platform or release qualification.
 
 See [architecture](docs/ARCHITECTURE.md) for ownership and migration gates.
 
-## CNet source migration (Draft, opt-in only)
+## Default local Crypto and CNet build (Draft)
 
-The next stacked Draft candidate stages the whole CNet transport source tree,
-after the original Salts CNet IPC FIFO, peer index and native-path changes.
-Provider-free CNet destination/owner/recovery policies are tested on all three
-desktop platforms, even with the transport disabled.
+The default graph builds the whole CNet transport source tree, including the
+original IPC FIFO, peer index and native-path changes. Production CNet links
+the sole source-built static `Salts::Crypto` archive. Its private native TLS
+and algorithm sources are locked under `crypto/native/gmssl/`; Crypto's
+Ed448 objects remain under `crypto/vendor/libecc/`. No separately installed
+GmSSL archive or external Crypto prefix is consumed.
 
-To request a **real CNet provider build** explicitly, provide a verified
-GmSSL (project overlay), c-ares, KCP and SIMDe SDK and an installed host re2c:
+Use CMake 3.21 or newer, a C11 compiler, and a C++17 compiler when testing.
+Provide the canonical pinned c-ares, KCP and SIMDe dependencies and an installed
+host re2c 4.6 with the pinned Unicode 17 data. The checked-in manifest makes
+these base dependencies mandatory. The `cnet` feature remains an empty
+compatibility feature and does not control the production target:
 
 ```sh
+python3 crypto/tools/check_local_native_source.py
 cmake -S . -B build-cnet -DBUILD_TESTING=ON \
-  -DSALTSCORE_BUILD_URI=ON -DSALTSCORE_BUILD_CNET=ON \
-  -DVCPKG_MANIFEST_FEATURES=cnet \
   -DCMAKE_TOOLCHAIN_FILE=/path/to/verified-vcpkg-toolchain.cmake
 cmake --build build-cnet --parallel
 ctest --test-dir build-cnet --output-on-failure
 ```
 
-The checked-in vcpkg manifest keeps CNet under an explicit feature; the
-pinned registry snapshot uses GmSSL 3.2.0#13. The scoped pinned-provider
-Linux workflow is in `.github/workflows/cnet-provider.yml`.
+The active workflows share `.github/actions/setup-core-native`, which checks
+local Crypto source bytes and restores the exact re2c host tool. Every caller
+explicitly selects its dependency contract: original source-build jobs use
+the fixed vcpkg scripts and manifest to compile dependencies; original SDK,
+SIMD, USB, Playback, Zstd and non-iOS Capture cache rows require every exact
+binary package. Capture's original iOS row uses source mode for the newly
+required Core base dependencies; its virtual-audio TSan job remains binary.
+The separate SDK candidate iOS row remains strictly binary as well.
+A cache failure never selects the source path. Source-build success
+does not satisfy the separate SDK binary-package qualification gate.
+`.github/workflows/cnet-provider.yml` retains real
+Linux/macOS/Windows transport, TLS, installed SDK, relocation and owner checks.
+The separate `SALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION` option enables the
+additional M2/M5/M6 qualification graph; it defaults to `OFF` and does not
+change production CNet selection or ownership.
 
 An unavailable dependency fails configuration, without substituting another
-TLS provider or an implicit transport fallback. **No full CNet provider build,
-TLS/CA/SAN, real network interop, sanitizer or ABI qualification has yet been
-established by the source-extraction change.** The original Salts CNet remains
-the production owner until the consumers cut over together.
+TLS provider or an implicit transport fallback. Local source ownership does
+not make the retained GmSSL-derived implementation third-party-free. Exact
+current-source platform CI, TLS/CA/SAN and independent peer tests, sanitizers,
+installed consumers, and physical runtime ownership still gate acceptance.
+No downstream cutover or production release is implied by this candidate.
 
-## Local M0 build
+## Build and consume the candidate SDK
 
 ```sh
-cmake -S . -B build -DBUILD_TESTING=ON
+cmake -S . -B build -DBUILD_TESTING=ON \
+  -DCMAKE_TOOLCHAIN_FILE=/path/to/verified-vcpkg-toolchain.cmake
 cmake --build build
 ctest --test-dir build --output-on-failure
 cmake --install build --prefix /tmp/saltscore-sdk
@@ -104,6 +123,7 @@ ctest --test-dir build-installed --output-on-failure
 python3 tools/check_dependency_boundaries.py
 ```
 
-The standalone install exports `Salts::Core` through
-`find_package(SaltsCore CONFIG REQUIRED)`. Optional targets will be exported
-only when their independent implementations and platform gates are qualified.
+The standalone install exports the default graph through
+`find_package(SaltsCore CONFIG REQUIRED)`, including the sibling ASN1 and
+Crypto packages. Optional module targets are exported when configured; their
+presence is not a substitute for the source/API, platform and release gates.

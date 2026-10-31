@@ -1,29 +1,39 @@
 # SPDX-License-Identifier: Apache-2.0
 # Test-only original real CNet Owner in ONE executable, no second static Crypto.
-option(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST
-  "Qualify original CNet Owner in a sole static Salts::Crypto executable" OFF)
-if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
-  if(NOT BUILD_TESTING OR NOT SALTSCORE_BUILD_CNET)
-    message(FATAL_ERROR "Original CNet Crypto Owner requires BUILD_TESTING and pinned CNet graph")
+option(SALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION
+  "Run test-only CNet qualification through the bounded Crypto facade" OFF)
+if(SALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION)
+  if(NOT BUILD_TESTING OR NOT TARGET saltscore_cnet)
+    message(FATAL_ERROR "CNet Crypto qualification requires BUILD_TESTING and the actual CNet graph")
   endif()
   if(NOT DEFINED SALTSCORE_CRYPTO_TEST_FIXTURES)
     message(FATAL_ERROR "Exact pinned static Crypto TLS fixtures required")
   endif()
-  # Imported dependencies are directory scoped; this is a sibling of cnet/.
+  # M5 must use this exact source tree, not find_package(Crypto) or
+  # imported qigao/crypto ASN1. Salts::CNet is built separately for parity,
+  # but the candidate image links only this local static Crypto owner.
   find_package(c-ares CONFIG REQUIRED)
   find_package(kcp CONFIG REQUIRED)
   if(APPLE)
     find_library(SALTSCORE_CNET_COREFOUNDATION CoreFoundation REQUIRED)
     find_library(SALTSCORE_CNET_SECURITY Security REQUIRED)
   endif()
-  find_package(Crypto 0.1 CONFIG REQUIRED)
-  if(NOT TARGET Salts::Crypto)
-    message(FATAL_ERROR "Static candidate requires sole Salts::Crypto")
+  if(NOT TARGET salts_asn1 OR NOT TARGET Salts::ASN1 OR
+     NOT TARGET salts_crypto OR NOT TARGET Salts::Crypto)
+    message(FATAL_ERROR "M5 requires one local Salts::ASN1 and Salts::Crypto target")
   endif()
-  get_target_property(_static_kind Salts::Crypto TYPE)
-  get_target_property(_static_imported Salts::Crypto IMPORTED)
-  if(NOT _static_imported OR NOT _static_kind STREQUAL "STATIC_LIBRARY")
-    message(FATAL_ERROR "Candidate needs one imported STATIC Salts::Crypto")
+  get_target_property(_asn1_alias Salts::ASN1 ALIASED_TARGET)
+  get_target_property(_crypto_alias Salts::Crypto ALIASED_TARGET)
+  get_target_property(_asn1_type salts_asn1 TYPE)
+  get_target_property(_static_kind salts_crypto TYPE)
+  get_target_property(_asn1_imported salts_asn1 IMPORTED)
+  get_target_property(_static_imported salts_crypto IMPORTED)
+  if(NOT _asn1_alias STREQUAL "salts_asn1" OR
+     NOT _crypto_alias STREQUAL "salts_crypto" OR
+     NOT _asn1_type STREQUAL "STATIC_LIBRARY" OR
+     NOT _static_kind STREQUAL "STATIC_LIBRARY" OR
+     _asn1_imported OR _static_imported)
+    message(FATAL_ERROR "M5 requires precisely one local, non-imported STATIC ASN1/Crypto graph")
   endif()
   foreach(_forbidden IN ITEMS
       Salts::TLS Salts::TLSCipherBIO Salts::CryptoProvider
@@ -96,7 +106,8 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
     target_compile_definitions(saltscore_cnet_crypto_static_original_owner
       PRIVATE _DEFAULT_SOURCE=1 _POSIX_C_SOURCE=200809L)
   endif()
-  # Production Salts::CNet and GmSSL::GmSSL are NOT linked here.
+  # Production Salts::CNet is NOT linked here. This remains a separate
+  # qualification image with narrower facade admission and behavior.
   if(APPLE)
     target_link_libraries(saltscore_cnet_crypto_static_original_owner PRIVATE
       "${SALTSCORE_CNET_COREFOUNDATION}"
@@ -158,7 +169,8 @@ if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
   # M6: the original CNet Owner linked once as a TEST-ONLY SHARED image.
   # The sole Salts::Crypto STATIC archive belongs exclusively to that image.
   # Two independently loaded plugins refer to this image, not separate static
-  # Crypto copies. Public Salts::CNet and its GmSSL backend remain untouched.
+  # Crypto copies. Production Salts::CNet uses the complete original native
+  # TLS implementation and is not linked into this qualification image.
   option(SALTSCORE_CNET_M6_SHARED_DSO_TEST
     "Qualify one physical STATIC Crypto owner across two CNet plugin DSOs" OFF)
   if(SALTSCORE_CNET_M6_SHARED_DSO_TEST)

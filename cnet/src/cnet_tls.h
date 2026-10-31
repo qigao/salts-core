@@ -86,7 +86,10 @@ int cnet_tls_read(cnet_tls_state *state, void *buffer, size_t capacity, size_t *
  */
 int cnet_tls_probe_peer_close(cnet_tls_state *state, bool *out_peer_closed,
                               bool *out_plaintext_pending);
-int cnet_tls_shutdown(cnet_tls_state *state, bool *out_notify_generated);
+/* out_peer_notify_received is true only for an authenticated TLS close_notify.
+ * A socket EOF cannot satisfy a locally initiated reciprocal shutdown. */
+int cnet_tls_shutdown(cnet_tls_state *state, bool *out_notify_generated,
+                      bool *out_peer_notify_received);
 int cnet_tls_get_negotiated_alpn(const cnet_tls_state *state, const unsigned char **out_data,
                                  size_t *out_size);
 int cnet_tls_state_negotiated_version(const cnet_tls_state *state, char *buffer, size_t capacity,

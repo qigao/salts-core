@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "display_version": "0.1.000",
+  "tag": "v0.1.000",
+  "package_id": "SaltsCore.Native",
+  "package_version": "0.1.0",
+  "cmake_version": "0.1.0",
+  "abi_epoch": "0.1",
+  "rids": [
+    "linux-x64", "linux-arm64", "windows-x64", "macos-arm64",
+    "android-arm64-v8a", "ios-arm64"
+  ],
+  "release_required_targets": [
+    "Salts::Core", "Salts::Platform", "Salts::Concurrency",
+    "Salts::Coroutine", "Salts::NativeIO", "Salts::FS", "Salts::Process",
+    "Salts::URI", "Salts::Unicode", "Salts::IDNA", "Salts::CSerde",
+    "Salts::TinyTest", "Salts::SIMD", "Salts::ASN1", "Salts::Crypto",
+    "Salts::CNet", "Salts::SCTP", "Salts::Serial", "Salts::USB",
+    "Salts::Capture", "Salts::Playback"
+  ],
+  "candidate_profile": "native-migration",
+  "candidate_vcpkg_features": ["simd", "usb", "playback", "capture", "zstd"],
+  "candidate_cmake_options": {
+    "SALTSCORE_BUILD_SIMD": "ON",
+    "SALTSCORE_BUILD_TINYTEST": "ON",
+    "SALTSCORE_BUILD_CSERDE": "ON",
+    "SALTSCORE_BUILD_UNICODE": "ON",
+    "SALTSCORE_BUILD_IDNA": "ON",
+    "SALTSCORE_BUILD_URI": "ON",
+    "SALTSCORE_BUILD_PROCESS": "ON",
+    "SALTSCORE_BUILD_SCTP": "ON",
+    "SALTSCORE_BUILD_WEBSOCKET_PARSER": "ON",
+    "SALTSCORE_BUILD_USB": "ON",
+    "SALTSCORE_BUILD_PLAYBACK": "ON",
+    "SALTSCORE_BUILD_SERIAL": "ON",
+    "SALTSCORE_BUILD_SERIAL_EXAMPLES": "ON",
+    "SALTSCORE_BUILD_CAPTURE": "ON",
+    "SALTSCORE_BUILD_ZSTD": "ON",
+    "SALTSCORE_CNET_OWNER_SOURCE_TESTS": "ON",
+    "SALTSCORE_NATIVE_CPP_CONFORMANCE": "ON"
+  },
+  "release_deferred": [
+    "Complete original-source and public-function migration qualification remains required.",
+    "All native modules, including Capture, Playback, Serial and USB, require six-RID capability review.",
+    "Native dependency releases and runtime-library closure are not yet qualified for publication.",
+    "Default local CNet/Crypto ownership requires current-source native, installed, sanitizer and six-RID qualification; the test-only M5/M6 images do not establish production acceptance.",
+    "The original iOS Capture backend lacks six declared GPU-list/camera-control/crop API implementations; real installed linking remains required.",
+    "The pinned miniaudio 0.11.22 PulseAudio connection-failure path leaks contexts; the original Capture LSan test remains failing."
+  ]
+}

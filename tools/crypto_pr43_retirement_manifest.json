@@ -1,0 +1,145 @@
+{
+  "baseline": {
+    "repository": "qigao/crypto",
+    "head": "0b4ee094ce8002e6169ce231028107eba63588c6",
+    "pull_request": 43,
+    "base_master": "57e03d9ebefc3b9348764edaddb834862e669a45",
+    "original_file_count": 18
+  },
+  "policy": "Source provenance only. Preserve all 18 historical inputs: 16 byte exact, one root module-checker adaptation, and one explicitly reviewed local-build adaptation. The original CMake source remains byte exact in its snapshot; the pinned reviewed diff must reconstruct the active local build. No file presence or test-only M5/M6 image constitutes native production TLS or final migration acceptance.",
+  "files": [
+    {
+      "original": "crypto/CMakeLists.txt",
+      "source_blob_sha": "230dacdd80e5cb5f336a2ab0627728ba31135864",
+      "destination": "crypto/CMakeLists.txt",
+      "destination_blob_sha": "8461cb7d7a97e08a6cbfe4f821b670d29e98e35e",
+      "kind": "local_build_adapted",
+      "adaptation": {
+        "original_snapshot": "crypto/tests/migration/CMakeLists.original.txt",
+        "original_snapshot_blob_sha": "230dacdd80e5cb5f336a2ab0627728ba31135864",
+        "reviewed_diff": "crypto/tests/migration/CMakeLists.local-native.patch",
+        "reviewed_diff_blob_sha": "d38ec05d4db650789977e74c88cdeedecaa0aa90",
+        "scope": "Replace the external GmSSL prefix/archive merge with source-locked private native OBJECT files in the sole static Crypto archive; preserve public APIs, original source tests, PIC, dependencies and installed ownership."
+      }
+    },
+    {
+      "original": "crypto/docs/m5-cnet-policy-mapping.md",
+      "source_blob_sha": "46bf1dcee302f393f7ce3b7d2870c82bff375172",
+      "destination": "crypto/docs/m5-cnet-policy-mapping.md",
+      "destination_blob_sha": "46bf1dcee302f393f7ce3b7d2870c82bff375172",
+      "kind": "byte_exact"
+    },
+    {
+      "original": "crypto/include/crypto/tls_auth.h",
+      "source_blob_sha": "b89f1c32c97ceaaea8b8433714311b1e9fe8c81a",
+      "destination": "crypto/include/crypto/tls_auth.h",
+      "destination_blob_sha": "b89f1c32c97ceaaea8b8433714311b1e9fe8c81a",
+      "kind": "byte_exact"
+    },
+    {
+      "original": "crypto/src/crypto_tls_gmssl.c",
+      "source_blob_sha": "30f725f8141d3153c3f742e93b49f9e64c99582f",
+      "destination": "crypto/src/crypto_tls_gmssl.c",
+      "destination_blob_sha": "30f725f8141d3153c3f742e93b49f9e64c99582f",
+      "kind": "byte_exact"
+    },
+    {
+      "original": "crypto/tests/owner/consumer.cpp",
+      "source_blob_sha": "ca09bc0f5aa0f33615a652cd600b7255905c87e2",
+      "destination": "crypto/tests/owner/consumer.cpp",
+      "destination_blob_sha": "ca09bc0f5aa0f33615a652cd600b7255905c87e2",
+      "kind": "byte_exact"
+    },
+    {
+      "original": "crypto/tests/sdk/CMakeLists.txt",
+      "source_blob_sha": "2ba2e0861a7d8a34e7b204c2abc9f090b1fb3857",
+      "destination": "crypto/tests/sdk/CMakeLists.txt",
+      "destination_blob_sha": "2ba2e0861a7d8a34e7b204c2abc9f090b1fb3857",
+      "kind": "byte_exact"
+    },
+    {
+      "original": "crypto/tests/sdk/auth-contract.c",
+      "source_blob_sha": "0dbd4b737238c4f1996765bfc4af7cb14ed53f6c",
+      "destination": "crypto/tests/sdk/auth-contract.c",
+      "destination_blob_sha": "0dbd4b737238c4f1996765bfc4af7cb14ed53f6c",
+      "kind": "byte_exact"
+    },
+    {
+      "original": "crypto/tests/sdk/openssl-client.c",
+      "source_blob_sha": "c38d0fa439169c53b2030435a83e9815d9c802d0",
+      "destination": "crypto/tests/sdk/openssl-client.c",
+      "destination_blob_sha": "c38d0fa439169c53b2030435a83e9815d9c802d0",
+      "kind": "byte_exact"
+    },
+    {
+      "original": "crypto/tests/sdk/openssl-server.c",
+      "source_blob_sha": "6688fea5acf17c2740cb4acd8cd5ffbba6a6c8bc",
+      "destination": "crypto/tests/sdk/openssl-server.c",
+      "destination_blob_sha": "6688fea5acf17c2740cb4acd8cd5ffbba6a6c8bc",
+      "kind": "byte_exact"
+    },
+    {
+      "original": "crypto/tests/sdk/python_mtls.py",
+      "source_blob_sha": "63e229529124c03bb7c487636b6f8123e060923c",
+      "destination": "crypto/tests/sdk/python_mtls.py",
+      "destination_blob_sha": "63e229529124c03bb7c487636b6f8123e060923c",
+      "kind": "byte_exact"
+    },
+    {
+      "original": "crypto/tests/sdk/python_mtls_record_mutation.py",
+      "source_blob_sha": "758ad42c356cfa5b260e5eccf2aaa1fd4c87d39a",
+      "destination": "crypto/tests/sdk/python_mtls_record_mutation.py",
+      "destination_blob_sha": "758ad42c356cfa5b260e5eccf2aaa1fd4c87d39a",
+      "kind": "byte_exact"
+    },
+    {
+      "original": "crypto/tools/audit_static_crypto.py",
+      "source_blob_sha": "ad04774ebd3c8d2c489f9f63bbc6086cba1c4d20",
+      "destination": "crypto/tools/audit_static_crypto.py",
+      "destination_blob_sha": "ad04774ebd3c8d2c489f9f63bbc6086cba1c4d20",
+      "kind": "byte_exact"
+    },
+    {
+      "original": "crypto/tools/stage_mtls_gmssl_overlay.py",
+      "source_blob_sha": "46333c393fb1c94cb8d79eef5696a524ec102c42",
+      "destination": "crypto/tools/stage_mtls_gmssl_overlay.py",
+      "destination_blob_sha": "46333c393fb1c94cb8d79eef5696a524ec102c42",
+      "kind": "byte_exact"
+    },
+    {
+      "original": "vendor/gmssl-extensions/patches/tls12-empty-authorities.cmake",
+      "source_blob_sha": "d73ee3dd980e42c092feed23b011232e2b3c82cd",
+      "destination": "vendor/gmssl-extensions/patches/tls12-empty-authorities.cmake",
+      "destination_blob_sha": "d73ee3dd980e42c092feed23b011232e2b3c82cd",
+      "kind": "byte_exact"
+    },
+    {
+      "original": "vendor/gmssl-extensions/patches/tls13-session-ticket-bounds.cmake",
+      "source_blob_sha": "45e841be6bdf1071edf91382ed5ba0f9546dadb4",
+      "destination": "vendor/gmssl-extensions/patches/tls13-session-ticket-bounds.cmake",
+      "destination_blob_sha": "45e841be6bdf1071edf91382ed5ba0f9546dadb4",
+      "kind": "byte_exact"
+    },
+    {
+      "original": "vendor/gmssl-extensions/src/tls13-handshake-reader.h",
+      "source_blob_sha": "00ca0ca13a7666834908e02a56c4afc99cc1f4a9",
+      "destination": "vendor/gmssl-extensions/src/tls13-handshake-reader.h",
+      "destination_blob_sha": "00ca0ca13a7666834908e02a56c4afc99cc1f4a9",
+      "kind": "byte_exact"
+    },
+    {
+      "original": ".github/workflows/mtls-qualification.yml",
+      "source_blob_sha": "e0ca7d6b66b0d286d6d72c3f3e7416d179c9a62a",
+      "destination": "crypto/tests/migration/mtls-qualification-original.yml",
+      "destination_blob_sha": "e0ca7d6b66b0d286d6d72c3f3e7416d179c9a62a",
+      "kind": "historical_workflow_byte_exact"
+    },
+    {
+      "original": "tools/check_module_ownership.py",
+      "source_blob_sha": "3664ebab97335a0183e03b0646bb0d2a59c3a9d4",
+      "destination": "tools/check_crypto_module_ownership.py",
+      "destination_blob_sha": "fa386d8dfba497c03e30515af7ca8b0cd88c9db0",
+      "kind": "module_root_adapted"
+    }
+  ]
+}

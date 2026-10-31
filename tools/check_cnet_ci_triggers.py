@@ -19,6 +19,7 @@ TARGET_MODULE = {
     "NativeIO": "native-io",
     "Concurrency": "concurrency",
     "URI": "uri",
+    "Crypto": "crypto",
 }
 REQUIRED_BASE = frozenset({
     "cnet/CMakeLists.txt",
@@ -26,6 +27,11 @@ REQUIRED_BASE = frozenset({
     "cnet/include/**",
     "uri/parser/**",  # re2c input is outside uri/src
     "vendor/cnet/**",
+    # The local Crypto owner compiles its native backend outside src/include,
+    # links ASN1 and retains these original hardening inputs.
+    "crypto/native/**",
+    "asn1/**",
+    "vendor/gmssl-extensions/**",
     "vendor/CMakeLists.txt",
     "cmake/**",
     "CMakeLists.txt",

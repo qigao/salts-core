@@ -1,9 +1,6 @@
-# Private C11 third-party source ownership, only for explicit CNet builds.
+# Private C11 third-party source ownership for the canonical CNet build.
 # One renamed Monocypher namespace and one Reed/GF256 target per build.
 # Never install or export these source-private libraries as Salts:: providers.
-if(NOT SALTSCORE_BUILD_CNET)
-  message(FATAL_ERROR "vendor/CMakeLists.txt is only admitted with SALTSCORE_BUILD_CNET=ON")
-endif()
 find_path(SALTSCORE_CNET_SIMDE_INCLUDE_DIR NAMES simde/x86/sse2.h REQUIRED)
 
 # Single CNet-private Monocypher namespace avoids duplicate crypto_argon2 and

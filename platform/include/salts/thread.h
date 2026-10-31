@@ -127,6 +127,11 @@ void cmeta_thread_yield(void);
 const void *cmeta_thread_current_token(void);
 int cmeta_cpu_count(void);
 
+/* Original Core synchronization policy and process identity surface. */
+void cmeta_sync_set_single_threaded(int enabled);
+int cmeta_sync_is_single_threaded(void);
+int cmeta_getpid(void);
+
 #ifdef __cplusplus
 }
 #endif

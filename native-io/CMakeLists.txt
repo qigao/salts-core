@@ -10,7 +10,10 @@ if(WIN32)
     src/native_io_iocp.c src/native_ipc_windows.c)
   target_compile_definitions(saltscore_native_io PRIVATE
     WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0600)
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+elseif(CMAKE_SYSTEM_NAME MATCHES "^(Linux|Android)$")
+  # Android's NDK provides the Linux epoll/eventfd and io_uring syscall ABI.
+  # Runtime backend initialization still reports kernel/policy failures; an
+  # unavailable io_uring instance is never replaced with a success stub.
   target_sources(saltscore_native_io PRIVATE
     src/native_io_linux.c src/native_io_epoll.c
     src/native_io_io_uring.c src/native_io_readiness.c

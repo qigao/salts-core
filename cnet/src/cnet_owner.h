@@ -264,6 +264,14 @@ typedef struct cnet_owner_test_request_snapshot {
 bool cnet_owner_test_backend_stats(const cnet_owner *owner,
                                    native_io_backend_stats *out_native,
                                    native_io_coroutine_stats *out_coroutine);
+/** Test-only copy of the exact selected sockaddr retained by the Owner.
+ * Valid while the original session generation remains occupied, including
+ * after a failed terminal and before final retirement. Never an SDK API. */
+int cnet_owner_test_copy_peer_sockaddr(const cnet_owner *owner,
+                                       cnet_session_handle session,
+                                       void *out_address, size_t address_capacity,
+                                       size_t *out_address_length);
+
 /** Captures the CNet routing token plus authoritative NativeIO identity for one request record. */
 bool cnet_owner_test_get_request_snapshot(const cnet_owner *owner, size_t request_index,
                                           cnet_owner_test_request_snapshot *out_snapshot);
@@ -285,6 +293,24 @@ int cnet_owner_test_queue_session_work(cnet_owner *owner, cnet_session_handle se
 int cnet_owner_test_force_cancel_ealready_once(cnet_owner *owner);
 /** Caps each test-build stream-send submission without changing logical send ownership. */
 int cnet_owner_test_set_send_chunk_bytes(cnet_owner *owner, size_t bytes);
+/** Test-only: original request stage versus late post-handshake completion stage. */
+cnet_session_stage cnet_owner_test_tls_completion_stage(
+    bool handshake_complete, bool write_request,
+    cnet_session_stage admission_stage);
+/** Private regression: promote handshake-era TLS read/write leases to post-auth deadlines. */
+int cnet_owner_test_tls_pending_deadline_rollover(void);
+/** True if a TLS session should drain provider data despite an in-flight NativeIO read. */
+bool cnet_owner_test_can_progress_receive(bool tls, bool read_active,
+                                          bool close_requested,
+                                          size_t receive_demand);
+/** Keep TLS control probing post-auth, but independent of active NativeIO READ. */
+bool cnet_owner_test_tls_control_probe_allowed(
+    bool authenticated, bool read_active,
+    bool closing, size_t receive_demand);
+/** First direct TLS receive demand must run provider ring even with native read lease. */
+bool cnet_owner_test_receive_direct_should_rearm(bool tls,
+                                                 bool native_read_active,
+                                                 size_t previous_demand);
 #endif
 
 #if defined(CNET_INTERNAL_PROFILING)

@@ -16,7 +16,7 @@ class CNetTriggerTests(unittest.TestCase):
         self.assertTrue(gate.REQUIRED_BASE <= expected)
         self.assertEqual(
             gate.linked_modules(self.cmake),
-            {"core", "platform", "native-io", "concurrency", "uri"},
+            {"core", "platform", "native-io", "concurrency", "uri", "crypto"},
         )
 
     def test_removing_any_source_or_header_glob_is_rejected(self) -> None:
@@ -35,7 +35,8 @@ class CNetTriggerTests(unittest.TestCase):
                         "cnet/CMakeLists.txt",
                         "core/CMakeLists.txt", "platform/CMakeLists.txt",
                         "native-io/CMakeLists.txt", "concurrency/CMakeLists.txt",
-                        "uri/CMakeLists.txt"):
+                        "uri/CMakeLists.txt", "crypto/CMakeLists.txt",
+                        "crypto/native/**", "asn1/**", "vendor/gmssl-extensions/**"):
             with self.subTest(pattern=pattern):
                 edited = self.workflow.replace(f'      - "{pattern}"\n', "", 1)
                 with self.assertRaisesRegex(ValueError, "triggers missing"):

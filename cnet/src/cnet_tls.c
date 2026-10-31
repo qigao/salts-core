@@ -452,8 +452,12 @@ static int cnet_tls_load_apple_anchors(cnet_tls_der_bundle *bundle) {
 static int cnet_tls_load_system_trust(TLS_CTX *tls) {
 #if defined(_WIN32)
   cnet_tls_der_bundle bundle = {0};
+  /* Windows ROOT is the trust-anchor store. CA holds intermediates for
+   * path building and is NOT an independent trusted-anchor source.
+   * tls_ctx_set_ca_certificates_der treats every supplied DER certificate
+   * as an anchor candidate: including CA would silently promote an
+   * untrusted intermediate into a root authority. Never merge stores. */
   int status = cnet_tls_append_windows_store(&bundle, "ROOT");
-  if (status == SALTS_OK) status = cnet_tls_append_windows_store(&bundle, "CA");
   if (status == SALTS_OK && bundle.size == 0u) status = SALTS_EIO;
   if (status == SALTS_OK &&
       tls_ctx_set_ca_certificates_der(tls, bundle.data, bundle.size,
@@ -659,7 +663,12 @@ static int cnet_tls_configure_variant(cnet_tls_context *context,
       tls_ctx_set_signature_algorithms(tls, signatures, signature_count) != 1)
     return SALTS_EIO;
 
-  if (variant == CNET_TLS_VARIANT_1_2) {
+  /* RFC 5746 initial-handshake secure renegotiation is mandatory for
+   * TLS1.2, including when the normal public context negotiates TLS12/13.
+   * This is never permission to renegotiate or downgrade an established TLS
+   * session, and pure TLS1.3/TLCP profiles remain unchanged. */
+  if (variant == CNET_TLS_VARIANT_1_2 ||
+      (variant == CNET_TLS_VARIANT_RANGE && context->server)) {
     if (context->server) {
       if (tls12_ctx_set_renegotiation_info(tls, 1) != 1)
         return SALTS_EIO;
@@ -967,6 +976,24 @@ static int cnet_tls_cipher_record_ready(const cnet_tls_gmssl_state *engine,
   size_t record_size;
   if (engine == NULL || out_ready == NULL) return SALTS_EINVAL;
   *out_ready = false;
+  /*
+   * TLS 1.3 can consume one post-handshake control record and immediately
+   * begin reading the next record inside a single tls13_recv() call. On
+   * WANT_READ its provider recv_state/record_offset already own that next
+   * record's header or payload. The CNet ring then starts with a *suffix*
+   * of that record, not a fresh TLS header. Parsing the suffix as a header
+   * (or requiring five new bytes) can strand the authenticated connection
+   * until its peer closes. Let the single provider resume its own partial
+   * frame; the provider still validates the entire authenticated record.
+   */
+  if (engine->connection.protocol == TLS_protocol_tls13 &&
+      (engine->connection.recv_state == TLS_state_recv_record_header ||
+       engine->connection.recv_state == TLS_state_recv_record_data ||
+       engine->connection.datalen != 0u)) {
+    *out_ready = engine->input_size != 0u ||
+                 engine->connection.datalen != 0u;
+    return SALTS_OK;
+  }
   if (engine->input_size < TLS_RECORD_HEADER_SIZE) return SALTS_OK;
   if (cnet_tls_ring_peek(engine->cipher_input, engine->capacity,
                          engine->input_head, engine->input_size,
@@ -981,6 +1008,28 @@ static int cnet_tls_cipher_record_ready(const cnet_tls_gmssl_state *engine,
   *out_ready = engine->input_size >= record_size;
   return SALTS_OK;
 }
+
+#if defined(CNET_INTERNAL_TESTING)
+/* Reproduce CNet's real receive gate with provider-owned TLS1.3 progress.
+ * The caller supplies only inert bytes; no certificate or plaintext is read
+ * and no second TLS engine is instantiated by this regression. */
+int cnet_test_tls_receive_record_gate(unsigned phase, const uint8_t *cipher,
+                                      size_t size, bool *out_ready) {
+  unsigned char ring[32] = {0};
+  cnet_tls_gmssl_state engine = {0};
+  if (out_ready == NULL || cipher == NULL || size > sizeof(ring) || phase > 3u)
+    return SALTS_EINVAL;
+  memcpy(ring, cipher, size);
+  engine.cipher_input = ring;
+  engine.capacity = sizeof(ring);
+  engine.input_size = size;
+  engine.connection.protocol = TLS_protocol_tls13;
+  if (phase == 1u) engine.connection.recv_state = TLS_state_recv_record_header;
+  if (phase == 2u) engine.connection.recv_state = TLS_state_recv_record_data;
+  if (phase == 3u) engine.connection.datalen = 1u;
+  return cnet_tls_cipher_record_ready(&engine, out_ready);
+}
+#endif
 
 static tls_ret_t cnet_tls_io_send(void *user, const void *buffer, size_t length,
                                   int flags) {
@@ -1331,6 +1380,17 @@ static int cnet_tls_finish_handshake(cnet_tls_state *state,
     result = tls_get_verify_result(&engine->connection, &verify_result);
     if (result != 1 || verify_result != X509_verify_ok)
       return SALTS_ECONNABORTED;
+    if (state->server) {
+      /* REQUIRED client authentication must have a real, already verified
+       * peer certificate before CNet can publish CONNECTED. TLS1.2 stores
+       * client certs separately from TLS1.3; the canonical getter covers both. */
+      const uint8_t *peer_cert = NULL;
+      size_t peer_cert_size = 0u;
+      result = tls_get_peer_certificate(
+          &engine->connection, &peer_cert, &peer_cert_size);
+      if (result != 1 || peer_cert == NULL || peer_cert_size == 0u)
+        return SALTS_ECONNABORTED;
+    }
     if (!state->server && cnet_tls_ip_literal(engine->server_name)) {
       result = cnet_tls_verify_ip_subject_alt_name(
           &engine->connection, engine->server_name);
@@ -1692,14 +1752,18 @@ int cnet_tls_probe_peer_close(cnet_tls_state *state, bool *out_peer_closed,
   return SALTS_OK;
 }
 
-int cnet_tls_shutdown(cnet_tls_state *state, bool *out_notify_generated) {
+int cnet_tls_shutdown(cnet_tls_state *state, bool *out_notify_generated,
+                      bool *out_peer_notify_received) {
   cnet_tls_gmssl_state *engine;
   size_t output_before;
+  int received = 0;
   int result;
   if (state == NULL || out_notify_generated == NULL ||
+      out_peer_notify_received == NULL ||
       (engine = CNET_TLS_ENGINE(state)) == NULL)
     return SALTS_EINVAL;
   *out_notify_generated = state->close_notify_started;
+  *out_peer_notify_received = false;
   if (!state->handshake_complete) return SALTS_ENOTCONN;
 
   output_before = engine->output_size;
@@ -1707,10 +1771,19 @@ int cnet_tls_shutdown(cnet_tls_state *state, bool *out_notify_generated) {
   if (engine->output_size > output_before) state->close_notify_started = true;
   *out_notify_generated = state->close_notify_started;
 
-  if (result == 1 || result == TLS_ERROR_TCP_CLOSED ||
-      cnet_tls_retryable(result))
-    return SALTS_OK;
-  return SALTS_EPROTO;
+  if (result != 1 && result != TLS_ERROR_TCP_CLOSED &&
+      !cnet_tls_retryable(result))
+    return SALTS_EPROTO;
+
+  /* The TLS protocol owner alone authenticates close_notify. GmSSL may
+   * complete its shutdown API after raw TCP closure, but EOF cannot count
+   * as a reciprocal close_notify when our local application initiated it.
+   * Do not infer authentication from output flushing or socket status. */
+  if (tls_get_peer_close_notify(&engine->connection, &received) != 1)
+    return SALTS_EIO;
+  if (received) state->peer_close_notify = true;
+  *out_peer_notify_received = received != 0;
+  return SALTS_OK;
 }
 
 int cnet_tls_get_negotiated_alpn(const cnet_tls_state *state,

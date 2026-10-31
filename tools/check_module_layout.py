@@ -11,7 +11,7 @@ import re
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = (
     "core", "platform", "concurrency", "coroutine", "native-io",
-    "cnet", "uri", "fs", "process", "sctp",
+    "cnet", "uri", "fs", "process", "sctp", "simd", "usb",
 )
 OWNER_FILES = (
     "core/include/base64_utils.h",
@@ -35,6 +35,10 @@ OWNER_FILES = (
     "uri/include/uri_parser.h",
     "uri/src/uri_parser.c",
     "uri/parser/uri_lexer.re",
+    "simd/include/salts/simd.h",
+    "simd/src/simd.c",
+    "usb/include/cflow/usb.h",
+    "usb/src/usb.c",
 )
 for old in ("include", "src", "utils", "cflow-fs", "cflow-process"):
     if (ROOT / old).exists():
@@ -78,6 +82,48 @@ for module in sorted(root_code_modules):
     if f"add_subdirectory({module})" not in source:
         raise SystemExit(f"root does not assemble source module: {module}")
 
+# ASN1 and Crypto now belong to this repository's native module graph.
+# They MUST have local CMake and explicit root assembly; no external-owner
+# exemption and no alternate TLS target is accepted.
+for module, target in (("asn1", "Salts::ASN1"), ("crypto", "Salts::Crypto")):
+    local = ROOT / module / "CMakeLists.txt"
+    if not local.is_file() or f"add_subdirectory({module})" not in source:
+        raise SystemExit(f"missing native first-party module assembly: {module}")
+    cmake = local.read_text(encoding="utf-8")
+    if f"add_library({target} ALIAS " not in cmake:
+        raise SystemExit(f"missing native first-party target: {target}")
+# These are production defaults. Qualification flags may add test images, but
+# cannot choose a different TLS implementation or admit an external prefix.
+default_order = ("asn1", "crypto", "uri", "vendor", "cnet")
+positions = []
+for module in default_order:
+    match = re.search(rf"(?m)^add_subdirectory\({module}\)\s*$", source)
+    if match is None:
+        raise SystemExit(f"default local module must always be assembled: {module}")
+    positions.append(match.start())
+if positions != sorted(positions):
+    raise SystemExit("default local owner order must be ASN1, Crypto, URI, vendor, CNet")
+for module, target in (("asn1", "Salts::ASN1"), ("crypto", "Salts::Crypto")):
+    if f"if(TARGET {target})" not in source[:source.index(f"add_subdirectory({module})")]:
+        raise SystemExit(f"default assembly must reject a pre-existing owner: {target}")
+for retired in ("SALTSCORE_BUILD_ASN1", "SALTSCORE_BUILD_CRYPTO", "SALTSCORE_BUILD_CNET",
+                "SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST", "CRYPTO_GMSSL_ROOT"):
+    if re.search(rf"(?mi)^\s*(?:option|set)\s*\(\s*{retired}\b", source):
+        raise SystemExit(f"retired build entry remains active: {retired}")
+    if "${" + retired + "}" in source:
+        raise SystemExit(f"retired build entry still selects the native graph: {retired}")
+crypto_cmake = (ROOT / "crypto/CMakeLists.txt").read_text(encoding="utf-8")
+cnet_cmake = (ROOT / "cnet/CMakeLists.txt").read_text(encoding="utf-8")
+for name, cmake in (("Crypto", crypto_cmake), ("CNet", cnet_cmake)):
+    if re.search(r"(?mi)^\s*find_package\s*\(\s*(?:GmSSL|Crypto)\b", cmake):
+        raise SystemExit(f"{name} still imports an external TLS owner")
+    if "${CRYPTO_GMSSL_ROOT}" in cmake:
+        raise SystemExit(f"{name} still consumes the retired external prefix")
+if not (ROOT / "crypto/native/gmssl/CMakeLists.txt").is_file():
+    raise SystemExit("missing private local native Crypto implementation")
+if "Salts::Crypto" not in cnet_cmake or "GmSSL::GmSSL" in cnet_cmake:
+    raise SystemExit("production CNet must link the sole local Salts::Crypto owner")
+
 for module in MODULES:
     # Only package assembly belongs to the root; no module binary is made
     # from source files in the package-wide build description.
@@ -100,6 +146,8 @@ extra = {
     "native-io/src/native_io.c": "Salts::NativeIO",
     "uri/parser/uri_lexer.re": "Salts::URI",
     "sctp/src/sctp_wire.c": "Salts::SCTPWire",
+    "simd/src/simd.c": "Salts::SIMD",
+    "usb/src/usb.c": "Salts::USB",
 }
 for rel, alias in extra.items():
     module, local = rel.split("/", 1)

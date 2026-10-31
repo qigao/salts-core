@@ -1,0 +1,113 @@
+name: Migration gate
+
+on:
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  push:
+    branches: [master]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-migration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Keep CI scope bounded
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          expected="$(printf '%s\n' \
+            .github/workflows/ci.yml \
+            .github/workflows/migration-gate.yml \
+            .github/workflows/portable-compiler-abi.yml \
+            .github/workflows/sanitizers.yml)"
+          actual="$(find .github/workflows -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) | sort)"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "Unexpected CI workflow set:"
+            diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") || true
+            exit 1
+          fi
+
+          if find . -type d \( -name installed -o -name install_""consu""mer \) -print -quit | grep -q .; then
+            echo "Installed/consume test project scaffolding is forbidden in salts-core."
+            find . -type d \( -name installed -o -name install_""consu""mer \) -print
+            exit 1
+          fi
+
+          cmake_installed_refs="$(
+            grep -RFn --include='CMakeLists.txt' -- 'installed/' . |
+              grep -Ev ':[0-9]+:[[:space:]]*#' || true
+          )"
+          if [[ -n "$cmake_installed_refs" ]]; then
+            printf '%s\n' "$cmake_installed_refs"
+            echo "Native CMake must not generate installed test-project targets."
+            exit 1
+          fi
+
+          forbidden=(
+            "cmake --in""stall"
+            "ins""taller"
+            "consu""mer"
+            "Nu""Get"
+            "package-""candidate"
+            "core_""sdk"
+            "github-""packages"
+            "dotnet ""pack"
+            "dotnet nuget ""push"
+            "pub""lish"
+            "SALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION=""ON"
+          )
+          for token in "${forbidden[@]}"; do
+            if grep -RFn --include='*.yml' --include='*.yaml' -- "$token" .github/workflows; then
+              echo "Forbidden CI behavior found: $token"
+              exit 1
+            fi
+          done
+      - name: Source layout and dependency boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/check_dependency_boundaries.py
+          python tools/check_module_layout.py
+      - name: Frozen 2,975-file / 610-API accounting
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/check_full_source_migration.py
+          python tools/audit_original_utils_parity.py
+      - name: Source provenance policies once
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python -B crypto/tools/check_local_native_source.py
+          python -B -m unittest discover -s tests -p test_local_native_crypto_source.py -v
+          python -B -m unittest discover -s tests -p test_full_source_migration.py -v
+          python -B -m unittest discover -s capture/tests -p test_source_provenance.py -v
+          python -B playback/tests/test_source_provenance.py
+          python -B -m unittest discover -s salts_serial/test -p test_serial_provenance.py -v
+          SALTSCORE_USB_TEST_CMAKE="$(command -v cmake)" \
+            python -B -m unittest discover -s usb/tests -p test_usb_provenance.py -v
+          python -B tests/test_original_platform_provenance.py
+          python -B -m unittest discover -s tests -p test_original_zstd_provenance.py -v
+          python -B -m unittest discover -s tests -p test_original_re_provenance.py -v
+          python -B -m unittest discover -s tests -p test_original_simd_provenance.py -v
+          python -B -m unittest discover -s tests -p test_original_error_provenance.py -v
