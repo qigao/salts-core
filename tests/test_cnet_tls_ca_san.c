@@ -476,10 +476,12 @@ static int run_python_ssl_client(const char *port_path,
                                      ? "TLSv1.2" : "TLSv1.3";
   const bool expect_idle_read_timeout = strcmp(outcome, "idle") == 0;
   const bool expect_orderly_close = strcmp(outcome, "close") == 0;
+  const bool expect_local_peer_close = strcmp(outcome, "localclose") == 0;
   const bool expect_gated_receive = strcmp(outcome, "gated") == 0;
   const bool should_verify =
       strcmp(outcome, "accept") == 0 || expect_idle_read_timeout ||
-      expect_orderly_close || expect_gated_receive;
+      expect_orderly_close || expect_local_peer_close ||
+      expect_gated_receive;
   cnet_client server = {0};
   cnet_listener listener = {0};
   cnet_tls_server tls_server = {0};
@@ -495,6 +497,7 @@ static int run_python_ssl_client(const char *port_path,
       .client_auth = CNET_TLS_CLIENT_AUTH_REQUIRED};
   bool tls_live = false, server_live = false, listener_live = false;
   bool accepted = false, armed = false, response_sent = false;
+  bool local_close_started = false;
   bool gated_ready_published = false;
   unsigned polls_after_receive_admission = 0u;
   mem_buffer_t *outgoing = NULL;
@@ -588,25 +591,57 @@ static int run_python_ssl_client(const char *port_path,
       outgoing = NULL;
       response_sent = true;
     }
-    /* For close_notify acceptance, keep the real owner alive until the peer's
-     * authenticated close and the matching local close_notify are complete.
-     * A successful one-byte echo is not sufficient evidence of retirement. */
-    if (should_verify && !expect_orderly_close &&
+    if (expect_local_peer_close && response_sent &&
+        probe.sent_count && !local_close_started) {
+      /* Native application-initiated shutdown can race the Python peer's
+       * close_notify after it receives the authenticated response G.
+       * At this point CNet can also own a background NativeIO TLS_READ.
+       * Do not release that lease or its buffers until the real terminal. */
+      char close_ready_path[1024];
+      FILE *close_ready;
+      int close_name_bytes;
+      REQUIRE(probe.failed == 0u && probe.connected_count == 1u);
+      REQUIRE(cnet_close(&server, probe.connection) == SALTS_OK);
+      local_close_started = true;
+      /* The Python peer must not win the race *before* native CNet has
+       * accepted local close. It still sends its reciprocal close_notify
+       * while NativeIO cancellation and encrypted shutdown are pending. */
+      close_name_bytes =
+          snprintf(close_ready_path, sizeof(close_ready_path),
+                   "%s.localclose", port_path);
+      REQUIRE(close_name_bytes > 0 &&
+              (size_t)close_name_bytes < sizeof(close_ready_path));
+      close_ready = fopen(close_ready_path, "wb");
+      REQUIRE(close_ready != NULL);
+      REQUIRE(fputs("accepted\n", close_ready) >= 0);
+      REQUIRE(fclose(close_ready) == 0);
+    }
+    /* A successful app echo cannot substitute for reciprocal close_notify
+     * or for exact NativeIO request retirement. */
+    if (should_verify && !expect_orderly_close && !expect_local_peer_close &&
         response_sent && probe.sent_count) break;
     if (probe.terminal_count) break;
   }
 
   REQUIRE(accepted);
-  if (expect_orderly_close) {
+  if (expect_orderly_close || expect_local_peer_close) {
     /* Python ssl.unwrap() requires the native server's authenticated
      * close_notify. It does not count TCP EOF as normal TLS shutdown.
-     * CNet must also retire its old NativeIO TLS_READ lease exactly once,
-     * without a post-auth READ timeout or terminal failure. */
+     * CNet must retire the NativeIO TLS_READ lease exactly once, including
+     * local-close vs peer-close_notify overlap and any queued cancellation. */
+    REQUIRE(!expect_local_peer_close || local_close_started);
     REQUIRE(armed && probe.connected_count == 1u);
     REQUIRE(probe.received_count == 1u && probe.received_byte == 0x46u);
     REQUIRE(response_sent && probe.sent_count == 1u);
     REQUIRE(probe.terminal_count == 1u && probe.failed == 0u);
     REQUIRE(probe.last_connection_state == CNET_CONNECTION_CLOSED);
+    /* Drain one more zero-wait owner cycle. A cancel-vs-success native
+     * completion must not publish a second callback after CLOSED. */
+    for (unsigned index = 0u; index < 2u; ++index) {
+      REQUIRE(cnet_client_poll(&server, 0u, &events) == SALTS_OK);
+      REQUIRE(probe.terminal_count == 1u);
+      REQUIRE(probe.received_count == 1u && probe.sent_count == 1u);
+    }
   } else if (expect_idle_read_timeout) {
     /* A real, authenticated idle peer keeps TCP open while CNet owns a
      * post-handshake TLS_READ. Never accept a late socket EOF or handshake

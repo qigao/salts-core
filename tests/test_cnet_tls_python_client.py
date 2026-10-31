@@ -107,14 +107,15 @@ def scenario(
     binary: Path, work: Path, crypto, fixtures, proto: str, case: str,
     *, fragmented: bool = False, idle: bool = False,
     orderly_close: bool = False, gated: bool = False,
-    coalesced: bool = False,
+    coalesced: bool = False, local_close: bool = False,
 ) -> None:
-    if (idle or orderly_close or gated or coalesced or fragmented) and (
+    if (idle or orderly_close or gated or coalesced or fragmented or local_close) and (
         proto != "13" or case != "client" or
-        sum((idle, orderly_close, gated, coalesced, fragmented)) != 1
+        sum((idle, orderly_close, gated, coalesced, fragmented, local_close)) != 1
     ):
         raise AssertionError("special TLS1.3 cases require distinct real client credentials")
     expected = (
+        "localclose" if local_close else
         "gated" if gated else
         "close" if orderly_close else
         "idle" if idle else
@@ -123,6 +124,7 @@ def scenario(
     if fragmented and (proto != "13" or case != "client"):
         raise AssertionError("fragmented ciphertext gate is valid TLS1.3 only")
     suffix = (
+        "-localclose" if local_close else
         "-gated" if gated else
         "-close" if orderly_close else
         "-idle" if idle else
@@ -220,14 +222,35 @@ def scenario(
                             peer.sendall(b"F")
                             phase = "authenticated-response"
                             response = peer.recv(1)
-                            if expected in ("accept", "close", "gated"):
+                            if expected in ("accept", "close", "gated", "localclose"):
                                 if response != b"G":
                                     raise AssertionError(f"valid mTLS app data missing: {response!r}")
-                                if orderly_close:
-                                    # A real TLS1.3 close_notify handshake,
-                                    # not a socket shutdown or EOF disguised
-                                    # as successful TLS termination. This
-                                    # waits for the CNet server's close_notify.
+                                if orderly_close or local_close:
+                                    if local_close:
+                                        # Deterministic admission ordering:
+                                        # CNet must accept its own close
+                                        # command before the Python peer
+                                        # sends reciprocal close_notify.
+                                        # Actual NativeIO cancel completion
+                                        # remains asynchronous and may
+                                        # overlap the peer's TLS shutdown.
+                                        phase = "native-local-close-admission"
+                                        close_marker = Path(
+                                            str(port_path) + ".localclose"
+                                        )
+                                        close_deadline = time.monotonic() + 4.0
+                                        while not close_marker.exists():
+                                            if native.poll() is not None:
+                                                raise AssertionError(
+                                                    "native exited before local close admission"
+                                                )
+                                            if time.monotonic() >= close_deadline:
+                                                raise AssertionError(
+                                                    "native TLS close was not admitted"
+                                                )
+                                            time.sleep(0.005)
+                                    # A real TLS1.3 close_notify exchange,
+                                    # not EOF or a socket-only shutdown.
                                     phase = "authenticated-close-notify"
                                     peer.unwrap()
                                     phase = "authenticated-close-complete"
@@ -239,7 +262,7 @@ def scenario(
                             else:
                                 peer_rejected = True
             except (ssl.SSLError, ConnectionError, EOFError):
-                if expected in ("accept", "close", "gated"):
+                if expected in ("accept", "close", "gated", "localclose"):
                     raise
                 if idle:
                     # Native's exact READ-stage timeout assertion below is
@@ -249,7 +272,7 @@ def scenario(
                     peer_rejected = True
         if expected == "reject" and not peer_rejected:
             raise AssertionError("invalid client was not rejected")
-        if expected in ("accept", "idle", "close", "gated") and not peer_completed:
+        if expected in ("accept", "idle", "close", "gated", "localclose") and not peer_completed:
             raise AssertionError("authenticated peer did not reach required terminal")
     except (socket.timeout, TimeoutError) as exc:
         failure = f"deadline exceeded during {phase}: {type(exc).__name__}"
@@ -306,6 +329,15 @@ def main() -> int:
                 scenario(
                     args.binary, private, python_mtls, fixtures, "13", "client",
                     orderly_close=True,
+                )
+                # One real application-initiated local CNet shutdown overlaps
+                # the Python TLS1.3 peer's reciprocal close_notify. The
+                # native CNet test must publish precisely one CLOSED even
+                # if its original NativeIO TLS_READ cancellation races a
+                # completion. This is NOT an EOF-only success check.
+                scenario(
+                    args.binary, private, python_mtls, fixtures, "13", "client",
+                    local_close=True,
                 )
                 # Before the immediate-send case, force the real encrypted
                 # ClientFinished+ApplicationData to arrive in a single

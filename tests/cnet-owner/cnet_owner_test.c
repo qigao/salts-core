@@ -1094,6 +1094,7 @@ static void cnet_owner_test_cancel_ealready(native_io_backend_kind backend_kind)
   cnet_owner owner = {0};
   const cnet_command_queue_config command_config = {8u, sizeof(cnet_owner_connect_payload)};
   const cnet_event_queue_config event_config = {8u, 2u, 64u};
+  cnet_owner_test_clock clock = {.now_ms = 1000u, .next_ms = 1000u};
   const cnet_owner_config owner_config = {.backend_kind = backend_kind,
                                           .connection_capacity = 1u,
                                           .request_capacity = 2u,
@@ -1104,7 +1105,9 @@ static void cnet_owner_test_cancel_ealready(native_io_backend_kind backend_kind)
                                           .max_write_bytes = 256u,
                                           .sessions = &sessions,
                                           .commands = &commands,
-                                          .events = &events};
+                                          .events = &events,
+                                          .now_ms = cnet_owner_test_now,
+                                          .clock_context = &clock};
   cnet_owner_test_socket listener = CNET_OWNER_TEST_INVALID_SOCKET;
   cnet_owner_test_socket accepted = CNET_OWNER_TEST_INVALID_SOCKET;
   struct sockaddr_in address;
@@ -1124,6 +1127,10 @@ static void cnet_owner_test_cancel_ealready(native_io_backend_kind backend_kind)
   check_equal(cnet_session_table_reserve(&sessions, &session), SALTS_OK);
 
   connect_payload.scheme = CNET_URI_TCP;
+  /* A real NativeIO receive owns a configured READ deadline while pending.
+   * User close must invalidate it on accepted cancellation, not on the
+   * eventual CANCELLED/EALREADY completion. */
+  connect_payload.read_timeout_ms = 20u;
   connect_payload.address_length = sizeof(address);
   memcpy(connect_payload.address, &address, sizeof(address));
   command =
@@ -1151,6 +1158,17 @@ static void cnet_owner_test_cancel_ealready(native_io_backend_kind backend_kind)
   check_true(cnet_owner_test_backend_stats(&owner, &native_stats, &coroutine_stats));
   check_equal(native_stats.active_requests, 1u);
 
+  /* The cancellation was accepted but its real kernel terminal has not
+   * yet been routed to this Owner. Move the SAME owner clock past the
+   * previously armed READ deadline. Expiring an obsolete timer here would
+   * wrongly turn an intentionally closing session into FAILED. No sleep,
+   * no fabricated completion and no early request/buffer retirement. */
+  clock.now_ms = 1100u;
+  clock.next_ms = clock.now_ms;
+  check_equal(cnet_owner_test_process_deadlines(&owner), SALTS_OK);
+  check_true(cnet_owner_test_backend_stats(&owner, &native_stats, &coroutine_stats));
+  check_equal(native_stats.active_requests, 1u);
+
   check_equal(cnet_owner_test_drive_to_state(&owner, &sessions, session, CNET_SESSION_TERMINAL),
               SALTS_OK);
   check_true(cnet_owner_test_backend_stats(&owner, &native_stats, &coroutine_stats));
@@ -1166,6 +1184,7 @@ static void cnet_owner_test_cancel_ealready(native_io_backend_kind backend_kind)
   check_equal(event.kind, CNET_EVENT_STATE);
   check_equal(event.state, CNET_EVENT_STATE_CLOSED);
   check_equal(cnet_event_queue_release(&events, &event), SALTS_OK);
+  check_equal(cnet_event_queue_take(&events, &event), SALTS_ETIMEDOUT);
   check_equal(cnet_session_table_take_terminal(&sessions, session, &terminal), SALTS_OK);
   check_equal(terminal.kind, CNET_SESSION_TERMINAL_CLOSED);
   check_equal(cnet_session_table_recycle(&sessions, session), SALTS_OK);
