@@ -1539,6 +1539,37 @@ static int test_generation_historical_journal(
 }
 
 
+
+#ifdef _WIN32
+/* Real Windows writer death while holding the OS byte-range lock.
+ * Parent must acquire the SAME permanent root-relative lock afterwards. */
+static int win_native_writer_lease_crash_child(unsigned long owner_pid) {
+  char tmp[1024], highwater[96];
+  wchar_t ready_name[96];
+  HANDLE ready = NULL;
+  salts_fs_root_t *root = NULL;
+  salts_fs_root_writer_lease_t *owner = NULL;
+  if (snprintf(highwater, sizeof(highwater),
+               "fs-m10-%lu-highwater", owner_pid) <= 0 ||
+      swprintf(ready_name, sizeof(ready_name)/sizeof(ready_name[0]),
+               L"Local\\SaltsFSM10CrashReady-%lu", owner_pid) < 0)
+    return 1060;
+  if (salts_fs_get_tmpdir(tmp, sizeof(tmp)) != 0 ||
+      salts_fs_root_open(tmp, &root) != 0 || !root)
+    return 1061;
+  ready = OpenEventW(EVENT_MODIFY_STATE, FALSE, ready_name);
+  if (!ready) return 1062;
+  if (salts_fs_root_writer_lease_acquire(
+        root, highwater, &owner) != 0 || !owner)
+    return 1063;
+  if (!SetEvent(ready)) return 1064;
+  /* Parent must call TerminateProcess; normal return is a test failure.
+   * Delay is only a bounded safety exit if parent test aborts. */
+  Sleep(10000u);
+  return 1065;
+}
+#endif
+
 #ifdef _WIN32
 static int win_native_writer_lease_child(unsigned long owner_pid) {
   char tmp[1024], highwater[96], stage[96];
@@ -1670,6 +1701,47 @@ static int test_generation_writer_lease(
     CloseHandle(ready);
     CloseHandle(resume);
   }
+  /* Independent child now holds a fresh native writer lease. Killing the
+   * process (not releasing the lease cooperatively) must free the OS lock. */
+  {
+    wchar_t ready_name[96], executable[32768], cmd[33000];
+    HANDLE ready = NULL, child = NULL;
+    STARTUPINFOW si = {0};
+    PROCESS_INFORMATION pi = {0};
+    DWORD code = 0u;
+    if (swprintf(ready_name, sizeof(ready_name)/sizeof(ready_name[0]),
+                 L"Local\\SaltsFSM10CrashReady-%lu", pid) < 0)
+      return 1066;
+    ready = CreateEventW(NULL, TRUE, FALSE, ready_name);
+    if (!ready) return 1067;
+    const DWORD length = GetModuleFileNameW(
+        NULL, executable, (DWORD)(sizeof(executable)/sizeof(executable[0])));
+    if (length == 0 ||
+        length >= sizeof(executable)/sizeof(executable[0]) ||
+        swprintf(cmd, sizeof(cmd)/sizeof(cmd[0]),
+                 L"\"%ls\" --fs-writer-lease-crash-child %lu",
+                 executable, pid) < 0)
+      return 1068;
+    si.cb = sizeof(si);
+    if (!CreateProcessW(executable, cmd, NULL, NULL, FALSE,
+                        CREATE_NO_WINDOW, NULL, NULL, &si, &pi))
+      return 1069;
+    child = pi.hProcess;
+    CloseHandle(pi.hThread);
+    if (WaitForSingleObject(ready, 10000u) != WAIT_OBJECT_0 ||
+        !TerminateProcess(child, 99u) ||
+        WaitForSingleObject(child, 10000u) != WAIT_OBJECT_0 ||
+        !GetExitCodeProcess(child, &code) || code != 99u)
+      return 1070;
+    CloseHandle(child);
+    CloseHandle(ready);
+    if (salts_fs_root_writer_lease_acquire(
+          root, highwater, &owner) != 0 || !owner)
+      return 1071;
+    if (salts_fs_root_writer_lease_release(owner) != 0)
+      return 1072;
+    owner = NULL;
+  }
 #else
   if (rc != 0 || generation != 1u ||
       state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
@@ -1743,10 +1815,68 @@ static int test_generation_writer_lease(
   if (salts_fs_root_writer_lease_release(owner) != 0)
     return 1043;
   owner = NULL;
-  for (int i = 0; i < 2; ++i) {
+  {
+    /* A separate publisher is SIGKILLed while holding the native
+     * lock. The surviving process must re-open the same stable inode
+     * without weakening the journal's single-writer contract. */
+    const char req3[] = "61112233445566778899aabbccddeeff";
+    char stage3[96];
+    int acquired_pipe[2] = {-1, -1};
+    pid_t doomed;
+    int kill_status = 0;
+    char signal = 0;
+    if (snprintf(stage3, sizeof(stage3),
+                 "fs-m10-%lu-stage3", pid) <= 0 ||
+        pipe(acquired_pipe) != 0)
+      return 1073;
+    doomed = fork();
+    if (doomed < 0) return 1074;
+    if (doomed == 0) {
+      char tmp[1024];
+      salts_fs_root_t *child_root = NULL;
+      salts_fs_root_writer_lease_t *child_owner = NULL;
+      close(acquired_pipe[0]);
+      if (salts_fs_get_tmpdir(tmp, sizeof(tmp)) != 0 ||
+          salts_fs_root_open(tmp, &child_root) != 0 || !child_root ||
+          salts_fs_root_writer_lease_acquire(
+              child_root, highwater, &child_owner) != 0 || !child_owner)
+        _exit(41);
+      if (write(acquired_pipe[1], "H", 1) != 1) _exit(42);
+      close(acquired_pipe[1]);
+      for (;;) pause();
+    }
+    close(acquired_pipe[1]);
+    if (read(acquired_pipe[0], &signal, 1) != 1 || signal != 'H')
+      return 1075;
+    close(acquired_pipe[0]);
+    if (kill(doomed, SIGKILL) != 0 ||
+        waitpid(doomed, &kill_status, 0) != doomed ||
+        !WIFSIGNALED(kill_status) ||
+        WTERMSIG(kill_status) != SIGKILL)
+      return 1076;
+    if (salts_fs_root_writer_lease_acquire(
+          root, highwater, &owner) != 0 || !owner)
+      return 1077;
+    rc = salts_fs_root_reserve_generation_recorded_owned(
+        owner, stage3, req3, &generation, &state);
+    if (rc != 0 || generation != 3u ||
+        state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+      return 1078;
+    rc = salts_fs_root_reserve_generation_recorded_owned(
+        owner, stage1, req1, &generation, &state);
+    if (rc != 0 || generation != 1u ||
+        state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+      return 1079;
+    if (salts_fs_root_writer_lease_release(owner) != 0)
+      return 1080;
+    owner = NULL;
+  }
+  for (int i = 0; i < 3; ++i) {
     char record[155];
+    const char *id = i == 0 ? req1 : i == 1 ? req2
+        : "61112233445566778899aabbccddeeff";
     if (snprintf(record, sizeof(record), "%s.r.%s",
-                 highwater, i == 0 ? req1 : req2) <= 0 ||
+                 highwater, id) <= 0 ||
         salts_fs_root_unlink(root, record) != 0)
       return 1044;
   }
@@ -1771,6 +1901,12 @@ int main(int argc, char **argv) {
   char scratch[128] = {0};
   int bytes;
 #ifdef _WIN32
+  if (argc == 3 && strcmp(argv[1], "--fs-writer-lease-crash-child") == 0) {
+    char *end = NULL;
+    unsigned long owner = strtoul(argv[2], &end, 10);
+    if (!end || *end != '\0' || owner == 0u) return 75;
+    return win_native_writer_lease_crash_child(owner);
+  }
   if (argc == 3 && strcmp(argv[1], "--fs-writer-lease-child") == 0) {
     char *end = NULL;
     unsigned long owner = strtoul(argv[2], &end, 10);
