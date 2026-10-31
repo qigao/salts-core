@@ -92,6 +92,7 @@ target_link_libraries(saltscore_coroutine_test PRIVATE Salts::Coroutine)
 set_target_properties(saltscore_coroutine_test PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.coroutine COMMAND saltscore_coroutine_test)
+set_tests_properties(saltscore.coroutine PROPERTIES TIMEOUT 30)
 
 add_executable(saltscore_native_io_test test_native_io.c)
 target_link_libraries(saltscore_native_io_test PRIVATE Salts::NativeIO)
@@ -318,3 +319,20 @@ set_tests_properties(saltscore.clock_atomic_owner PROPERTIES TIMEOUT 30)
 if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
   add_subdirectory(cnet-crypto-static)
 endif()
+
+# Preserve the existing public C11/C++17 API assertions in this native graph.
+# These are ordinary test sources, not a second CMake/installed-consumer project.
+enable_language(CXX)
+foreach(_public_api IN ITEMS c11 cpp17)
+  if(_public_api STREQUAL "c11")
+    set(_source installed/consumer.c)
+  else()
+    set(_source installed/consumer.cpp)
+  endif()
+  add_executable(saltscore_public_api_${_public_api} "${_source}")
+  target_compile_features(saltscore_public_api_${_public_api} PRIVATE c_std_11 cxx_std_17)
+  target_link_libraries(saltscore_public_api_${_public_api} PRIVATE
+    Salts::Core Salts::Platform Salts::Concurrency Salts::Coroutine Salts::NativeIO)
+  add_test(NAME saltscore.public_api_${_public_api}
+    COMMAND saltscore_public_api_${_public_api})
+endforeach()

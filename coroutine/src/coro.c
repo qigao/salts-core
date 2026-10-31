@@ -8,6 +8,7 @@
 #include "minicoro.h"
 #include <assert.h>
 #include <stdint.h>
+#include <salts/thread.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -48,11 +49,7 @@ struct coro_scheduler_s {
 };
 
 // Thread-local current scheduler (for coro_current_scheduler)
-#ifdef _WIN32
-static __declspec(thread) coro_scheduler_t *tls_current_scheduler = NULL;
-#else
-static __thread coro_scheduler_t *tls_current_scheduler = NULL;
-#endif
+static SALTS_THREAD_LOCAL coro_scheduler_t *tls_current_scheduler = NULL;
 
 // Wrapper to adapt minicoro callback to our API
 static void coro_entry_wrapper(mco_coro *mco) {
