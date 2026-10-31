@@ -585,6 +585,7 @@ static int salts_fs_root_dir_seek_cookie_win(
 #include <unistd.h>
 #ifdef SALTS_FS_NATIVE_PUBLISH_TEST_FAULTS
 #include <stdatomic.h>
+#include <signal.h>
 #endif
 #ifdef __linux__
 #include <sys/syscall.h>
@@ -1270,15 +1271,24 @@ done:
  * BUILD_TESTING=OFF; no environment override or public header alias. */
 static atomic_int salts_fs_test_publish_fail_stage = ATOMIC_VAR_INIT(0);
 int salts_fs_test_set_publish_fail_stage(int stage) {
-  if (stage < 0 || stage > 4) return -EINVAL;
+  /* Positive 1..4 returns -EIO. Negative -1..-4 kills only the
+   * test owner process with SIGKILL inside the real publish sequence. */
+  if (stage < -4 || stage > 4) return -EINVAL;
   atomic_store_explicit(
       &salts_fs_test_publish_fail_stage, stage, memory_order_release);
   return 0;
 }
 static int salts_fs_test_maybe_fail_publish(int stage) {
-  return atomic_load_explicit(
-             &salts_fs_test_publish_fail_stage, memory_order_acquire) == stage
-      ? -EIO : 0;
+  const int injected = atomic_load_explicit(
+      &salts_fs_test_publish_fail_stage, memory_order_acquire);
+  if (injected == -stage) {
+    /* Real uncatchable process death, no C++/C exit cleanup or normal
+     * staged-handle close. Only compiled for POSIX BUILD_TESTING=ON.
+     * Not a storage power cut or guarantee of parent-directory durability. */
+    (void)kill(getpid(), SIGKILL);
+    _exit(240);
+  }
+  return injected == stage ? -EIO : 0;
 }
 #define SALTS_FS_PUBLISH_TEST_FAIL_AT(STAGE) do {\
   rc = salts_fs_test_maybe_fail_publish(STAGE);\

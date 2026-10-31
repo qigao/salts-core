@@ -9,6 +9,7 @@
 #else
 #include <unistd.h>
 #include <sys/wait.h>
+#include <signal.h>
 #endif
 /* No new project, workflow, installer or consumer. Exercise real OS
  * namespace/descriptor operations in the existing Salts::FS native CTest.
@@ -556,6 +557,82 @@ static int test_durable_file_publish_failpoints(
 }
 #endif
 
+
+#if !defined(_WIN32) && defined(SALTS_FS_NATIVE_PUBLISH_TEST_FAULTS)
+/* Unlike the above -EIO return tests, the actual publisher child is
+ * SIGKILLed in kernel-visible native FS steps. The parent did not
+ * receive a return value; it must reconcile via version-specific paths.
+ * This is a PROCESS CRASH test, NOT a power-loss durability oracle. */
+static int test_durable_publish_sigkill_recovery(
+    salts_fs_root_t *root, unsigned long pid) {
+  static const char bytes[] = "hard-killed-publisher-content";
+  for (int stage = 1; stage <= 4; ++stage) {
+    char source[96], destination[96], actual[sizeof(bytes)] = {0};
+    salts_fs_replace_state_t state = SALTS_FS_REPLACE_DURABILITY_UNKNOWN;
+    salts_fs_root_file_t *file = NULL;
+    salts_fs_stat_t info = {0};
+    pid_t child;
+    int status = 0, rc, source_status, target_status;
+    if (snprintf(source, sizeof(source),
+                 "fs-kill-%lu-stage-%d", pid, stage) <= 0 ||
+        snprintf(destination, sizeof(destination),
+                 "fs-kill-%lu-revision-%d", pid, stage) <= 0)
+      return 501;
+    if (stage_revision_file(root, source, bytes, sizeof(bytes)-1u) != 0)
+      return 502;
+    child = fork();
+    if (child < 0) return 503;
+    if (child == 0) {
+      if (salts_fs_test_set_publish_fail_stage(-stage) != 0)
+        _exit(241);
+      (void)salts_fs_root_publish_file_noreplace(
+          root, source, destination, &state);
+      /* A compiled-in hook MUST terminate via SIGKILL, never return. */
+      _exit(242);
+    }
+    if (waitpid(child, &status, 0) != child ||
+        !WIFSIGNALED(status) || WTERMSIG(status) != SIGKILL)
+      return 504;
+    source_status = salts_fs_root_stat(root, source, &info);
+    target_status = salts_fs_root_stat(root, destination, &info);
+    if (stage <= 2) {
+      /* No native move was reached; staging is still present. A parent
+       * may explicitly resubmit only after reconciling the old request. */
+      if (source_status != 0 || target_status != -ENOENT)
+        return 505;
+      rc = salts_fs_root_publish_file_noreplace(
+          root, source, destination, &state);
+      if (rc != 0 || state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+        return 506;
+    } else {
+      /* Publication may already be visible, despite the loss of the
+       * child's return status. Do NOT reallocate/retry a generation.
+       * Reconcile exact destination bytes and preserve this revision. */
+      if (source_status != -ENOENT || target_status != 0 ||
+          !info.is_file || info.size != sizeof(bytes)-1u)
+        return 507;
+      state = SALTS_FS_REPLACE_DURABILITY_UNKNOWN;
+      rc = salts_fs_root_publish_file_noreplace(
+          root, source, destination, &state);
+      if (rc != -ENOENT || state != SALTS_FS_REPLACE_NOT_PUBLISHED)
+        return 508;
+    }
+    if (salts_fs_root_file_open(root, destination, SALTS_FS_O_RDONLY,
+                                0, &file) != 0 || !file)
+      return 509;
+    rc = salts_fs_root_file_read(file, actual, sizeof(bytes)-1u);
+    if (salts_fs_root_file_close(file) != 0 ||
+        rc != (int)(sizeof(bytes)-1u) ||
+        memcmp(actual, bytes, sizeof(bytes)-1u) != 0)
+      return 510;
+    if (salts_fs_root_unlink(root, destination) != 0)
+      return 511;
+  }
+  puts("Salts::FS native SIGKILL publisher recovery: before/after rename reconciled PASS (not power loss)");
+  return 0;
+}
+#endif
+
 int main(int argc, char **argv) {
   char tmp[1024] = {0}, path[1400] = {0}, name[120] = {0};
   const char body[] = "salts core fs native\n";
@@ -611,6 +688,12 @@ int main(int argc, char **argv) {
     int fault_result = test_durable_file_publish_failpoints(root, pid);
     if (fault_result != 0) {
       fprintf(stderr, "Salts::FS publisher failure-state FAIL: %d\n",
+              fault_result);
+      return fault_result;
+    }
+    fault_result = test_durable_publish_sigkill_recovery(root, pid);
+    if (fault_result != 0) {
+      fprintf(stderr, "Salts::FS SIGKILL publisher recovery FAIL: %d\n",
               fault_result);
       return fault_result;
     }
