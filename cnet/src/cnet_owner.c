@@ -56,6 +56,9 @@ typedef struct cnet_owner_session {
   bool tls_send_accepted;
   bool tls_close_after_send;
   bool tls_shutdown_after_flush;
+  /* Explicit locally initiated close waits for the authenticated peer alert.
+   * The TLS_READ lease/READ deadline still have a single NativeIO owner. */
+  bool tls_shutdown_wait_peer;
   /** Fatal TLS handshake alert must drain through the existing bounded
    * NativeIO write owner before the failed terminal event is published. */
   bool tls_fatal_alert_draining;
@@ -1270,7 +1273,9 @@ static int cnet_owner_tls_start_write(cnet_owner_impl *impl, cnet_owner_session 
 static int cnet_owner_tls_start_read(cnet_owner_impl *impl, cnet_owner_session *session) {
   native_io_operation operation;
   size_t capacity;
-  if (session->read_active || session->close_requested) return SALTS_OK;
+  if (session->read_active ||
+      (session->close_requested && !session->tls_shutdown_wait_peer))
+    return SALTS_OK;
   capacity = cnet_tls_cipher_input_capacity(&session->tls);
   if (capacity == 0u) return SALTS_OK;
   if (capacity > cnet_tls_state_io_buffer_bytes(&session->tls)) capacity = cnet_tls_state_io_buffer_bytes(&session->tls);
@@ -1760,13 +1765,32 @@ static int cnet_owner_tls_pump_impl(cnet_owner_impl *impl, cnet_owner_session *s
 
   if (session->close_requested && !cnet_write_handle_valid(session->tls_send_write.handle)) {
     bool notify_generated = false;
-    status = cnet_tls_shutdown(&session->tls, &notify_generated);
+    bool peer_notify_received = false;
+    status = cnet_tls_shutdown(
+        &session->tls, &notify_generated, &peer_notify_received);
     if (status != SALTS_OK) return status;
     if (notify_generated) session->tls_shutdown_after_flush = true;
     status = cnet_owner_tls_start_write(impl, session, &started);
     if (status != SALTS_OK) return status;
-    if (session->tls_shutdown_after_flush && !session->write_active && !started)
+    if (session->tls_shutdown_after_flush && !session->write_active && !started) {
+      if (session->tls_shutdown_wait_peer && !peer_notify_received) {
+        /* Sending local close_notify is not permission to destroy TCP while
+         * the peer still owes its own authenticated alert. Windows may emit
+         * RST if closesocket races unread close_notify, causing Python
+         * SSLSocket.unwrap() to fail even though our event said CLOSED.
+         * Reuse one bounded NativeIO TLS_READ (same owner, normal timeout). */
+        return cnet_owner_tls_start_read(impl, session);
+      }
+      if (session->tls_shutdown_wait_peer) {
+        /* A complete reciprocal shutdown may still have an earlier native
+         * read lease that lost the race. Cancel it, but never release its
+         * buffer until the matching NativeIO completion is routed. */
+        session->tls_shutdown_wait_peer = false;
+        status = cnet_owner_cancel_receive_requests(impl, session->handle);
+        if (status != SALTS_OK) return status;
+      }
       return cnet_owner_finalize_session(impl, session);
+    }
   }
   return SALTS_OK;
 }
@@ -2239,6 +2263,12 @@ static int cnet_owner_progress_close(cnet_owner_impl *impl, cnet_owner_session *
     return SALTS_OK;
   }
   if (session->peer.scheme == CNET_URI_TLS && cnet_tls_state_handshake_complete(&session->tls)) {
+    /* Explicit local close must not convert a peer's later close_notify
+     * into a TCP RST. Cancel the old application read lease first, then
+     * accept a new shutdown-only TLS_READ after our local alert has flushed.
+     * A peer-initiated close has already authenticated that alert and need
+     * not wait here. */
+    session->tls_shutdown_wait_peer = true;
     status = cnet_owner_cancel_receive_requests(impl, session->handle);
     if (status != SALTS_OK)
       return cnet_owner_fail_session(impl, session, status, CNET_SESSION_STAGE_SHUTDOWN);
