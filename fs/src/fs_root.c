@@ -2131,6 +2131,248 @@ int salts_fs_root_reserve_generation_recorded_owned(
       out_generation, state);
 }
 
+
+/* M11: one version-specific native read/retirement lock, not a second
+ * filesystem backend. The '<revision>.readers' lock file is permanent
+ * under cooperative ownership and may not be removed by production GC. */
+#define SALTS_FS_REVISION_LOCK_PATH_CAP 2048u
+struct salts_fs_root_revision_pin_s {
+  salts_fs_root_file_t *guard;
+  salts_fs_root_file_t *revision;
+#ifdef _WIN32
+  DWORD process_id;
+  OVERLAPPED position;
+#else
+  pid_t process_id;
+#endif
+};
+
+/* Both reader and GC acquire the same exact lock inode BEFORE touching
+ * the revision; lock creation is independent of CURRENT. The early stat
+ * is only a guard against creating arbitrary orphan .readers files; the
+ * real revision handle is ALWAYS opened/checked again under the lock. */
+static int salts_fs_root_revision_guard_open(
+    const salts_fs_root_t *root, const char *revision_path,
+    bool exclusive, salts_fs_root_revision_pin_t **out_guard) {
+  salts_fs_root_revision_pin_t *pin = NULL;
+  salts_fs_stat_t hint = {0};
+  char lock_path[SALTS_FS_REVISION_LOCK_PATH_CAP];
+  int rc, n;
+  if (!out_guard) return -EINVAL;
+  *out_guard = NULL;
+  if (!root || !revision_path) return -EINVAL;
+  rc = salts_fs_root_validate_relative_path(revision_path);
+  if (rc != 0) return rc;
+  rc = salts_fs_root_stat(root, revision_path, &hint);
+  if (rc != 0) return rc;
+  if (!hint.is_file || hint.is_symlink) return -EINVAL;
+  n = snprintf(lock_path, sizeof(lock_path),
+               "%s.readers", revision_path);
+  if (n < 0 || (size_t)n >= sizeof(lock_path))
+    return -ENAMETOOLONG;
+  rc = salts_fs_root_validate_relative_path(lock_path);
+  if (rc != 0) return rc;
+
+  pin = (salts_fs_root_revision_pin_t *)calloc(1u, sizeof(*pin));
+  if (!pin) return -ENOMEM;
+#ifdef _WIN32
+  pin->process_id = GetCurrentProcessId();
+#else
+  pin->process_id = getpid();
+#endif
+  rc = salts_fs_root_file_open(
+      root, lock_path, SALTS_FS_O_RDWR | SALTS_FS_O_CREAT, 0600,
+      &pin->guard);
+  if (rc != 0) goto failed;
+#ifdef _WIN32
+  {
+    FILE_STANDARD_INFO standard = {0};
+    if (!GetFileInformationByHandleEx(
+            pin->guard->handle, FileStandardInfo,
+            &standard, sizeof(standard))) {
+      rc = salts_fs_root_win32_error(GetLastError());
+      goto failed;
+    }
+    if (standard.Directory || standard.NumberOfLinks != 1u) {
+      rc = -EINVAL; goto failed;
+    }
+    memset(&pin->position, 0, sizeof(pin->position));
+    const DWORD flags = LOCKFILE_FAIL_IMMEDIATELY |
+        (exclusive ? LOCKFILE_EXCLUSIVE_LOCK : 0u);
+    if (!LockFileEx(pin->guard->handle, flags,
+                    0u, 1u, 0u, &pin->position)) {
+      const DWORD err = GetLastError();
+      rc = (err == ERROR_LOCK_VIOLATION ||
+            err == ERROR_SHARING_VIOLATION)
+          ? -EBUSY : salts_fs_root_win32_error(err);
+      goto failed;
+    }
+    /* This is a live process lease, NOT a Windows durable publisher.
+     * The lock file name must survive restart; production GC never
+     * deletes or replaces it. */
+  }
+#else
+  {
+    struct stat info;
+    if (fstat(pin->guard->fd, &info) != 0) {
+      rc = -errno; goto failed;
+    }
+    if (!S_ISREG(info.st_mode) || info.st_nlink != 1) {
+      rc = -EINVAL; goto failed;
+    }
+    if (flock(pin->guard->fd,
+              (exclusive ? LOCK_EX : LOCK_SH) | LOCK_NB) != 0) {
+      rc = (errno == EWOULDBLOCK || errno == EAGAIN)
+          ? -EBUSY : -errno;
+      goto failed;
+    }
+    /* Require the cooperative lock file and namespace to be fsynced
+     * on POSIX before handing a pin to another process. */
+    rc = salts_fs_gen_complete_visible_reservation(
+        root, lock_path, lock_path);
+    if (rc != 0) {
+      (void)flock(pin->guard->fd, LOCK_UN);
+      goto failed;
+    }
+  }
+#endif
+  *out_guard = pin;
+  return 0;
+failed:
+  if (pin->guard) (void)salts_fs_root_file_close(pin->guard);
+  free(pin);
+  return rc;
+}
+
+static int salts_fs_root_revision_guard_close(
+    salts_fs_root_revision_pin_t *pin) {
+  int rc = 0;
+  if (!pin || !pin->guard) return -EINVAL;
+#ifdef _WIN32
+  if (pin->process_id != GetCurrentProcessId()) return -EPERM;
+#else
+  if (pin->process_id != getpid()) return -EPERM;
+#endif
+  if (pin->revision) {
+    const int closed = salts_fs_root_file_close(pin->revision);
+    if (closed != 0) rc = closed;
+    pin->revision = NULL;
+  }
+#ifdef _WIN32
+  if (!UnlockFileEx(pin->guard->handle, 0u, 1u, 0u,
+                    &pin->position) && rc == 0)
+    rc = salts_fs_root_win32_error(GetLastError());
+#else
+  if (flock(pin->guard->fd, LOCK_UN) != 0 && rc == 0)
+    rc = -errno;
+#endif
+  {
+    const int closed = salts_fs_root_file_close(pin->guard);
+    if (rc == 0) rc = closed;
+  }
+  free(pin);
+  return rc;
+}
+
+static int salts_fs_root_revision_check_regular(
+    salts_fs_root_file_t *file) {
+  if (!file) return -EINVAL;
+#ifdef _WIN32
+  {
+    FILE_STANDARD_INFO standard = {0};
+    FILE_ATTRIBUTE_TAG_INFO tags = {0};
+    if (!GetFileInformationByHandleEx(file->handle, FileStandardInfo,
+                                      &standard, sizeof(standard)) ||
+        !GetFileInformationByHandleEx(file->handle, FileAttributeTagInfo,
+                                      &tags, sizeof(tags)))
+      return salts_fs_root_win32_error(GetLastError());
+    return (!standard.Directory && standard.NumberOfLinks == 1u &&
+            !(tags.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
+        ? 0 : -EINVAL;
+  }
+#else
+  {
+    struct stat info;
+    if (fstat(file->fd, &info) != 0) return -errno;
+    return S_ISREG(info.st_mode) && info.st_nlink == 1
+        ? 0 : -EINVAL;
+  }
+#endif
+}
+
+int salts_fs_root_revision_pin_open(
+    const salts_fs_root_t *root, const char *revision_path,
+    salts_fs_root_revision_pin_t **out_pin) {
+  salts_fs_root_revision_pin_t *pin = NULL;
+  int rc;
+  if (!out_pin) return -EINVAL;
+  *out_pin = NULL;
+  rc = salts_fs_root_revision_guard_open(
+      root, revision_path, false, &pin);
+  if (rc != 0) return rc;
+  rc = salts_fs_root_file_open(
+      root, revision_path, SALTS_FS_O_RDONLY, 0, &pin->revision);
+  if (rc == 0)
+    rc = salts_fs_root_revision_check_regular(pin->revision);
+  if (rc != 0) {
+    (void)salts_fs_root_revision_guard_close(pin);
+    return rc;
+  }
+  *out_pin = pin;
+  return 0;
+}
+
+int salts_fs_root_revision_pin_read(
+    salts_fs_root_revision_pin_t *pin, char *buffer, size_t bytes) {
+  if (!pin || !pin->revision) return -EINVAL;
+#ifdef _WIN32
+  if (pin->process_id != GetCurrentProcessId()) return -EPERM;
+#else
+  if (pin->process_id != getpid()) return -EPERM;
+#endif
+  return salts_fs_root_file_read(pin->revision, buffer, bytes);
+}
+
+int64_t salts_fs_root_revision_pin_seek(
+    salts_fs_root_revision_pin_t *pin, int64_t offset, int whence) {
+  if (!pin || !pin->revision) return -EINVAL;
+#ifdef _WIN32
+  if (pin->process_id != GetCurrentProcessId()) return -EPERM;
+#else
+  if (pin->process_id != getpid()) return -EPERM;
+#endif
+  return salts_fs_root_file_seek(pin->revision, offset, whence);
+}
+
+int salts_fs_root_revision_pin_close(
+    salts_fs_root_revision_pin_t *pin) {
+  return salts_fs_root_revision_guard_close(pin);
+}
+
+int salts_fs_root_revision_retire(
+    const salts_fs_root_t *root, const char *revision_path) {
+  salts_fs_root_revision_pin_t *gc = NULL;
+  salts_fs_root_file_t *file = NULL;
+  int rc = salts_fs_root_revision_guard_open(
+      root, revision_path, true, &gc);
+  if (rc != 0) return rc;
+  /* A GC caller must hold the EXCLUSIVE native lock from this point to
+   * after unlink: a managed reader cannot pin a retired generation. */
+  rc = salts_fs_root_file_open(
+      root, revision_path, SALTS_FS_O_RDONLY, 0, &file);
+  if (rc == 0) rc = salts_fs_root_revision_check_regular(file);
+  if (rc == 0) rc = salts_fs_root_unlink(root, revision_path);
+  if (file) {
+    const int closed = salts_fs_root_file_close(file);
+    if (rc == 0) rc = closed;
+  }
+  {
+    const int closed = salts_fs_root_revision_guard_close(gc);
+    if (rc == 0) rc = closed;
+  }
+  return rc;
+}
+
 int salts_fs_root_file_stat(
     const salts_fs_root_file_t *file, salts_fs_stat_t *out_stat) {
   if (!file || !out_stat)

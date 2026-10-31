@@ -1891,6 +1891,272 @@ static int test_generation_writer_lease(
   return 0;
 }
 
+
+#ifdef _WIN32
+/* Separate real Windows process, NOT an inherited native file handle.
+ * It pins A1 via the original rooted FS source and holds the version's
+ * SHARED OS lock while the parent attempts GC of the same generation. */
+static int win_revision_reader_child(unsigned long owner_pid) {
+  char temp[1024], revision[96], seen[64] = {0};
+  const char expected[] = "M11-red-content";
+  wchar_t ready_name[96], release_name[96];
+  HANDLE ready = NULL, release = NULL;
+  salts_fs_root_t *root = NULL;
+  salts_fs_root_revision_pin_t *pin = NULL;
+  int rc = 0;
+  if (snprintf(revision, sizeof(revision),
+               "fs-m11-%lu-A1", owner_pid) <= 0 ||
+      swprintf(ready_name, sizeof(ready_name)/sizeof(ready_name[0]),
+               L"Local\\SaltsFSM11ReadReady-%lu", owner_pid) < 0 ||
+      swprintf(release_name, sizeof(release_name)/sizeof(release_name[0]),
+               L"Local\\SaltsFSM11ReadRelease-%lu", owner_pid) < 0)
+    return 1101;
+  if (salts_fs_get_tmpdir(temp, sizeof(temp)) != 0 ||
+      salts_fs_root_open(temp, &root) != 0 || !root)
+    return 1102;
+  ready = OpenEventW(EVENT_MODIFY_STATE, FALSE, ready_name);
+  release = OpenEventW(SYNCHRONIZE, FALSE, release_name);
+  if (!ready || !release) { rc = 1103; goto done; }
+  if (salts_fs_root_revision_pin_open(
+          root, revision, &pin) != 0 || !pin) {
+    rc = 1104; goto done;
+  }
+  if (!SetEvent(ready)) { rc = 1105; goto done; }
+  if (WaitForSingleObject(release, 10000u) != WAIT_OBJECT_0) {
+    rc = 1106; goto done;
+  }
+  if (salts_fs_root_revision_pin_read(
+          pin, seen, sizeof(expected)-1u) !=
+          (int)(sizeof(expected)-1u) ||
+      memcmp(seen, expected, sizeof(expected)-1u) != 0) {
+    rc = 1107; goto done;
+  }
+done:
+  if (pin) {
+    const int closed = salts_fs_root_revision_pin_close(pin);
+    if (rc == 0) rc = closed;
+  }
+  if (root) {
+    const int closed = salts_fs_root_close(root);
+    if (rc == 0) rc = closed;
+  }
+  if (ready) CloseHandle(ready);
+  if (release) CloseHandle(release);
+  return rc;
+}
+#endif
+
+/* Cooperative per-revision lease/GC: A1 and A3 share red bytes but NOT
+ * the same path/lock. A child pins old A1 while parent publishes B2/A3.
+ * A1 GC MUST be EBUSY, while B2 may independently retire. Once the last
+ * reader exits, GC can retire A1 but must retain the permanent lock file.
+ * Windows publication here is NAMESPACE-ONLY, never a durable claim. */
+static int test_revision_reader_and_gc(
+    salts_fs_root_t *root, unsigned long pid) {
+  const char red[] = "M11-red-content";
+  const char green[] = "M11-new-green";
+  char stages[3][96], versions[3][96], lock_paths[3][110];
+  char unused[96], unused_lock[110], seen[64] = {0};
+  salts_fs_root_revision_pin_t *parent_pin = NULL;
+  salts_fs_stat_t info = {0};
+  int rc;
+  for (int i = 0; i < 3; ++i) {
+    if (snprintf(stages[i], sizeof(stages[i]),
+                 "fs-m11-%lu-stage%d", pid, i) <= 0 ||
+        snprintf(versions[i], sizeof(versions[i]),
+                 "fs-m11-%lu-%s", pid,
+                 i == 0 ? "A1" : i == 1 ? "B2" : "A3") <= 0 ||
+        snprintf(lock_paths[i], sizeof(lock_paths[i]),
+                 "%s.readers", versions[i]) <= 0)
+      return 1120;
+  }
+  if (snprintf(unused, sizeof(unused),
+               "fs-m11-%lu-absent", pid) <= 0 ||
+      snprintf(unused_lock, sizeof(unused_lock),
+               "%s.readers", unused) <= 0)
+    return 1121;
+  rc = salts_fs_root_revision_pin_open(root, "../escape", &parent_pin);
+  if (rc != -EINVAL || parent_pin) return 1122;
+  rc = salts_fs_root_revision_retire(root, "../escape");
+  if (rc != -EINVAL) return 1123;
+  rc = salts_fs_root_revision_pin_open(root, unused, &parent_pin);
+  if (rc != -ENOENT || parent_pin ||
+      salts_fs_root_stat(root, unused_lock, &info) != -ENOENT)
+    return 1124;
+
+  if (stage_revision_file(
+          root, stages[0], red, sizeof(red)-1u) != 0)
+    return 1125;
+#ifdef _WIN32
+  rc = salts_fs_root_rename_file_noreplace(
+      root, stages[0], versions[0]);
+  if (rc != 0) return 1126;
+  wchar_t ready_name[96], release_name[96], executable[32768], command[33000];
+  HANDLE ready = NULL, release = NULL, child = NULL;
+  STARTUPINFOW si = {0};
+  PROCESS_INFORMATION pi = {0};
+  DWORD exit_code = 99u;
+  if (swprintf(ready_name, sizeof(ready_name)/sizeof(ready_name[0]),
+               L"Local\\SaltsFSM11ReadReady-%lu", pid) < 0 ||
+      swprintf(release_name, sizeof(release_name)/sizeof(release_name[0]),
+               L"Local\\SaltsFSM11ReadRelease-%lu", pid) < 0)
+    return 1127;
+  ready = CreateEventW(NULL, TRUE, FALSE, ready_name);
+  release = CreateEventW(NULL, TRUE, FALSE, release_name);
+  if (!ready || !release) return 1128;
+  {
+    const DWORD n = GetModuleFileNameW(
+        NULL, executable, (DWORD)(sizeof(executable)/sizeof(executable[0])));
+    if (n == 0 || n >= sizeof(executable)/sizeof(executable[0]) ||
+        swprintf(command, sizeof(command)/sizeof(command[0]),
+                 L"\"%ls\" --fs-m11-reader %lu", executable, pid) < 0)
+      return 1129;
+  }
+  si.cb = sizeof(si);
+  if (!CreateProcessW(executable, command, NULL, NULL, FALSE,
+                      CREATE_NO_WINDOW, NULL, NULL, &si, &pi))
+    return 1130;
+  child = pi.hProcess;
+  CloseHandle(pi.hThread);
+  if (WaitForSingleObject(ready, 10000u) != WAIT_OBJECT_0)
+    return 1131;
+#else
+  salts_fs_replace_state_t state = SALTS_FS_REPLACE_NOT_PUBLISHED;
+  rc = salts_fs_root_publish_file_noreplace(
+      root, stages[0], versions[0], &state);
+  if (rc != 0 || state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+    return 1126;
+  int ready[2] = {-1, -1}, release[2] = {-1, -1};
+  pid_t child;
+  char signal = 0;
+  int status = 0;
+  if (pipe(ready) != 0 || pipe(release) != 0)
+    return 1128;
+  child = fork();
+  if (child < 0) return 1130;
+  if (child == 0) {
+    char temp[1024], bytes[64] = {0};
+    salts_fs_root_t *other = NULL;
+    salts_fs_root_revision_pin_t *pin = NULL;
+    close(ready[0]);
+    close(release[1]);
+    if (salts_fs_get_tmpdir(temp, sizeof(temp)) != 0 ||
+        salts_fs_root_open(temp, &other) != 0 || !other ||
+        salts_fs_root_revision_pin_open(
+            other, versions[0], &pin) != 0 || !pin)
+      _exit(41);
+    if (write(ready[1], "R", 1) != 1) _exit(42);
+    close(ready[1]);
+    if (read(release[0], &signal, 1) != 1 || signal != 'G')
+      _exit(43);
+    close(release[0]);
+    if (salts_fs_root_revision_pin_read(
+            pin, bytes, sizeof(red)-1u) != (int)(sizeof(red)-1u) ||
+        memcmp(bytes, red, sizeof(red)-1u) != 0)
+      _exit(44);
+    if (salts_fs_root_revision_pin_close(pin) != 0 ||
+        salts_fs_root_close(other) != 0)
+      _exit(45);
+    _exit(0);
+  }
+  close(ready[1]);
+  close(release[0]);
+  if (read(ready[0], &signal, 1) != 1 || signal != 'R')
+    return 1131;
+  close(ready[0]);
+#endif
+
+  /* Two concurrent managed readers may share a version. GC must fail
+   * while EVEN ONE child reader still holds the old A1 shared lock. */
+  rc = salts_fs_root_revision_pin_open(
+      root, versions[0], &parent_pin);
+  if (rc != 0 || !parent_pin) return 1132;
+  rc = salts_fs_root_revision_retire(root, versions[0]);
+  if (rc != -EBUSY ||
+      salts_fs_root_stat(root, versions[0], &info) != 0)
+    return 1133;
+  if (salts_fs_root_revision_pin_seek(parent_pin, 0, SEEK_SET) != 0 ||
+      salts_fs_root_revision_pin_read(
+          parent_pin, seen, sizeof(red)-1u) != (int)(sizeof(red)-1u) ||
+      memcmp(seen, red, sizeof(red)-1u) != 0)
+    return 1134;
+  if (salts_fs_root_revision_pin_close(parent_pin) != 0)
+    return 1135;
+  parent_pin = NULL;
+  if (salts_fs_root_revision_retire(root, versions[0]) != -EBUSY)
+    return 1136;
+
+  for (int i = 1; i < 3; ++i) {
+    const char *data = i == 1 ? green : red;
+    const size_t size = i == 1 ? sizeof(green)-1u : sizeof(red)-1u;
+    if (stage_revision_file(root, stages[i], data, size) != 0)
+      return 1137;
+#ifdef _WIN32
+    rc = salts_fs_root_rename_file_noreplace(
+        root, stages[i], versions[i]);
+    if (rc != 0) return 1138;
+#else
+    rc = salts_fs_root_publish_file_noreplace(
+        root, stages[i], versions[i], &state);
+    if (rc != 0 || state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+      return 1138;
+#endif
+    memset(seen, 0, sizeof(seen));
+    if (salts_fs_root_revision_pin_open(
+            root, versions[i], &parent_pin) != 0 || !parent_pin)
+      return 1139;
+    if (salts_fs_root_revision_pin_read(
+            parent_pin, seen, size) != (int)size ||
+        memcmp(seen, data, size) != 0)
+      return 1140;
+    if (salts_fs_root_revision_pin_close(parent_pin) != 0)
+      return 1141;
+    parent_pin = NULL;
+  }
+  /* Per-version GC must not be blocked by an A1 reader. */
+  if (salts_fs_root_revision_retire(root, versions[1]) != 0 ||
+      salts_fs_root_stat(root, versions[1], &info) != -ENOENT)
+    return 1142;
+
+#ifdef _WIN32
+  if (!SetEvent(release) ||
+      WaitForSingleObject(child, 10000u) != WAIT_OBJECT_0 ||
+      !GetExitCodeProcess(child, &exit_code) || exit_code != 0u)
+    return 1143;
+  CloseHandle(child);
+  CloseHandle(ready);
+  CloseHandle(release);
+#else
+  if (write(release[1], "G", 1) != 1) return 1143;
+  close(release[1]);
+  if (waitpid(child, &status, 0) != child ||
+      !WIFEXITED(status) || WEXITSTATUS(status) != 0)
+    return 1144;
+#endif
+  if (salts_fs_root_revision_retire(root, versions[0]) != 0 ||
+      salts_fs_root_stat(root, versions[0], &info) != -ENOENT)
+    return 1145;
+  if (salts_fs_root_revision_retire(root, versions[2]) != 0 ||
+      salts_fs_root_stat(root, versions[2], &info) != -ENOENT)
+    return 1146;
+  rc = salts_fs_root_revision_pin_open(
+      root, versions[0], &parent_pin);
+  if (rc != -ENOENT || parent_pin) return 1147;
+  if (salts_fs_root_revision_retire(root, versions[0]) != -ENOENT)
+    return 1148;
+  /* The public GC API leaves the version's stable lock inode intact.
+   * Delete these only because this is an isolated one-shot CTest root
+   * namespace with no remaining writers/readers and no future identity. */
+  for (int i = 0; i < 3; ++i) {
+    if (salts_fs_root_stat(root, lock_paths[i], &info) != 0 ||
+        !info.is_file ||
+        salts_fs_root_unlink(root, lock_paths[i]) != 0)
+      return 1149;
+  }
+  puts("Salts::FS M11 real child reader pin: old A1 GC EBUSY; B2 independent retire; post-release GC PASS");
+  return 0;
+}
+
 int main(int argc, char **argv) {
   char tmp[1024] = {0}, path[1400] = {0}, name[120] = {0};
   const char body[] = "salts core fs native\n";
@@ -1901,6 +2167,12 @@ int main(int argc, char **argv) {
   char scratch[128] = {0};
   int bytes;
 #ifdef _WIN32
+  if (argc == 3 && strcmp(argv[1], "--fs-m11-reader") == 0) {
+    char *end = NULL;
+    unsigned long owner = strtoul(argv[2], &end, 10);
+    if (!end || *end != '\0' || owner == 0u) return 76;
+    return win_revision_reader_child(owner);
+  }
   if (argc == 3 && strcmp(argv[1], "--fs-writer-lease-crash-child") == 0) {
     char *end = NULL;
     unsigned long owner = strtoul(argv[2], &end, 10);
@@ -2015,6 +2287,14 @@ int main(int argc, char **argv) {
       fprintf(stderr, "Salts::FS native writer lease FAIL: %d\n",
               lease_result);
       return lease_result;
+    }
+  }
+  {
+    const int pin_gc_result = test_revision_reader_and_gc(root, pid);
+    if (pin_gc_result != 0) {
+      fprintf(stderr, "Salts::FS revision reader/GC M11 FAIL: %d\n",
+              pin_gc_result);
+      return pin_gc_result;
     }
   }
   if (salts_fs_root_close(root)) return 12;
