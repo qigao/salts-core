@@ -197,6 +197,171 @@ static int test_concurrent_noreplace(
 /* Two separate, normally launched Windows processes using independently
  * opened Salts::FS root capabilities and one kernel event to race the same
  * ABSENT destination. This is namespace arbitration, NOT crash durability. */
+
+/* Windows independent-process immutable reader acceptance.  The original
+ * Salts::FS root API opens each version as a FILE_SHARE_DELETE handle; a
+ * native publisher can move current to B2/A3 while A1 remains pinned.
+ * GC may retire A1 immediately OR return a documented sharing refusal,
+ * but must never corrupt or redirect the already-open A1 reader.
+ * This is native process/handle ownership, NOT cross-process lease/GC policy
+ * or a crash-durable publisher qualification. */
+static int win_child_read_pinned_revision(unsigned long owner) {
+  char tmp[1024], source[100], readback[64] = {0};
+  const char expected[] = "Windows-old-A1-immutable";
+  wchar_t ready_name[100], release_name[100];
+  HANDLE ready = NULL, release = NULL;
+  salts_fs_root_t *root = NULL;
+  salts_fs_root_file_t *old = NULL;
+  int rc = 80;
+  if (snprintf(source, sizeof(source), "fs-win-pin-%lu-A1", owner) <= 0 ||
+      swprintf(ready_name, sizeof(ready_name)/sizeof(ready_name[0]),
+               L"Local\\SaltsFSPinReady-%lu", owner) < 0 ||
+      swprintf(release_name, sizeof(release_name)/sizeof(release_name[0]),
+               L"Local\\SaltsFSPinRelease-%lu", owner) < 0)
+    return 80;
+  if (salts_fs_get_tmpdir(tmp, sizeof(tmp)) != 0 ||
+      salts_fs_root_open(tmp, &root) != 0 || !root)
+    return 81;
+  ready = OpenEventW(EVENT_MODIFY_STATE, FALSE, ready_name);
+  release = OpenEventW(SYNCHRONIZE, FALSE, release_name);
+  if (!ready || !release) { rc = 82; goto done; }
+  if (salts_fs_root_file_open(root, source, SALTS_FS_O_RDONLY, 0, &old) != 0 ||
+      !old) { rc = 83; goto done; }
+  if (!SetEvent(ready)) { rc = 84; goto done; }
+  if (WaitForSingleObject(release, 10000u) != WAIT_OBJECT_0) {
+    rc = 85; goto done;
+  }
+  if (salts_fs_root_file_read(old, readback, sizeof(expected)-1u) !=
+          (int)(sizeof(expected)-1u) ||
+      memcmp(readback, expected, sizeof(expected)-1u) != 0) {
+    rc = 86; goto done;
+  }
+  rc = 0;
+done:
+  if (old && salts_fs_root_file_close(old) != 0 && rc == 0) rc = 87;
+  if (root && salts_fs_root_close(root) != 0 && rc == 0) rc = 88;
+  if (ready) CloseHandle(ready);
+  if (release) CloseHandle(release);
+  return rc;
+}
+
+static int win_independent_process_pinned_reader(
+    salts_fs_root_t *root, unsigned long owner) {
+  const char red[] = "Windows-old-A1-immutable";
+  const char green[] = "Windows-new-B2-immutable";
+  char stage[3][100], version[3][100], readback[64] = {0};
+  wchar_t ready_name[100], release_name[100], executable[32768], command[33000];
+  HANDLE ready = NULL, release = NULL, child = NULL;
+  salts_fs_root_file_t *reader = NULL;
+  salts_fs_stat_t info;
+  STARTUPINFOW startup = {0};
+  PROCESS_INFORMATION process = {0};
+  DWORD code = 99u;
+  int rc = 0, deletion;
+  for (int i = 0; i < 3; ++i) {
+    if (snprintf(stage[i], sizeof(stage[i]),
+                 "fs-win-pin-%lu-stage%d", owner, i) <= 0 ||
+        snprintf(version[i], sizeof(version[i]),
+                 "fs-win-pin-%lu-%s", owner,
+                 i == 0 ? "A1" : i == 1 ? "B2" : "A3") <= 0)
+      return 90;
+  }
+  if (swprintf(ready_name, sizeof(ready_name)/sizeof(ready_name[0]),
+               L"Local\\SaltsFSPinReady-%lu", owner) < 0 ||
+      swprintf(release_name, sizeof(release_name)/sizeof(release_name[0]),
+               L"Local\\SaltsFSPinRelease-%lu", owner) < 0)
+    return 91;
+  if (stage_revision_file(root, stage[0], red, sizeof(red)-1u) != 0 ||
+      salts_fs_root_rename_file_noreplace(root, stage[0], version[0]) != 0)
+    return 92;
+  ready = CreateEventW(NULL, TRUE, FALSE, ready_name);
+  release = CreateEventW(NULL, TRUE, FALSE, release_name);
+  if (!ready || !release) { rc = 93; goto done; }
+  {
+    DWORD length = GetModuleFileNameW(
+        NULL, executable, (DWORD)(sizeof(executable)/sizeof(executable[0])));
+    if (length == 0 || length >= sizeof(executable)/sizeof(executable[0]) ||
+        swprintf(command, sizeof(command)/sizeof(command[0]),
+                 L"\"%ls\" --fs-native-pin-child %lu", executable, owner) < 0) {
+      rc = 94; goto done;
+    }
+  }
+  startup.cb = sizeof(startup);
+  if (!CreateProcessW(executable, command, NULL, NULL, FALSE,
+                      CREATE_NO_WINDOW, NULL, NULL, &startup, &process)) {
+    rc = 95; goto done;
+  }
+  child = process.hProcess;
+  CloseHandle(process.hThread);
+  if (WaitForSingleObject(ready, 10000u) != WAIT_OBJECT_0) {
+    rc = 96; goto done;
+  }
+  /* A1 is now owned by an independent process. The parent publishes B2
+   * and identical-content A3 at distinct names without reopening A1. */
+  if (stage_revision_file(root, stage[1], green, sizeof(green)-1u) != 0 ||
+      salts_fs_root_rename_file_noreplace(root, stage[1], version[1]) != 0 ||
+      stage_revision_file(root, stage[2], red, sizeof(red)-1u) != 0 ||
+      salts_fs_root_rename_file_noreplace(root, stage[2], version[2]) != 0) {
+    rc = 97; goto done;
+  }
+  deletion = salts_fs_root_unlink(root, version[0]);
+  /* Windows might mark the file delete-pending until the last pin closes
+   * or reject retirement with an explicit sharing/access error. Neither
+   * can invalidate a successfully opened old-version reader. */
+  if (deletion != 0 && deletion != -EACCES && deletion != -EBUSY) {
+    rc = 98; goto done;
+  }
+  if (!SetEvent(release) ||
+      WaitForSingleObject(child, 10000u) != WAIT_OBJECT_0 ||
+      !GetExitCodeProcess(child, &code) || code != 0u) {
+    rc = 99; goto done;
+  }
+  /* Reap and close the last external pin before any final cleanup. */
+  CloseHandle(child);
+  child = NULL;
+  {
+    const int old_visible = salts_fs_root_stat(root, version[0], &info);
+    if (old_visible == 0) {
+      if (salts_fs_root_unlink(root, version[0]) != 0) {
+        rc = 100; goto done;
+      }
+    } else if (old_visible != -ENOENT) {
+      rc = 101; goto done;
+    }
+  }
+  for (int i = 1; i < 3; ++i) {
+    const char *expected = i == 1 ? green : red;
+    size_t length = i == 1 ? sizeof(green)-1u : sizeof(red)-1u;
+    memset(readback, 0, sizeof(readback));
+    if (salts_fs_root_file_open(root, version[i], SALTS_FS_O_RDONLY,
+                                0, &reader) != 0 || !reader) {
+      rc = 102; goto done;
+    }
+    const int n = salts_fs_root_file_read(reader, readback, length);
+    if (salts_fs_root_file_close(reader) != 0 ||
+        n != (int)length || memcmp(expected, readback, length) != 0) {
+      reader = NULL; rc = 103; goto done;
+    }
+    reader = NULL;
+    if (salts_fs_root_unlink(root, version[i]) != 0) {
+      rc = 104; goto done;
+    }
+  }
+  puts("Salts::FS Windows independent old-A1 pin across B2/A3 and GC attempt PASS (not durable)");
+done:
+  /* Always release a child before joining, including on failed setup. */
+  if (release) (void)SetEvent(release);
+  if (child) {
+    if (WaitForSingleObject(child, 10000u) != WAIT_OBJECT_0)
+      (void)TerminateProcess(child, 9u);
+    CloseHandle(child);
+  }
+  if (reader) (void)salts_fs_root_file_close(reader);
+  if (ready) CloseHandle(ready);
+  if (release) CloseHandle(release);
+  return rc;
+}
+
 static int win_native_child_move(unsigned long owner, int slot) {
   char tmp[1024], stage[96], destination[96];
   wchar_t event_name[96];
@@ -393,6 +558,8 @@ static int test_native_namespace_noreplace(
     return 310;
 #ifdef _WIN32
   rc = win_native_two_process_race(root, pid);
+  if (rc != 0) return rc;
+  rc = win_independent_process_pinned_reader(root, pid);
   if (rc != 0) return rc;
 #endif
   puts("Salts::FS native NOREPLACE namespace + UTF-8 target + collision PASS (not durable)");
@@ -643,6 +810,12 @@ int main(int argc, char **argv) {
   char scratch[128] = {0};
   int bytes;
 #ifdef _WIN32
+  if (argc == 3 && strcmp(argv[1], "--fs-native-pin-child") == 0) {
+    char *end = NULL;
+    unsigned long owner = strtoul(argv[2], &end, 10);
+    if (!end || *end != '\0' || owner == 0u) return 73;
+    return win_child_read_pinned_revision(owner);
+  }
   if (argc == 4 && strcmp(argv[1], "--fs-native-race-child") == 0) {
     char *end = NULL;
     unsigned long owner = strtoul(argv[2], &end, 10);
