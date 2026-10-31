@@ -582,6 +582,22 @@ int salts_fs_root_rename(
     const salts_fs_root_t *source_root, const char *source_path,
     const salts_fs_root_t *target_root, const char *target_path);
 
+/* Atomic namespace-only NO-REPLACE FILE move, same admitted root.
+ * Linux: renameat2(RENAME_NOREPLACE). macOS: renameatx_np(RENAME_EXCL).
+ * Windows: native handle-relative NtSetInformationFile with the original
+ * admitted RootDirectory and FILE_RENAME_INFO.ReplaceIfExists = FALSE.
+ *
+ * On success the name was moved; no parent directory flush has been done.
+ * It is NOT a durable publish and MUST NOT be used to mark a generation
+ * PUBLISHED_DURABLE. A caller must own an exclusive, single-link staging
+ * file; hostile concurrent renames/writes are outside this primitive.
+ * Missing kernel/filesystem support fails -ENOSYS; NEVER check then rename
+ * or silently fall back to a replacing rename.
+ */
+int salts_fs_root_rename_file_noreplace(
+    const salts_fs_root_t *root, const char *source_path,
+    const char *destination_path);
+
 /* M0: durably publish one completed REGULAR staging FILE at an ABSENT
  * immutable destination. Uses the same admitted root and relative paths;
  * never follows intermediate symlinks/reparse points, never replaces a
