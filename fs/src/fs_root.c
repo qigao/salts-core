@@ -1405,6 +1405,97 @@ done:
 #endif
 }
 
+
+int salts_fs_root_replace_file_durable(
+    const salts_fs_root_t *root, const char *staging_path,
+    const char *current_path, salts_fs_replace_state_t *state) {
+  if (!state) return -EINVAL;
+  *state = SALTS_FS_REPLACE_NOT_PUBLISHED;
+  if (!root || !staging_path || !current_path ||
+      strcmp(staging_path, current_path) == 0)
+    return -EINVAL;
+  {
+    int rc = salts_fs_root_validate_relative_path(staging_path);
+    if (rc != 0) return rc;
+    rc = salts_fs_root_validate_relative_path(current_path);
+    if (rc != 0) return rc;
+  }
+#ifdef _WIN32
+  /* Windows namespace-only rename was separately qualified under #119.
+   * Its after-rename parent directory durability remains unproven.
+   * Fail BEFORE a namespace mutation, never report durable success. */
+  return -ENOSYS;
+#else
+  int stage_parent = -1, current_parent = -1, staged_fd = -1;
+  char stage_name[SALTS_FS_ROOT_COMPONENT_MAX];
+  char current_name[SALTS_FS_ROOT_COMPONENT_MAX];
+  struct stat staging_identity;
+  int rc = salts_fs_root_open_parent_posix(
+      root, staging_path, &stage_parent, stage_name);
+  if (rc == 0)
+    rc = salts_fs_root_open_parent_posix(
+        root, current_path, &current_parent, current_name);
+  if (rc != 0) goto done;
+
+  staged_fd = openat(
+      stage_parent, stage_name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+  if (staged_fd < 0) { rc = -errno; goto done; }
+  if (fstat(staged_fd, &staging_identity) != 0) {
+    rc = -errno; goto done;
+  }
+  if (!S_ISREG(staging_identity.st_mode) ||
+      staging_identity.st_nlink != 1) {
+    rc = -EINVAL; goto done;
+  }
+  for (;;) {
+    if (fsync(staged_fd) == 0) break;
+    if (errno != EINTR) { rc = -errno; goto done; }
+  }
+
+  /* Single owner only. renameat atomically switches the directory name
+   * without following an existing final symlink. A concurrent independent
+   * writer of CURRENT would be last-writer-wins, NOT a CAS transaction. */
+  if (renameat(
+          stage_parent, stage_name,
+          current_parent, current_name) != 0) {
+    rc = -errno; goto done;
+  }
+  *state = SALTS_FS_REPLACE_DURABILITY_UNKNOWN;
+  {
+    struct stat current_identity;
+    if (fstatat(current_parent, current_name,
+                &current_identity, AT_SYMLINK_NOFOLLOW) != 0) {
+      rc = -errno; goto done;
+    }
+    if (!S_ISREG(current_identity.st_mode) ||
+        current_identity.st_dev != staging_identity.st_dev ||
+        current_identity.st_ino != staging_identity.st_ino) {
+      rc = -EIO; goto done;
+    }
+  }
+  if (close(staged_fd) != 0) {
+    staged_fd = -1;
+    rc = -errno; goto done;
+  }
+  staged_fd = -1;
+  for (;;) {
+    if (fsync(current_parent) == 0) break;
+    if (errno != EINTR) { rc = -errno; goto done; }
+  }
+  for (;;) {
+    if (fsync(stage_parent) == 0) break;
+    if (errno != EINTR) { rc = -errno; goto done; }
+  }
+  *state = SALTS_FS_REPLACE_PUBLISHED_DURABLE;
+  rc = 0;
+done:
+  if (staged_fd >= 0) (void)close(staged_fd);
+  if (stage_parent >= 0) (void)close(stage_parent);
+  if (current_parent >= 0) (void)close(current_parent);
+  return rc;
+#endif
+}
+
 int salts_fs_root_file_stat(
     const salts_fs_root_file_t *file, salts_fs_stat_t *out_stat) {
   if (!file || !out_stat)

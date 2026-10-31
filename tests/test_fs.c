@@ -800,6 +800,109 @@ static int test_durable_publish_sigkill_recovery(
 }
 #endif
 
+
+/* This tests the lowest-level CURRENT manifest namespace/flush primitive,
+ * not a monotonic generation allocator or an authenticated metadata schema.
+ * A1 and A3 refer to byte-identical original content but carry different
+ * externally assigned generation IDs; the caller must enforce that policy. */
+static int test_current_manifest_switch(
+    salts_fs_root_t *root, unsigned long pid) {
+  char stage[3][96], current[96], actual[128] = {0};
+  const char *records[3] = {
+    "publisher=mesa;asset=icon;generation=1;content=red",
+    "publisher=mesa;asset=icon;generation=2;content=green",
+    "publisher=mesa;asset=icon;generation=3;content=red"
+  };
+  salts_fs_replace_state_t state;
+  salts_fs_root_file_t *pinned_a1 = NULL, *pinned_b2 = NULL, *live = NULL;
+  salts_fs_stat_t statbuf;
+  int rc;
+  if (snprintf(current, sizeof(current),
+               "fs-current-%lu-manifest", pid) <= 0)
+    return 601;
+  for (int i = 0; i < 3; ++i) {
+    if (snprintf(stage[i], sizeof(stage[i]),
+                 "fs-current-%lu-stage-%d", pid, i) <= 0)
+      return 602;
+  }
+  if (stage_revision_file(root, stage[0],
+                          records[0], strlen(records[0])) != 0)
+    return 603;
+  state = SALTS_FS_REPLACE_PUBLISHED_DURABLE;
+  rc = salts_fs_root_replace_file_durable(
+      root, "../escape", current, &state);
+  if (rc != -EINVAL || state != SALTS_FS_REPLACE_NOT_PUBLISHED)
+    return 604;
+  rc = salts_fs_root_replace_file_durable(
+      root, stage[0], stage[0], &state);
+  if (rc != -EINVAL || state != SALTS_FS_REPLACE_NOT_PUBLISHED)
+    return 605;
+#ifdef _WIN32
+  rc = salts_fs_root_replace_file_durable(
+      root, stage[0], current, &state);
+  if (rc != -ENOSYS || state != SALTS_FS_REPLACE_NOT_PUBLISHED ||
+      salts_fs_root_stat(root, stage[0], &statbuf) != 0 ||
+      salts_fs_root_stat(root, current, &statbuf) != -ENOENT)
+    return 606;
+  if (salts_fs_root_unlink(root, stage[0]) != 0)
+    return 607;
+  puts("Salts::FS CURRENT manifest durable switch explicitly UNSUPPORTED on Windows");
+  return 0;
+#else
+  rc = salts_fs_root_replace_file_durable(
+      root, stage[0], current, &state);
+  if (rc != 0 || state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+    return 608;
+  if (salts_fs_root_file_open(root, current, SALTS_FS_O_RDONLY,
+                              0, &pinned_a1) != 0 || !pinned_a1)
+    return 609;
+  if (stage_revision_file(root, stage[1],
+                          records[1], strlen(records[1])) != 0)
+    return 610;
+  rc = salts_fs_root_replace_file_durable(
+      root, stage[1], current, &state);
+  if (rc != 0 || state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+    return 611;
+  if (salts_fs_root_file_open(root, current, SALTS_FS_O_RDONLY,
+                              0, &pinned_b2) != 0 || !pinned_b2)
+    return 612;
+  if (stage_revision_file(root, stage[2],
+                          records[2], strlen(records[2])) != 0)
+    return 613;
+  rc = salts_fs_root_replace_file_durable(
+      root, stage[2], current, &state);
+  if (rc != 0 || state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+    return 614;
+  if (salts_fs_root_stat(root, stage[2], &statbuf) != -ENOENT ||
+      salts_fs_root_stat(root, current, &statbuf) != 0 ||
+      !statbuf.is_file || statbuf.size != strlen(records[2]))
+    return 615;
+  {
+    salts_fs_root_file_t *versions[3] = {pinned_a1, pinned_b2, NULL};
+    if (salts_fs_root_file_open(root, current, SALTS_FS_O_RDONLY,
+                                0, &live) != 0 || !live)
+      return 616;
+    versions[2] = live;
+    for (int i = 0; i < 3; ++i) {
+      memset(actual, 0, sizeof(actual));
+      const size_t length = strlen(records[i]);
+      if (salts_fs_root_file_seek(versions[i], 0, SEEK_SET) != 0 ||
+          salts_fs_root_file_read(versions[i], actual, length) != (int)length ||
+          memcmp(actual, records[i], length) != 0)
+        return 617;
+    }
+  }
+  if (salts_fs_root_file_close(pinned_a1) != 0 ||
+      salts_fs_root_file_close(pinned_b2) != 0 ||
+      salts_fs_root_file_close(live) != 0)
+    return 618;
+  if (salts_fs_root_unlink(root, current) != 0)
+    return 619;
+  puts("Salts::FS root-relative durable CURRENT A1-B2-A3 atomic switch + pinned old manifests PASS (POSIX)");
+  return 0;
+#endif
+}
+
 int main(int argc, char **argv) {
   char tmp[1024] = {0}, path[1400] = {0}, name[120] = {0};
   const char body[] = "salts core fs native\n";
@@ -872,6 +975,14 @@ int main(int argc, char **argv) {
     }
   }
 #endif
+  {
+    int manifest_result = test_current_manifest_switch(root, pid);
+    if (manifest_result != 0) {
+      fprintf(stderr, "Salts::FS CURRENT manifest switch FAIL: %d\n",
+              manifest_result);
+      return manifest_result;
+    }
+  }
   if (salts_fs_root_close(root)) return 12;
   if (salts_fs_unlink(path)) return 13;
   puts("Salts::FS root ownership and path rejection PASS");
