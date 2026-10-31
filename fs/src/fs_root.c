@@ -583,6 +583,9 @@ static int salts_fs_root_dir_seek_cookie_win(
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#ifdef SALTS_FS_NATIVE_PUBLISH_TEST_FAULTS
+#include <stdatomic.h>
+#endif
 #ifdef __linux__
 #include <sys/syscall.h>
 #ifndef RENAME_NOREPLACE
@@ -1262,6 +1265,29 @@ done:
 #endif
 }
 
+#if defined(SALTS_FS_NATIVE_PUBLISH_TEST_FAULTS) && !defined(_WIN32)
+/* Native-test-only deterministic interruptions. Absent from production
+ * BUILD_TESTING=OFF; no environment override or public header alias. */
+static atomic_int salts_fs_test_publish_fail_stage = ATOMIC_VAR_INIT(0);
+int salts_fs_test_set_publish_fail_stage(int stage) {
+  if (stage < 0 || stage > 4) return -EINVAL;
+  atomic_store_explicit(
+      &salts_fs_test_publish_fail_stage, stage, memory_order_release);
+  return 0;
+}
+static int salts_fs_test_maybe_fail_publish(int stage) {
+  return atomic_load_explicit(
+             &salts_fs_test_publish_fail_stage, memory_order_acquire) == stage
+      ? -EIO : 0;
+}
+#define SALTS_FS_PUBLISH_TEST_FAIL_AT(STAGE) do {\
+  rc = salts_fs_test_maybe_fail_publish(STAGE);\
+  if (rc != 0) goto done;\
+} while (0)
+#else
+#define SALTS_FS_PUBLISH_TEST_FAIL_AT(STAGE) ((void)0)
+#endif
+
 int salts_fs_root_publish_file_noreplace(
     const salts_fs_root_t *root, const char *staging_path,
     const char *revision_path, salts_fs_replace_state_t *state) {
@@ -1310,6 +1336,8 @@ int salts_fs_root_publish_file_noreplace(
     rc = -EINVAL;
     goto done;
   }
+  /* Stage 1: failure before staging fsync cannot publish. */
+  SALTS_FS_PUBLISH_TEST_FAIL_AT(1);
   for (;;) {
     if (fsync(staged) == 0) break;
     if (errno != EINTR) { rc = -errno; goto done; }
@@ -1317,6 +1345,8 @@ int salts_fs_root_publish_file_noreplace(
   /* Retain the exact staged inode handle while the native atomic rename
    * runs. The source pathname alone cannot prove the renamed identity. */
 
+  /* Stage 2: failure before namespace move must leave staging intact. */
+  SALTS_FS_PUBLISH_TEST_FAIL_AT(2);
   rc = salts_fs_root_native_noreplace_posix(
       old_parent, old_name, new_parent, new_name);
   if (rc != 0) goto done;
@@ -1324,6 +1354,8 @@ int salts_fs_root_publish_file_noreplace(
   /* Once rename succeeded, the namespace has changed. A later error is
    * UNKNOWN and may not be retried as if no publication took place. */
   *state = SALTS_FS_REPLACE_DURABILITY_UNKNOWN;
+  /* Stage 3: the namespace already moved; durability is unproven. */
+  SALTS_FS_PUBLISH_TEST_FAIL_AT(3);
   {
     struct stat published;
     if (fstatat(new_parent, new_name, &published, AT_SYMLINK_NOFOLLOW) != 0) {
@@ -1346,6 +1378,9 @@ int salts_fs_root_publish_file_noreplace(
     if (fsync(new_parent) == 0) break;
     if (errno != EINTR) { rc = -errno; goto done; }
   }
+  /* Stage 4: destination parent sync done, old parent still pending.
+   * UNKNOWN is conservative even for identical source/dest parents. */
+  SALTS_FS_PUBLISH_TEST_FAIL_AT(4);
   for (;;) {
     if (fsync(old_parent) == 0) break;
     if (errno != EINTR) { rc = -errno; goto done; }
