@@ -1,6 +1,7 @@
 #ifndef SALTS_FASTPATH_H
 #define SALTS_FASTPATH_H
 
+#include <salts_core/platform_api.h>
 #include <salts/error_codes.h>
 
 #include <stdbool.h>
@@ -13,11 +14,11 @@ typedef struct salts_fast_key_state salts_fast_key_state;
 extern "C" {
 #endif
 
-bool salts_fast_key_read(const salts_fast_key_state *key);
-int salts_fast_key_set(salts_fast_key_state *key, bool enabled);
-bool salts_fast_key_consume(salts_fast_key_state *key);
-int salts_fast_enable(salts_fast_key_state *key);
-int salts_fast_disable(salts_fast_key_state *key);
+SALTS_CORE_PLATFORM_API bool SALTS_CORE_PLATFORM_CALL salts_fast_key_read(const salts_fast_key_state *key);
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_fast_key_set(salts_fast_key_state *key, bool enabled);
+SALTS_CORE_PLATFORM_API bool SALTS_CORE_PLATFORM_CALL salts_fast_key_consume(salts_fast_key_state *key);
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_fast_enable(salts_fast_key_state *key);
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL salts_fast_disable(salts_fast_key_state *key);
 
 #ifdef __cplusplus
 }

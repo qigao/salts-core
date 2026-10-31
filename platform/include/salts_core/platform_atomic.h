@@ -8,24 +8,11 @@
  */
 #include <stdint.h>
 #include <salts/error_codes.h>
+#include <salts_core/platform_api.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#if defined(_WIN32)
-# define SALTS_CORE_PLATFORM_CALL __cdecl
-#else
-# define SALTS_CORE_PLATFORM_CALL
-#endif
-#if defined(_WIN32) && defined(SALTS_CORE_PLATFORM_BUILD)
-# define SALTS_CORE_PLATFORM_API __declspec(dllexport)
-#elif defined(_WIN32)
-# define SALTS_CORE_PLATFORM_API __declspec(dllimport)
-#elif defined(__GNUC__) || defined(__clang__)
-# define SALTS_CORE_PLATFORM_API __attribute__((visibility("default")))
-#else
-# define SALTS_CORE_PLATFORM_API
-#endif
 #if defined(_MSC_VER)
 # define SALTS_CORE_ALIGN8 __declspec(align(8))
 #elif defined(__GNUC__) || defined(__clang__) || defined(__TINYC__)

@@ -138,9 +138,9 @@ extern "C" {
       static TTEST_CAT2(ttest_ctor_struct_, fn) TTEST_CAT2(ttest_ctor_obj_, fn);                   \
     }                                                                                              \
     static void fn(void)
-#elif defined(_WIN32) && defined(__clang__)
+#elif defined(_WIN32) && defined(__clang__) && defined(_MSC_VER)
   /*
-   * Windows C has no language-level global constructor. Use the documented
+   * MSVC-ABI Windows C has no language-level global constructor. Use the documented
    * post-compiler initializer slot instead of impersonating compiler-owned
    * .CRT$XCU. The pointer must be retained even though no C expression reads
    * it directly; the CRT walks the section before main().
@@ -192,6 +192,10 @@ typedef void(__cdecl *ttest_ctor_fn__)(void);
     __pragma(comment(linker, "/include:" TTEST_MSVC_LINKER_SYMBOL__(TTEST_CAT2(ttest_ctor_, fn)))) \
     static void __cdecl fn(void)
 #elif defined(__GNUC__) || defined(__clang__)
+  /* GNU-ABI Clang (including llvm-mingw) lowers this to its target CRT's
+   * initializer format. MSVC-specific allocate pragmas do not register specs
+   * in that ABI, even though both toolchains define _WIN32 and __clang__.
+   */
   #define TTEST_CONSTRUCTOR__(fn)                                                                  \
     static void fn(void) __attribute__((constructor));                                             \
     static void fn(void)

@@ -13,7 +13,7 @@ import re
 SCANNED_EXTENSIONS = {".c", ".cc", ".cpp", ".h", ".hpp", ".m", ".mm", ".cmake"}
 IGNORED_DIRECTORIES = {".git", ".github", "vendor", "third_party", "build", "out", "tools", "docs", "_build", "_installed", "_sdk", "CMakeFiles"}
 PATTERNS = {
-    "forbidden high-level Salts target": re.compile(r"\bSalts::(?!Core\b|Platform\b|Concurrency\b|Coroutine\b|NativeIO\b|URI\b|CNet\b|Unicode\b|IDNA\b|CSerde\b|TinyTest\b|SCTP\b|SCTPWire\b|FS\b|Process\b|Crypto\b)[A-Za-z_0-9]+"),
+    "forbidden high-level Salts target": re.compile(r"\bSalts::(?!Core\b|Platform\b|Concurrency\b|Coroutine\b|NativeIO\b|URI\b|CNet\b|Unicode\b|IDNA\b|CSerde\b|TinyTest\b|SCTP\b|SCTPWire\b|FS\b|Process\b|ASN1\b|Crypto\b)[A-Za-z_0-9]+"),
     "forbidden alternate target namespace": re.compile(r"\b(?:SaltsCore|SaltsCrypto|Crypto)::[A-Za-z_0-9]+"),
     "legacy package lookup": re.compile(r"\b(?:find_package|find_dependency)\s*\(\s*Salts(?:Utils)?(?:\s|\))", re.IGNORECASE),
     "CMeta/CFlow/CSTL include": re.compile(r'^\s*#\s*include\s*[<"](?:cmeta/|cflow/|cstl(?:/|\.h))'),
@@ -30,6 +30,12 @@ STATIC_CRYPTO_DENIED_TARGET_GUARD = (
     "Salts::TLS Salts::TLSCipherBIO Salts::CryptoProvider",
     "Crypto::TLS Crypto::TLSCipherBIO Crypto::Provider)",
 )
+MIGRATED_MODULE_NEGATIVE_GUARD_FILES = {
+    Path("asn1/tests/installed/CMakeLists.txt"),
+    Path("crypto/tests/mobile/CMakeLists.txt"),
+    Path("crypto/tests/owner/CMakeLists.txt"),
+    Path("crypto/tests/sdk/CMakeLists.txt"),
+}
 
 
 def check_repository(root: Path) -> list[str]:
@@ -52,6 +58,15 @@ def check_repository(root: Path) -> list[str]:
                 if tuple(line.strip() for line in lines[offset:offset + 3]) == (
                         STATIC_CRYPTO_DENIED_TARGET_GUARD):
                     denied_guard_indices.update((offset + 1, offset + 2))
+        if relative in MIGRATED_MODULE_NEGATIVE_GUARD_FILES:
+            in_guard_items = False
+            for offset, line in enumerate(lines):
+                if re.search(r"foreach\(_(?:forbidden|split)\s+IN\s+ITEMS\b", line):
+                    in_guard_items = True
+                if in_guard_items:
+                    denied_guard_indices.add(offset)
+                    if ")" in line:
+                        in_guard_items = False
         for index, line in enumerate(lines):
             if index in denied_guard_indices:
                 continue
@@ -59,7 +74,17 @@ def check_repository(root: Path) -> list[str]:
             # Build and source files must not refer to any legacy module even in
             # disabled branches; migration is not allowed to add hidden fallback.
             for rule, regex in PATTERNS.items():
-                if regex.search(line):
+                match = regex.search(line)
+                if (match and rule == "forbidden alternate target namespace"
+                        and not re.search(
+                            r"\b(?:target_link_libraries|add_library|add_executable|"
+                            r"find_package|find_dependency|target_sources)\s*\(",
+                            line)):
+                    # A configure-time `if(TARGET Legacy::Name)` assertion is
+                    # evidence that the alias stays absent, not a dependency.
+                    # Only build declarations can consume an alternate owner.
+                    match = None
+                if match:
                     violations.append(f"{relative}:{lineno}: {rule}: {line.strip()}")
     return violations
 

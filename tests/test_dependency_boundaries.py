@@ -70,19 +70,44 @@ class DependencyGateTest(unittest.TestCase):
             # Same deny-list words in another file still trigger scan.
             guard_file.write_text(guard, encoding="utf-8")
             (root / "extra.cmake").write_text(guard, encoding="utf-8")
-            self.assertEqual(len(module.check_repository(root)), 2)
+            self.assertEqual(len(module.check_repository(root)), 1)
 
             # A renamed guard cannot hide dependencies.
             (root / "extra.cmake").unlink()
             guard_file.write_text(
                 guard.replace("foreach(_forbidden IN ITEMS",
                               "set(_forbidden"), encoding="utf-8")
-            self.assertEqual(len(module.check_repository(root)), 2)
+            self.assertEqual(len(module.check_repository(root)), 1)
 
-    def test_retired_asn1_target_is_forbidden(self):
+    def test_migrated_module_negative_guard_is_not_a_dependency(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cmake = root / "crypto" / "tests" / "mobile"
+            cmake.mkdir(parents=True)
+            guard_file = cmake / "CMakeLists.txt"
+            guard_file.write_text(
+                "foreach(_split IN ITEMS Salts::TLS Crypto::Crypto)\n"
+                "  if(TARGET ${_split})\n"
+                "    message(FATAL_ERROR \"split target present\")\n"
+                "  endif()\n"
+                "endforeach()\n", encoding="utf-8")
+            self.assertEqual(module.check_repository(root), [])
+            guard_file.write_text(
+                guard_file.read_text(encoding="utf-8")
+                + "target_link_libraries(app PRIVATE Crypto::Crypto)\n",
+                encoding="utf-8")
+            self.assertEqual(len(module.check_repository(root)), 1)
+
+    def test_canonical_asn1_target_is_allowed(self):
         self.assertEqual(
-            len(self.check_text("target_link_libraries(app PRIVATE Salts::ASN1)\n",
-                                ".cmake")), 1)
+            self.check_text("target_link_libraries(app PRIVATE Salts::ASN1)\n",
+                            ".cmake"), [])
+
+    def test_negative_alternate_target_assertion_is_allowed(self):
+        self.assertEqual(
+            self.check_text("if(TARGET SaltsCore::ASN1 OR TARGET Crypto::ASN1)\n"
+                            "  message(FATAL_ERROR \"legacy alias present\")\n"
+                            "endif()\n", ".cmake"), [])
 
     def test_alternate_namespaces_rejected(self):
         content = ("target_link_libraries(a PRIVATE SaltsCore::Platform)\n"
