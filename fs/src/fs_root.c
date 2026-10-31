@@ -1575,6 +1575,50 @@ int salts_fs_root_generation_read(
   return rc;
 }
 
+#ifndef _WIN32
+/* A visible highwater record may be the result of a previous post-rename
+ * DURABILITY_UNKNOWN. A matching request ID is NOT a successful durable
+ * retry until we flush the retained file and BOTH original parent dirs.
+ * This stays inside the existing trusted single-writer FS owner. */
+static int salts_fs_gen_complete_visible_reservation(
+    const salts_fs_root_t *root, const char *highwater_path,
+    const char *unique_staging_path) {
+  salts_fs_root_file_t *file = NULL;
+  int current_parent = -1, stage_parent = -1;
+  char current_name[SALTS_FS_ROOT_COMPONENT_MAX];
+  char stage_name[SALTS_FS_ROOT_COMPONENT_MAX];
+  int rc = salts_fs_root_file_open(
+      root, highwater_path, SALTS_FS_O_RDONLY, 0, &file);
+  if (rc != 0) return rc;
+  rc = salts_fs_root_file_fsync(file);
+  {
+    const int close_rc = salts_fs_root_file_close(file);
+    if (rc == 0) rc = close_rc;
+  }
+  if (rc != 0) return rc;
+  rc = salts_fs_root_open_parent_posix(
+      root, highwater_path, &current_parent, current_name);
+  if (rc == 0)
+    rc = salts_fs_root_open_parent_posix(
+        root, unique_staging_path, &stage_parent, stage_name);
+  if (rc == 0) {
+    for (;;) {
+      if (fsync(current_parent) == 0) break;
+      if (errno != EINTR) { rc = -errno; break; }
+    }
+  }
+  if (rc == 0) {
+    for (;;) {
+      if (fsync(stage_parent) == 0) break;
+      if (errno != EINTR) { rc = -errno; break; }
+    }
+  }
+  if (current_parent >= 0) (void)close(current_parent);
+  if (stage_parent >= 0) (void)close(stage_parent);
+  return rc;
+}
+#endif
+
 int salts_fs_root_reserve_generation(
     const salts_fs_root_t *root,
     const char *highwater_path, const char *unique_staging_path,
@@ -1607,8 +1651,22 @@ int salts_fs_root_reserve_generation(
   else if (rc != 0) return rc;
   if (previous != 0u &&
       memcmp(previous_request, request_id, 32u) == 0) {
-    /* Only the latest durable request is provably idempotent.
-     * A previous request must be resolved by an outer request journal. */
+    /* A prior call can have returned DURABILITY_UNKNOWN after rename.
+     * Merely finding the same bytes is NOT evidence of durability.
+     * Reflush the retained highwater and BOTH parent directories, then
+     * recheck the exact request and generation before declaring success. */
+    uint64_t rechecked = 0u;
+    char rechecked_request[33] = {0};
+    *state = SALTS_FS_REPLACE_DURABILITY_UNKNOWN;
+    rc = salts_fs_gen_complete_visible_reservation(
+        root, highwater_path, unique_staging_path);
+    if (rc != 0) return rc;
+    rc = salts_fs_root_generation_read(
+        root, highwater_path, &rechecked, rechecked_request);
+    if (rc != 0) return rc;
+    if (rechecked != previous ||
+        memcmp(rechecked_request, request_id, 32u) != 0)
+      return -EAGAIN;
     *out_generation = previous;
     *state = SALTS_FS_REPLACE_PUBLISHED_DURABLE;
     return 0;

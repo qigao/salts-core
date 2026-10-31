@@ -670,8 +670,13 @@ int salts_fs_root_replace_file_durable(
  * reserve(): validates the token and reads CURRENT highwater, allocates
  * N+1 (rejects overflow), then creates a UNIQUE staging file O_EXCL,
  * writes+fsyncs its exact record, and uses the existing root-relative
- * durable file replace. A successful return reserves N+1 BEFORE the
- * caller publishes immutable content, even if content later aborts.
+ * durable file replace. A repeated latest request first reflushes the
+ * highwater file and BOTH original source/destination parents, then checks
+ * the exact same generation/ID again. Visible bytes after an UNKNOWN
+ * return ALONE never authorize a durable-success claim. Reconciliation
+ * must reuse the original staging path, including its parent directory.
+ * A successful return reserves N+1 BEFORE the caller publishes immutable
+ * content, even if content later aborts.
  * On a failed staging write the source name may remain and MUST be
  * reconciled/cleaned by the single owner, not silently discarded.
  * A post-rename failure is DURABILITY_UNKNOWN: reread the highwater
