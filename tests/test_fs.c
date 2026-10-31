@@ -1288,6 +1288,245 @@ static int test_current_highwater_sigkill_reconcile(
 }
 #endif
 
+
+/* M9: per-request immutable journal + trusted sole-owner generation highwater.
+ * The journal key survives content GC and cannot be recreated with a new
+ * generation when an older request is re-submitted. Actual SIGKILL around
+ * journal rename verifies recovery when the highwater advanced but the
+ * latest request entry did not yet finish publishing. */
+static int test_generation_historical_journal(
+    salts_fs_root_t *root, unsigned long pid) {
+  static const char *ids[7] = {
+    "01112233445566778899aabbccddeeff",
+    "11112233445566778899aabbccddeeff",
+    "21112233445566778899aabbccddeeff",
+    "31112233445566778899aabbccddeeff",
+    "41112233445566778899aabbccddeeff",
+    "51112233445566778899aabbccddeeff",
+    "61112233445566778899aabbccddeeff"
+  };
+  static const char *source_bytes[3] = {
+    "journal-red-encoded", "journal-green-encoded", "journal-red-encoded"
+  };
+  char highwater[96], stages[9][96], request_path[128],
+       journal_stage[128], content_stage[96], revision[96];
+  char read_id[33] = {0};
+  salts_fs_replace_state_t state = SALTS_FS_REPLACE_NOT_PUBLISHED;
+  salts_fs_stat_t statbuf;
+  uint64_t generation = 0u, highest = 0u;
+  int rc;
+  if (snprintf(highwater, sizeof(highwater),
+               "fs-m9-%lu-highwater", pid) <= 0)
+    return 901;
+  for (int i = 0; i < 9; ++i) {
+    if (snprintf(stages[i], sizeof(stages[i]),
+                 "fs-m9-%lu-highwater-stage-%d", pid, i) <= 0)
+      return 902;
+  }
+  rc = salts_fs_root_reserve_generation_recorded(
+      root, highwater, stages[0], "invalid",
+      &generation, &state);
+  if (rc != -EINVAL || generation != 0u ||
+      state != SALTS_FS_REPLACE_NOT_PUBLISHED)
+    return 903;
+#ifdef _WIN32
+  rc = salts_fs_root_reserve_generation_recorded(
+      root, highwater, stages[0], ids[0],
+      &generation, &state);
+  if (rc != -ENOSYS || generation != 0u ||
+      state != SALTS_FS_REPLACE_NOT_PUBLISHED ||
+      salts_fs_root_stat(root, highwater, &statbuf) != -ENOENT ||
+      salts_fs_root_stat(root, stages[0], &statbuf) != -ENOENT)
+    return 904;
+  puts("Salts::FS historical request journal explicitly UNSUPPORTED on Windows");
+  return 0;
+#else
+  for (int i = 0; i < 3; ++i) {
+    const char *payload = source_bytes[i];
+    const size_t payload_size = strlen(payload);
+    rc = salts_fs_root_reserve_generation_recorded(
+        root, highwater, stages[i], ids[i], &generation, &state);
+    if (rc != 0 || generation != (uint64_t)i+1u ||
+        state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+      return 905;
+    if (snprintf(request_path, sizeof(request_path),
+                 "%s.r.%s", highwater, ids[i]) <= 0 ||
+        salts_fs_root_stat(root, request_path, &statbuf) != 0 ||
+        !statbuf.is_file || statbuf.size != 63u)
+      return 906;
+    if (snprintf(content_stage, sizeof(content_stage),
+                 "fs-m9-%lu-content-%d", pid, i) <= 0 ||
+        snprintf(revision, sizeof(revision),
+                 "fs-m9-%lu-revision-%d", pid, i) <= 0)
+      return 907;
+    if (stage_revision_file(root, content_stage, payload, payload_size))
+      return 908;
+    rc = salts_fs_root_publish_file_noreplace(
+        root, content_stage, revision, &state);
+    if (rc != 0 || state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+      return 909;
+    if (salts_fs_root_unlink(root, revision) != 0)
+      return 910; /* Content GC cannot delete the immutable journal. */
+  }
+  /* At generation 3 the old A1 & B2 request identities must survive
+   * content GC and must NOT allocate generation 4 when re-submitted. */
+  for (int i = 0; i < 3; ++i) {
+    generation = 0u;
+    rc = salts_fs_root_reserve_generation_recorded(
+        root, highwater, stages[7], ids[i], &generation, &state);
+    if (rc != 0 || generation != (uint64_t)i+1u ||
+        state != SALTS_FS_REPLACE_PUBLISHED_DURABLE ||
+        salts_fs_root_stat(root, stages[7], &statbuf) != -ENOENT)
+      return 911;
+  }
+  rc = salts_fs_root_generation_read(
+      root, highwater, &highest, read_id);
+  if (rc != 0 || highest != 3u || strcmp(read_id, ids[2]) != 0)
+    return 912;
+  {
+    char tmp[1024] = {0};
+    salts_fs_root_t *new_owner = NULL;
+    if (salts_fs_get_tmpdir(tmp, sizeof(tmp)) != 0 ||
+        salts_fs_root_open(tmp, &new_owner) != 0 || !new_owner)
+      return 913;
+    generation = 0u;
+    rc = salts_fs_root_reserve_generation_recorded(
+        new_owner, highwater, stages[7], ids[0],
+        &generation, &state);
+    if (rc != 0 || generation != 1u ||
+        state != SALTS_FS_REPLACE_PUBLISHED_DURABLE ||
+        salts_fs_root_close(new_owner) != 0)
+      return 914;
+  }
+
+#if defined(SALTS_FS_NATIVE_PUBLISH_TEST_FAULTS)
+  /* Kill generation-4 writer *before journal's native rename*. Its
+   * generation-4 highwater has been reserved; the journal stage
+   * exists but its immutable request record is not yet visible. */
+  {
+    pid_t child = fork();
+    int status = 0;
+    if (child < 0) return 915;
+    if (child == 0) {
+      if (salts_fs_test_set_publish_fail_stage(-2) != 0)
+        _exit(241);
+      (void)salts_fs_root_reserve_generation_recorded(
+          root, highwater, stages[3], ids[3], &generation, &state);
+      _exit(242);
+    }
+    if (waitpid(child, &status, 0) != child ||
+        !WIFSIGNALED(status) || WTERMSIG(status) != SIGKILL)
+      return 916;
+    rc = salts_fs_root_generation_read(
+        root, highwater, &highest, read_id);
+    if (rc != 0 || highest != 4u || strcmp(read_id, ids[3]) != 0)
+      return 917;
+    if (snprintf(request_path, sizeof(request_path),
+                 "%s.r.%s", highwater, ids[3]) <= 0 ||
+        snprintf(journal_stage, sizeof(journal_stage),
+                 "%s.s.%s", highwater, ids[3]) <= 0 ||
+        salts_fs_root_stat(root, request_path, &statbuf) != -ENOENT ||
+        salts_fs_root_stat(root, journal_stage, &statbuf) != 0)
+      return 918;
+    /* A new request must first finish journal4, not lose gen4. */
+    rc = salts_fs_root_reserve_generation_recorded(
+        root, highwater, stages[4], ids[4], &generation, &state);
+    if (rc != 0 || generation != 5u ||
+        state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+      return 919;
+    if (salts_fs_root_stat(root, request_path, &statbuf) != 0 ||
+        salts_fs_root_stat(root, journal_stage, &statbuf) != -ENOENT)
+      return 920;
+    rc = salts_fs_root_reserve_generation_recorded(
+        root, highwater, stages[7], ids[3], &generation, &state);
+    if (rc != 0 || generation != 4u ||
+        state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+      return 921;
+  }
+  /* Kill gen-6 writer *after* the immutable journal rename but
+   * before both parent fsyncs. Visible record is not durable proof:
+   * same request must reflush and recheck exactly before ACK. */
+  {
+    pid_t child = fork();
+    int status = 0;
+    if (child < 0) return 922;
+    if (child == 0) {
+      if (salts_fs_test_set_publish_fail_stage(-3) != 0)
+        _exit(241);
+      (void)salts_fs_root_reserve_generation_recorded(
+          root, highwater, stages[5], ids[5], &generation, &state);
+      _exit(242);
+    }
+    if (waitpid(child, &status, 0) != child ||
+        !WIFSIGNALED(status) || WTERMSIG(status) != SIGKILL)
+      return 923;
+    rc = salts_fs_root_generation_read(
+        root, highwater, &highest, read_id);
+    if (rc != 0 || highest != 6u || strcmp(read_id, ids[5]) != 0)
+      return 924;
+    rc = salts_fs_root_reserve_generation_recorded(
+        root, highwater, stages[5], ids[5], &generation, &state);
+    if (rc != 0 || generation != 6u ||
+        state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+      return 925;
+  }
+  /* The historical gen-4 and gen-1 records remain addressable. */
+  rc = salts_fs_root_reserve_generation_recorded(
+      root, highwater, stages[6], ids[6], &generation, &state);
+  if (rc != 0 || generation != 7u ||
+      state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+    return 926;
+  for (int i = 0; i < 7; ++i) {
+    generation = 0u;
+    rc = salts_fs_root_reserve_generation_recorded(
+        root, highwater, stages[7], ids[i], &generation, &state);
+    if (rc != 0 || generation != (uint64_t)i+1u ||
+        state != SALTS_FS_REPLACE_PUBLISHED_DURABLE ||
+        salts_fs_root_stat(root, stages[7], &statbuf) != -ENOENT)
+      return 927;
+  }
+  rc = salts_fs_root_generation_read(
+      root, highwater, &highest, read_id);
+  if (rc != 0 || highest != 7u || strcmp(read_id, ids[6]) != 0)
+    return 928;
+  /* Deliberately corrupt an old journal entry. Caller must fail closed
+   * rather than treating its old request as new and allocating 8. */
+  {
+    salts_fs_root_file_t *corrupt = NULL;
+    if (snprintf(request_path, sizeof(request_path),
+                 "%s.r.%s", highwater, ids[0]) <= 0)
+      return 929;
+    if (salts_fs_root_file_open(root, request_path,
+          SALTS_FS_O_WRONLY | SALTS_FS_O_TRUNC, 0, &corrupt) != 0 ||
+        !corrupt)
+      return 930;
+    if (salts_fs_root_file_close(corrupt) != 0)
+      return 931;
+    generation = 0u;
+    rc = salts_fs_root_reserve_generation_recorded(
+        root, highwater, stages[8], ids[0], &generation, &state);
+    if (rc != -EINVAL || generation != 0u ||
+        salts_fs_root_stat(root, stages[8], &statbuf) != -ENOENT)
+      return 932;
+    rc = salts_fs_root_generation_read(
+        root, highwater, &highest, read_id);
+    if (rc != 0 || highest != 7u)
+      return 933;
+  }
+#endif /* SALTS_FS_NATIVE_PUBLISH_TEST_FAULTS */
+  for (int i = 0; i < 7; ++i) {
+    if (snprintf(request_path, sizeof(request_path),
+                 "%s.r.%s", highwater, ids[i]) <= 0 ||
+        salts_fs_root_unlink(root, request_path) != 0)
+      return 934;
+  }
+  if (salts_fs_root_unlink(root, highwater) != 0)
+    return 935;
+  puts("Salts::FS historical request journal A1/B2/A3 -> old IDs stable, kill-recovery/GC/corrupt refusal PASS (POSIX)");
+  return 0;
+#endif
+}
+
 int main(int argc, char **argv) {
   char tmp[1024] = {0}, path[1400] = {0}, name[120] = {0};
   const char body[] = "salts core fs native\n";
@@ -1386,6 +1625,14 @@ int main(int argc, char **argv) {
     }
   }
 #endif
+  {
+    int journal_result = test_generation_historical_journal(root, pid);
+    if (journal_result != 0) {
+      fprintf(stderr, "Salts::FS historical request journal FAIL: %d\n",
+              journal_result);
+      return journal_result;
+    }
+  }
   if (salts_fs_root_close(root)) return 12;
   if (salts_fs_unlink(path)) return 13;
   puts("Salts::FS root ownership and path rejection PASS");
