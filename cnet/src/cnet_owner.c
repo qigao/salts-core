@@ -1274,6 +1274,19 @@ static int cnet_owner_tls_begin_peer_close(cnet_owner_impl *impl,
   session->close_requested = true;
   session->receive_demand = 0u;
   session->tls_shutdown_after_flush = true;
+  /*
+   * An authenticated close_notify can already be in the private TLS ring
+   * while a newer NativeIO TLS_READ remains outstanding. The peer may keep
+   * TCP open until our close_notify arrives; therefore the old read lease
+   * cannot be left to wait for EOF or its READ deadline. Cancel ONLY that
+   * receive lease, preserve its generation until NativeIO completion, and
+   * keep the bounded ciphertext close-notify write independently owned.
+   */
+  {
+    const int cancel_status =
+        cnet_owner_cancel_receive_requests(impl, session->handle);
+    if (cancel_status != SALTS_OK) return cancel_status;
+  }
   if (status == SALTS_OK) {
     status = cnet_owner_queue_state_event(impl, session->handle, CNET_EVENT_STATE_CLOSING,
                                           SALTS_OK, CNET_SESSION_STAGE_NONE);
@@ -1281,6 +1294,28 @@ static int cnet_owner_tls_begin_peer_close(cnet_owner_impl *impl,
   }
   return cnet_owner_tls_pump(impl, session);
 }
+
+static bool cnet_owner_tls_control_probe_allowed(
+    const cnet_owner_session *session) {
+  return session != NULL &&
+         cnet_tls_state_handshake_complete(&session->tls) &&
+         !session->close_requested && session->receive_demand == 0u;
+}
+
+#if defined(CNET_INTERNAL_TESTING)
+/* Uses the same production admission predicate, never a duplicate TLS
+ * implementation; an active NativeIO read is intentionally allowed. */
+bool cnet_owner_test_tls_control_probe_allowed(
+    bool authenticated, bool read_active,
+    bool closing, size_t receive_demand) {
+  cnet_owner_session session = {0};
+  session.tls.handshake_complete = authenticated;
+  session.read_active = read_active;
+  session.close_requested = closing;
+  session.receive_demand = receive_demand;
+  return cnet_owner_tls_control_probe_allowed(&session);
+}
+#endif
 
 static int cnet_owner_tls_background_progress(cnet_owner_impl *impl,
                                               cnet_owner_session *session) {
@@ -1296,8 +1331,19 @@ static int cnet_owner_tls_background_progress(cnet_owner_impl *impl,
    * already owned by exactly one final terminal completion. */
   if (session->pending_status != SALTS_OK)
     return cnet_owner_finalize_session(impl, session);
-  if (session->close_requested || session->read_active || session->receive_demand != 0u)
-    return SALTS_OK;
+  /*
+   * NativeIO's in-flight TLS_READ buffer is separate from the bounded TLS
+   * ciphertext/control ring. A pending kernel receive is no reason to leave
+   * an already authenticated close_notify unprocessed. Only a new kernel
+   * receive must respect read_active (see the guard below/start_read).
+   */
+  /* The background control probe is post-authentication only. Without this
+   * boundary a pending handshake read can cause the Owner to call
+   * cnet_tls_probe_peer_close before Finished, returning ENOTCONN and
+   * terminating a perfectly valid TLS handshake. read_active does NOT
+   * inhibit a probe after authentication: provider ciphertext is separately
+   * owned from the leased NativeIO receive buffer. */
+  if (!cnet_owner_tls_control_probe_allowed(session)) return SALTS_OK;
 
   status = cnet_tls_probe_peer_close(&session->tls, &peer_closed, &plaintext_pending);
   if (status != SALTS_OK) {
@@ -3091,6 +3137,32 @@ int cnet_owner_send_buffer_close_direct(cnet_owner *owner,
   return cnet_owner_finish_write_admission(impl, session, handle);
 }
 
+/*
+ * Direct receive admission is distinct from the later Owner work-loop gate.
+ * TLS may have decrypted/application bytes retained in its private provider
+ * ring even while a pre-existing NativeIO ciphertext TLS_READ is active.
+ * The first plaintext receive demand must therefore queue an Owner pump
+ * regardless of that socket read lease. For plain streams, keep the
+ * single-read rule: an in-flight native receive already supplies progress.
+ */
+static bool cnet_owner_receive_direct_should_rearm(
+    const cnet_owner_session *session) {
+  return session != NULL && session->receive_demand == 0u &&
+         (session->peer.scheme == CNET_URI_TLS || !session->read_active);
+}
+
+#if defined(CNET_INTERNAL_TESTING)
+bool cnet_owner_test_receive_direct_should_rearm(bool tls,
+                                                 bool native_read_active,
+                                                 size_t previous_demand) {
+  cnet_owner_session session = {0};
+  session.peer.scheme = tls ? CNET_URI_TLS : CNET_URI_TCP;
+  session.read_active = native_read_active;
+  session.receive_demand = previous_demand;
+  return cnet_owner_receive_direct_should_rearm(&session);
+}
+#endif
+
 int cnet_owner_receive_direct(cnet_owner *owner, cnet_session_handle session_handle,
                               size_t demand) {
   cnet_owner_impl *impl = cnet_owner_get(owner);
@@ -3112,7 +3184,7 @@ int cnet_owner_receive_direct(cnet_owner *owner, cnet_session_handle session_han
     return SALTS_ESHUTDOWN;
   if (demand > SIZE_MAX - session->receive_demand) return SALTS_ERANGE;
 
-  queue_rearm = !session->read_active && session->receive_demand == 0u;
+  queue_rearm = cnet_owner_receive_direct_should_rearm(session);
   session->receive_demand += demand;
   if (!queue_rearm) return SALTS_OK;
 

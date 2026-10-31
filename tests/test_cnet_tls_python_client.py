@@ -27,24 +27,29 @@ CASES = ("client", "missing", "wrongca", "eku", "expired", "chain", "badsig")
 VERSION = {"12": "TLSv1.2", "13": "TLSv1.3"}
 
 
-def fragmented_tls13_exchange(ctx: ssl.SSLContext, raw: socket.socket) -> None:
-    """One real TLS1.3 client using Python's SSLObject and MemoryBIO.
+def fragmented_tls13_exchange(
+    ctx: ssl.SSLContext, raw: socket.socket, *, coalesced: bool = False
+) -> None:
+    """Actual SSLObject TLS1.3 Finished + first ApplicationData transition.
 
-    Carry Finished and the first application record in the same outbound
-    batch, then split ciphertext into bounded TCP writes. The native CNet
-    peer must finish authentication and deliver F before it can send G.
-    No plaintext/TLS keys are logged and no alternative native engine exists.
+    Preserve the existing TCP-fragmented case and separately admit their
+    complete encrypted records in one socket send. Neither case exposes
+    plaintext records or TLS secrets; both use one native production CNet.
     """
     incoming, outgoing = ssl.MemoryBIO(), ssl.MemoryBIO()
     peer = ctx.wrap_bio(incoming, outgoing, server_hostname="localhost")
     raw.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
-    def flush_ciphertext() -> None:
+    def flush_ciphertext(*, whole_batch: bool = False) -> None:
         while outgoing.pending:
             wire = outgoing.read()
+            if whole_batch:
+                # A single real TLS1.3 encrypted Finished+ApplicationData
+                # batch, with no Python side timing delay or fake record.
+                raw.sendall(wire)
+                continue
             offset = 0
-            # Split at record-header and payload boundaries. The tail is
-            # sent without sleeping or waiting for a handshake response.
+            # Preserve the original bounded TCP fragmentation acceptance.
             for n in (1, 2, 7, 31, 127):
                 if offset >= len(wire):
                     break
@@ -83,7 +88,7 @@ def fragmented_tls13_exchange(ctx: ssl.SSLContext, raw: socket.socket) -> None:
         raise AssertionError("TLS1.3 Finished already flushed; coalescing test invalid")
     if peer.write(b"F") != 1 or outgoing.pending <= finished_bytes:
         raise AssertionError("Python SSLObject did not queue app data after Finished")
-    flush_ciphertext()
+    flush_ciphertext(whole_batch=coalesced)
 
     while True:
         try:
@@ -101,14 +106,31 @@ def fragmented_tls13_exchange(ctx: ssl.SSLContext, raw: socket.socket) -> None:
 def scenario(
     binary: Path, work: Path, crypto, fixtures, proto: str, case: str,
     *, fragmented: bool = False, idle: bool = False,
+    orderly_close: bool = False, gated: bool = False,
+    coalesced: bool = False,
 ) -> None:
-    if idle and (fragmented or proto != "13" or case != "client"):
-        raise AssertionError("idle peer requires a genuine TLS1.3 client certificate")
-    expected = "idle" if idle else "accept" if case == "client" else "reject"
+    if (idle or orderly_close or gated or coalesced or fragmented) and (
+        proto != "13" or case != "client" or
+        sum((idle, orderly_close, gated, coalesced, fragmented)) != 1
+    ):
+        raise AssertionError("special TLS1.3 cases require distinct real client credentials")
+    expected = (
+        "gated" if gated else
+        "close" if orderly_close else
+        "idle" if idle else
+        "accept" if case == "client" else "reject"
+    )
     if fragmented and (proto != "13" or case != "client"):
         raise AssertionError("fragmented ciphertext gate is valid TLS1.3 only")
-    suffix = "-idle" if idle else "-fragmented" if fragmented else ""
+    suffix = (
+        "-gated" if gated else
+        "-close" if orderly_close else
+        "-idle" if idle else
+        "-coalesced" if coalesced else
+        "-fragmented" if fragmented else ""
+    )
     port_path = work / f"native-{proto}-{case}{suffix}.port"
+    ready_path = Path(str(port_path) + ".ready")
     if port_path.exists():
         raise AssertionError("stale private port marker")
     # Exact-head Python fixture generator and standard-library ssl client.
@@ -145,9 +167,13 @@ def scenario(
         with socket.create_connection(("127.0.0.1", port), timeout=8.0) as raw:
             raw.settimeout(9.0)
             try:
-                if fragmented:
-                    phase = "tls13-fragmented-finished-plus-application"
-                    fragmented_tls13_exchange(ctx, raw)
+                if fragmented or coalesced:
+                    phase = (
+                        "tls13-coalesced-finished-plus-application"
+                        if coalesced else
+                        "tls13-fragmented-finished-plus-application"
+                    )
+                    fragmented_tls13_exchange(ctx, raw, coalesced=coalesced)
                     peer_completed = True
                     phase = "authenticated"
                 else:
@@ -171,23 +197,49 @@ def scenario(
                                 )
                             peer_completed = True
                         else:
-                            # TLS1.3 wrap_socket can finish before the server
-                            # verifies CertificateVerify; require real app data.
+                            # Compare the independently negotiated TLS1.3
+                            # client Finished against an already-admitted
+                            # NativeIO TLS_READ on the real CNet server.
+                            # Merely receiving CONNECTED on the client does
+                            # not prove the native Owner armed application
+                            # receive demand, so wait for its private marker.
+                            if gated:
+                                phase = "native-receive-admission"
+                                ready_deadline = time.monotonic() + 5.0
+                                while not ready_path.exists():
+                                    if native.poll() is not None:
+                                        raise AssertionError(
+                                            "native TLS owner exited before receive admission"
+                                        )
+                                    if time.monotonic() >= ready_deadline:
+                                        raise AssertionError(
+                                            "native TLS receive admission never published"
+                                        )
+                                    time.sleep(0.005)
                             phase = "authenticated-request"
                             peer.sendall(b"F")
                             phase = "authenticated-response"
                             response = peer.recv(1)
-                            if expected == "accept":
+                            if expected in ("accept", "close", "gated"):
                                 if response != b"G":
                                     raise AssertionError(f"valid mTLS app data missing: {response!r}")
+                                if orderly_close:
+                                    # A real TLS1.3 close_notify handshake,
+                                    # not a socket shutdown or EOF disguised
+                                    # as successful TLS termination. This
+                                    # waits for the CNet server's close_notify.
+                                    phase = "authenticated-close-notify"
+                                    peer.unwrap()
+                                    phase = "authenticated-close-complete"
+                                else:
+                                    phase = "authenticated"
                                 peer_completed = True
-                                phase = "authenticated"
                             elif response == b"G":
                                 raise AssertionError("invalid mTLS client received authenticated data")
                             else:
                                 peer_rejected = True
             except (ssl.SSLError, ConnectionError, EOFError):
-                if expected == "accept":
+                if expected in ("accept", "close", "gated"):
                     raise
                 if idle:
                     # Native's exact READ-stage timeout assertion below is
@@ -197,7 +249,7 @@ def scenario(
                     peer_rejected = True
         if expected == "reject" and not peer_rejected:
             raise AssertionError("invalid client was not rejected")
-        if expected in ("accept", "idle") and not peer_completed:
+        if expected in ("accept", "idle", "close", "gated") and not peer_completed:
             raise AssertionError("authenticated peer did not reach required terminal")
     except (socket.timeout, TimeoutError) as exc:
         failure = f"deadline exceeded during {phase}: {type(exc).__name__}"
@@ -220,7 +272,8 @@ def scenario(
         )
     print(
         f"PASS independent Python ssl TLS{proto} {case} {expected}"
-        + (" Finished+ApplicationData fragmented" if fragmented else "")
+        + (" Finished+ApplicationData fragmented" if fragmented else
+           " Finished+ApplicationData coalesced" if coalesced else "")
     )
 
 
@@ -241,6 +294,27 @@ def main() -> int:
         private.chmod(0o700)
         fixtures = python_mtls.make_fixtures(private)
         for proto in ("12", "13"):
+            if proto == "13":
+                # Qualify the retained NativeIO TLS_READ separately before
+                # the historically intermittent immediate-send case, and
+                # ensure close_notify evidence is not skipped when that case
+                # later reveals an unrelated scheduling RED.
+                scenario(
+                    args.binary, private, python_mtls, fixtures, "13", "client",
+                    gated=True,
+                )
+                scenario(
+                    args.binary, private, python_mtls, fixtures, "13", "client",
+                    orderly_close=True,
+                )
+                # Before the immediate-send case, force the real encrypted
+                # ClientFinished+ApplicationData to arrive in a single
+                # socket write. Compare its verdict to the separately gated
+                # and fragmented modes without adding a new CTest.
+                scenario(
+                    args.binary, private, python_mtls, fixtures, "13", "client",
+                    coalesced=True,
+                )
             for case in CASES:
                 scenario(args.binary, private, python_mtls, fixtures, proto, case)
         # A single additional real TLS1.3 connection, not a retry/stress
