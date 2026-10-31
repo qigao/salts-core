@@ -700,6 +700,43 @@ int salts_fs_root_reserve_generation(
     const char *request_id,
     uint64_t *out_generation, salts_fs_replace_state_t *state);
 
+/* M9: historical request-ID reservation journal for a SOLE trusted writer.
+ * All names derive deterministically from the highwater path:
+ *   <highwater>.r.<32-lowerhex-id> = immutable 63-byte SFS-REQ1 entry
+ *   <highwater>.s.<32-lowerhex-id> = exclusive journal staging file
+ * Both are in the same already-admitted parent as highwater.
+ *
+ * The supplied HIGHWATER staging path MUST be in that same parent and
+ * uniquely owned by this request. A journal entry is published with the
+ * original no-replace durable file API, *after* the highwater was reserved.
+ * Every new reservation reconciles the immediately previous highwater
+ * request's journal BEFORE advancing the highwater. This invariant means
+ * at most the latest entry may be missing after a crash; older durable
+ * journal entries are never discarded, even after content GC.
+ *
+ * A previously recorded historical request returns its ORIGINAL generation
+ * (including after A->B->A), without creating any new stage or incrementing
+ * the highwater. A crash after highwater replacement but before journal
+ * rename is recovered from the latest highwater record. A visible journal
+ * after UNKNOWN gets re-synced and checked before durable acknowledgement.
+ * Any torn, mismatched or malformed entry fails closed, no reset/reuse.
+ *
+ * One trusted single writer, trusted stable root and immutable journal
+ * ownership are HARD preconditions. No multi-writer CAS/fencing, cryptographic
+ * identity, or power-loss guarantee on arbitrary filesystems. An external
+ * writer deleting an old journal record violates this contract. Only
+ * the latest highwater lacking a journal can be repaired automatically.
+ *
+ * On Windows this operation is explicitly unsupported (-ENOSYS /
+ * NOT_PUBLISHED) before mutation because durable highwater and no-replace
+ * publication are not qualified there.
+ */
+int salts_fs_root_reserve_generation_recorded(
+    const salts_fs_root_t *root,
+    const char *highwater_path, const char *highwater_staging_path,
+    const char *request_id, uint64_t *out_generation,
+    salts_fs_replace_state_t *state);
+
 /*
  * stat is secure no-follow in capability v1: a final symlink/reparse point
  * returns -ELOOP. lstat reports the final link itself. Intermediate links are

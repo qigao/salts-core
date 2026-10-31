@@ -1519,8 +1519,9 @@ static int salts_fs_gen_is_hex32(const char *value) {
   return value[32] == '\0';
 }
 
-int salts_fs_root_generation_read(
-    const salts_fs_root_t *root, const char *highwater_path,
+static int salts_fs_gen_read_record(
+    const salts_fs_root_t *root, const char *relative_path,
+    const char expected_magic[9],
     uint64_t *out_generation, char out_request_id[33]) {
   salts_fs_root_file_t *reader = NULL;
   salts_fs_stat_t info = {0};
@@ -1531,9 +1532,9 @@ int salts_fs_root_generation_read(
   if (!out_generation || !out_request_id) return -EINVAL;
   *out_generation = 0u;
   out_request_id[0] = '\0';
-  if (!root || !highwater_path) return -EINVAL;
+  if (!root || !relative_path || !expected_magic) return -EINVAL;
   rc = salts_fs_root_file_open(
-      root, highwater_path, SALTS_FS_O_RDONLY, 0, &reader);
+      root, relative_path, SALTS_FS_O_RDONLY, 0, &reader);
   if (rc != 0) return rc;
   rc = salts_fs_root_file_stat(reader, &info);
   if (rc == 0 && (!info.is_file ||
@@ -1546,7 +1547,7 @@ int salts_fs_root_generation_read(
     else if ((size_t)n != SALTS_FS_GEN_RECORD_BYTES) rc = -EINVAL;
   }
   if (rc == 0) {
-    if (memcmp(record, "SFS-GEN1 ", 9u) != 0 ||
+    if (memcmp(record, expected_magic, 9u) != 0 ||
         record[29] != ' ' || record[62] != '\n')
       rc = -EINVAL;
     for (i = 9u; rc == 0 && i < 29u; ++i) {
@@ -1581,6 +1582,14 @@ int salts_fs_root_generation_read(
   }
   if (reader) (void)salts_fs_root_file_close(reader);
   return rc;
+}
+
+int salts_fs_root_generation_read(
+    const salts_fs_root_t *root, const char *highwater_path,
+    uint64_t *out_generation, char out_request_id[33]) {
+  return salts_fs_gen_read_record(
+      root, highwater_path, "SFS-GEN1 ",
+      out_generation, out_request_id);
 }
 
 #ifndef _WIN32
@@ -1708,6 +1717,267 @@ int salts_fs_root_reserve_generation(
   if (rc == 0 && *state == SALTS_FS_REPLACE_PUBLISHED_DURABLE)
     *out_generation = next;
   return rc;
+#endif
+}
+
+
+#ifndef _WIN32
+/* M9 request journal uses immutable, fixed-extent files in the SAME
+ * highwater parent directory. Names are derived from the highwater and
+ * immutable 32-hex request token; callers cannot pass an alias path.
+ * The single publisher must prevent external removal or in-place edits. */
+#define SALTS_FS_GEN_JOURNAL_PATH_MAX 2048u
+static int salts_fs_gen_same_parent(
+    const char *first, const char *second) {
+  const char *fsep = NULL, *ssep = NULL;
+  const char *p;
+  if (!first || !second) return 0;
+  for (p = first; *p; ++p)
+    if (*p == '/' || *p == '\\') fsep = p;
+  for (p = second; *p; ++p)
+    if (*p == '/' || *p == '\\') ssep = p;
+  if ((fsep == NULL) != (ssep == NULL)) return 0;
+  if (!fsep) return 1;
+  const size_t fsize = (size_t)(fsep - first);
+  const size_t ssize = (size_t)(ssep - second);
+  return fsize == ssize && memcmp(first, second, fsize) == 0;
+}
+static int salts_fs_gen_request_paths(
+    const char *highwater, const char *request_id,
+    char published[SALTS_FS_GEN_JOURNAL_PATH_MAX],
+    char stage[SALTS_FS_GEN_JOURNAL_PATH_MAX]) {
+  int n;
+  if (!highwater || !salts_fs_gen_is_hex32(request_id))
+    return -EINVAL;
+  n = snprintf(published, SALTS_FS_GEN_JOURNAL_PATH_MAX,
+               "%s.r.%s", highwater, request_id);
+  if (n < 0 || (size_t)n >= SALTS_FS_GEN_JOURNAL_PATH_MAX)
+    return -ENAMETOOLONG;
+  n = snprintf(stage, SALTS_FS_GEN_JOURNAL_PATH_MAX,
+               "%s.s.%s", highwater, request_id);
+  if (n < 0 || (size_t)n >= SALTS_FS_GEN_JOURNAL_PATH_MAX)
+    return -ENAMETOOLONG;
+  int rc = salts_fs_root_validate_relative_path(published);
+  if (rc != 0) return rc;
+  return salts_fs_root_validate_relative_path(stage);
+}
+static int salts_fs_gen_request_read(
+    const salts_fs_root_t *root, const char *journal_path,
+    const char request_id[33], uint64_t *out_generation) {
+  char observed[33] = {0};
+  uint64_t gen = 0u;
+  int rc = salts_fs_gen_read_record(
+      root, journal_path, "SFS-REQ1 ", &gen, observed);
+  if (rc != 0) return rc;
+  if (memcmp(observed, request_id, 32u) != 0) return -EINVAL;
+  *out_generation = gen;
+  return 0;
+}
+static int salts_fs_gen_request_reflush(
+    const salts_fs_root_t *root,
+    const char *journal_path, const char *stage_path,
+    const char request_id[33], uint64_t expected) {
+  uint64_t observed = 0u;
+  int rc = salts_fs_gen_request_read(
+      root, journal_path, request_id, &observed);
+  if (rc != 0) return rc;
+  if (observed != expected) return -EINVAL;
+  rc = salts_fs_gen_complete_visible_reservation(
+      root, journal_path, stage_path);
+  if (rc != 0) return rc;
+  observed = 0u;
+  rc = salts_fs_gen_request_read(
+      root, journal_path, request_id, &observed);
+  return rc == 0 && observed != expected ? -EAGAIN : rc;
+}
+static int salts_fs_gen_request_ensure(
+    const salts_fs_root_t *root, const char *highwater,
+    const char request_id[33], uint64_t generation) {
+  char record_path[SALTS_FS_GEN_JOURNAL_PATH_MAX];
+  char staging_path[SALTS_FS_GEN_JOURNAL_PATH_MAX];
+  char record[SALTS_FS_GEN_RECORD_BYTES + 1u];
+  salts_fs_root_file_t *stage = NULL;
+  salts_fs_replace_state_t publish = SALTS_FS_REPLACE_NOT_PUBLISHED;
+  uint64_t observed = 0u;
+  int rc = salts_fs_gen_request_paths(
+      highwater, request_id, record_path, staging_path);
+  if (rc != 0) return rc;
+  rc = salts_fs_gen_request_read(
+      root, record_path, request_id, &observed);
+  if (rc == 0)
+    return observed == generation
+        ? salts_fs_gen_request_reflush(
+            root, record_path, staging_path, request_id, generation)
+        : -EINVAL;
+  if (rc != -ENOENT) return rc;
+
+  /* A killed publisher can leave the deterministic STAGE after the
+   * highwater was already committed, so validate and reuse that exact
+   * immutable request stage rather than silently allocating a new one. */
+  const int n = snprintf(record, sizeof(record),
+      "SFS-REQ1 %020llu %s\n",
+      (unsigned long long)generation, request_id);
+  if (n != (int)SALTS_FS_GEN_RECORD_BYTES) return -EOVERFLOW;
+  rc = salts_fs_root_file_open(
+      root, staging_path,
+      SALTS_FS_O_WRONLY | SALTS_FS_O_CREAT | SALTS_FS_ROOT_O_EXCL,
+      0600, &stage);
+  if (rc == -EEXIST) {
+    uint64_t staged_gen = 0u;
+    rc = salts_fs_gen_request_read(
+        root, staging_path, request_id, &staged_gen);
+    if (rc != 0 || staged_gen != generation)
+      return rc != 0 ? rc : -EINVAL;
+    rc = salts_fs_gen_complete_visible_reservation(
+        root, staging_path, staging_path);
+    if (rc != 0) return rc;
+  } else {
+    if (rc != 0) return rc;
+    const int written = salts_fs_root_file_write(
+        stage, record, SALTS_FS_GEN_RECORD_BYTES);
+    if (written < 0) rc = written;
+    else if (written != (int)SALTS_FS_GEN_RECORD_BYTES)
+      rc = -EIO;
+    if (rc == 0) rc = salts_fs_root_file_fsync(stage);
+    const int closed = salts_fs_root_file_close(stage);
+    if (rc == 0) rc = closed;
+    if (rc != 0) return rc;
+  }
+  rc = salts_fs_root_publish_file_noreplace(
+      root, staging_path, record_path, &publish);
+  if (rc == 0) return 0;
+  if (publish == SALTS_FS_REPLACE_DURABILITY_UNKNOWN ||
+      rc == -EEXIST) {
+    /* If the namespace move occurred before the caller died, exact
+     * record identity and two-parent fsync are mandatory before success. */
+    const int recovered = salts_fs_gen_request_reflush(
+        root, record_path, staging_path, request_id, generation);
+    if (recovered == 0) return 0;
+  }
+  return rc;
+}
+#endif /* !_WIN32 */
+
+int salts_fs_root_reserve_generation_recorded(
+    const salts_fs_root_t *root,
+    const char *highwater_path, const char *highwater_staging_path,
+    const char *request_id, uint64_t *out_generation,
+    salts_fs_replace_state_t *state) {
+  if (!state || !out_generation) return -EINVAL;
+  *state = SALTS_FS_REPLACE_NOT_PUBLISHED;
+  *out_generation = 0u;
+  if (!root || !highwater_path || !highwater_staging_path ||
+      !salts_fs_gen_is_hex32(request_id) ||
+      strcmp(highwater_path, highwater_staging_path) == 0)
+    return -EINVAL;
+#ifdef _WIN32
+  /* Durable file publication is not qualified on Windows. */
+  return -ENOSYS;
+#else
+  char last_id[33] = {0};
+  char checked_id[33] = {0};
+  uint64_t highest = 0u, last_seen = 0u, requested = 0u;
+  char recorded[SALTS_FS_GEN_JOURNAL_PATH_MAX];
+  char journal_stage[SALTS_FS_GEN_JOURNAL_PATH_MAX];
+  int rc = salts_fs_gen_request_paths(
+      highwater_path, request_id, recorded, journal_stage);
+  if (rc != 0) return rc;
+  rc = salts_fs_root_validate_relative_path(highwater_path);
+  if (rc != 0) return rc;
+  rc = salts_fs_root_validate_relative_path(highwater_staging_path);
+  if (rc != 0) return rc;
+  if (!salts_fs_gen_same_parent(
+          highwater_path, highwater_staging_path))
+    return -EINVAL;
+
+  rc = salts_fs_root_generation_read(
+      root, highwater_path, &highest, last_id);
+  if (rc != 0 && rc != -ENOENT) return rc;
+  if (rc == -ENOENT) highest = 0u;
+  if (highest > 0u) {
+    /* The current highwater may be visible after an UNKNOWN rename,
+     * so sync its file and SAME parent before allowing any next ID. */
+    *state = SALTS_FS_REPLACE_DURABILITY_UNKNOWN;
+    rc = salts_fs_gen_complete_visible_reservation(
+        root, highwater_path, highwater_staging_path);
+    if (rc != 0) return rc;
+    rc = salts_fs_root_generation_read(
+        root, highwater_path, &last_seen, checked_id);
+    if (rc != 0 || last_seen != highest ||
+        memcmp(checked_id, last_id, 32u) != 0)
+      return rc != 0 ? rc : -EAGAIN;
+    /* Commit any journal record the previous generation's writer
+     * did not finish before SIGKILL. At most latest may be missing
+     * because no next generation advances until this succeeds. */
+    rc = salts_fs_gen_request_ensure(
+        root, highwater_path, last_id, highest);
+    if (rc != 0) return rc;
+  }
+  rc = salts_fs_gen_request_read(
+      root, recorded, request_id, &requested);
+  if (rc == 0) {
+    if (highest == 0u || requested > highest)
+      return -EIO;
+    *state = SALTS_FS_REPLACE_DURABILITY_UNKNOWN;
+    rc = salts_fs_gen_request_reflush(
+        root, recorded, journal_stage, request_id, requested);
+    if (rc != 0) return rc;
+    *out_generation = requested;
+    *state = SALTS_FS_REPLACE_PUBLISHED_DURABLE;
+    return 0;
+  }
+  if (rc != -ENOENT) return rc;
+  if (highest == UINT64_MAX) return -EOVERFLOW;
+
+  /* A pre-rename SIGKILL can have left the same REQUEST's highwater
+   * stage in place with no new highwater visible. Verify its complete
+   * generation and ID before reusing the exact staged transaction. */
+  salts_fs_stat_t statbuf = {0};
+  rc = salts_fs_root_stat(root, highwater_staging_path, &statbuf);
+  if (rc == 0) {
+    uint64_t staged_gen = 0u;
+    char staged_id[33] = {0};
+    if (!statbuf.is_file) return -EINVAL;
+    rc = salts_fs_gen_read_record(
+        root, highwater_staging_path, "SFS-GEN1 ",
+        &staged_gen, staged_id);
+    if (rc != 0) return rc;
+    if (staged_gen != highest + 1u ||
+        memcmp(staged_id, request_id, 32u) != 0)
+      return -EEXIST;
+    rc = salts_fs_root_replace_file_durable(
+        root, highwater_staging_path, highwater_path, state);
+  } else if (rc == -ENOENT) {
+    rc = salts_fs_root_reserve_generation(
+        root, highwater_path, highwater_staging_path,
+        request_id, &requested, state);
+  } else return rc;
+
+  if (rc != 0) {
+    if (*state != SALTS_FS_REPLACE_DURABILITY_UNKNOWN) return rc;
+    /* Namespace may already contain this newly allocated request.
+     * Re-fsync and compare exact ID/generation before journal commit. */
+    rc = salts_fs_gen_complete_visible_reservation(
+        root, highwater_path, highwater_staging_path);
+    if (rc != 0) return rc;
+  }
+  uint64_t observed = 0u;
+  char observed_id[33] = {0};
+  rc = salts_fs_root_generation_read(
+      root, highwater_path, &observed, observed_id);
+  if (rc != 0) return rc;
+  if (observed != highest + 1u ||
+      memcmp(observed_id, request_id, 32u) != 0) {
+    *state = SALTS_FS_REPLACE_DURABILITY_UNKNOWN;
+    return -EAGAIN;
+  }
+  *state = SALTS_FS_REPLACE_DURABILITY_UNKNOWN;
+  rc = salts_fs_gen_request_ensure(
+      root, highwater_path, request_id, observed);
+  if (rc != 0) return rc;
+  *out_generation = observed;
+  *state = SALTS_FS_REPLACE_PUBLISHED_DURABLE;
+  return 0;
 #endif
 }
 
