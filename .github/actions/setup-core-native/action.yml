@@ -78,7 +78,7 @@ runs:
     - name: Restore exact Windows LLVM-MinGW native ABI packages
       id: windows_dependencies
       if: inputs.dependency-mode == 'binary' && runner.os == 'Windows'
-      uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@e2e915d8dc3b8170b7de9d3e999cdac6bc7efdf4
+      uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@2423c2a0b5fdf07ce502c29fcb3c202e5a8f1d89
       env:
         VCPKG_BINARY_CACHE: ${{ env.VCPKG_BINARY_CACHE || format('{0}/core-native-vcpkg-cache', runner.temp) }}
       with:

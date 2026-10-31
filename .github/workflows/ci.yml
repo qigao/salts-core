@@ -73,13 +73,13 @@ jobs:
       - name: Native Clang/LLVM toolchain
         id: llvm_native
         if: runner.os != 'Windows'
-        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-native@e2e915d8dc3b8170b7de9d3e999cdac6bc7efdf4
+        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-native@2423c2a0b5fdf07ce502c29fcb3c202e5a8f1d89
         with:
           build-type: toolchain-only
       - name: Windows LLVM-MinGW UCRT x64 toolchain
         id: llvm_mingw
         if: runner.os == 'Windows'
-        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@e2e915d8dc3b8170b7de9d3e999cdac6bc7efdf4
+        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@2423c2a0b5fdf07ce502c29fcb3c202e5a8f1d89
         with:
           target: x64
           build-type: toolchain-only
