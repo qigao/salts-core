@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #ifdef _WIN32
 #include <windows.h>
+#include <wchar.h>
 #else
 #include <unistd.h>
 #include <sys/wait.h>
@@ -190,6 +191,158 @@ static int test_concurrent_noreplace(
 #endif /* !_WIN32 */
 
 
+
+#ifdef _WIN32
+/* Two separate, normally launched Windows processes using independently
+ * opened Salts::FS root capabilities and one kernel event to race the same
+ * ABSENT destination. This is namespace arbitration, NOT crash durability. */
+static int win_native_child_move(unsigned long owner, int slot) {
+  char tmp[1024], stage[96], destination[96];
+  wchar_t event_name[96];
+  HANDLE start;
+  salts_fs_root_t *root = NULL;
+  int rc;
+  if (slot < 0 || slot > 1 ||
+      snprintf(stage, sizeof(stage), "fs-win-par-%lu-stage-%d",
+               owner, slot) <= 0 ||
+      snprintf(destination, sizeof(destination),
+               "fs-win-par-%lu-dest", owner) <= 0 ||
+      swprintf(event_name, sizeof(event_name)/sizeof(event_name[0]),
+               L"Local\\SaltsFSRace-%lu", owner) < 0)
+    return 40;
+  if (salts_fs_get_tmpdir(tmp, sizeof(tmp)) != 0 ||
+      salts_fs_root_open(tmp, &root) != 0 || !root)
+    return 41;
+  start = OpenEventW(SYNCHRONIZE, FALSE, event_name);
+  if (!start) {
+    (void)salts_fs_root_close(root);
+    return 42;
+  }
+  if (WaitForSingleObject(start, 10000u) != WAIT_OBJECT_0) {
+    CloseHandle(start);
+    (void)salts_fs_root_close(root);
+    return 43;
+  }
+  CloseHandle(start);
+  rc = salts_fs_root_rename_file_noreplace(root, stage, destination);
+  if (salts_fs_root_close(root) != 0)
+    return 44;
+  if (rc == 0) return 0;
+  if (rc == -EEXIST) return 1;
+  return 45;
+}
+
+static int win_native_two_process_race(
+    salts_fs_root_t *root, unsigned long owner) {
+  char stage[2][96], target[96], observed[64] = {0};
+  const char a[] = "Windows-version-A";
+  const char b[] = "Windows-version-B";
+  wchar_t event_name[96], executable[32768];
+  HANDLE begin = NULL, processes[2] = {NULL, NULL};
+  DWORD codes[2] = {99, 99};
+  DWORD exe_length;
+  salts_fs_root_file_t *reader = NULL;
+  salts_fs_stat_t statbuf;
+  int rc;
+  if (snprintf(stage[0], sizeof(stage[0]),
+               "fs-win-par-%lu-stage-0", owner) <= 0 ||
+      snprintf(stage[1], sizeof(stage[1]),
+               "fs-win-par-%lu-stage-1", owner) <= 0 ||
+      snprintf(target, sizeof(target),
+               "fs-win-par-%lu-dest", owner) <= 0 ||
+      swprintf(event_name, sizeof(event_name)/sizeof(event_name[0]),
+               L"Local\\SaltsFSRace-%lu", owner) < 0)
+    return 50;
+  if (stage_revision_file(root, stage[0], a, sizeof(a)-1u) != 0 ||
+      stage_revision_file(root, stage[1], b, sizeof(b)-1u) != 0)
+    return 51;
+  exe_length = GetModuleFileNameW(
+      NULL, executable, (DWORD)(sizeof(executable)/sizeof(executable[0])));
+  if (exe_length == 0 ||
+      exe_length >= sizeof(executable)/sizeof(executable[0]))
+    return 52;
+  begin = CreateEventW(NULL, TRUE, FALSE, event_name);
+  if (!begin || GetLastError() == ERROR_ALREADY_EXISTS) {
+    if (begin) CloseHandle(begin);
+    return 53;
+  }
+  for (int i = 0; i < 2; ++i) {
+    wchar_t cmd[33000];
+    STARTUPINFOW startup = {0};
+    PROCESS_INFORMATION pi = {0};
+    int n = swprintf(cmd, sizeof(cmd)/sizeof(cmd[0]),
+                     L"\"%ls\" --fs-native-race-child %lu %d",
+                     executable, owner, i);
+    if (n < 0 || n >= (int)(sizeof(cmd)/sizeof(cmd[0]))) {
+      rc = 54; goto fail;
+    }
+    startup.cb = sizeof(startup);
+    if (!CreateProcessW(executable, cmd, NULL, NULL, FALSE,
+                        CREATE_NO_WINDOW, NULL, NULL, &startup, &pi)) {
+      rc = 55; goto fail;
+    }
+    processes[i] = pi.hProcess;
+    CloseHandle(pi.hThread);
+  }
+  if (!SetEvent(begin)) { rc = 56; goto fail; }
+  for (int i = 0; i < 2; ++i) {
+    if (WaitForSingleObject(processes[i], 10000u) != WAIT_OBJECT_0 ||
+        !GetExitCodeProcess(processes[i], &codes[i])) {
+      rc = 57; goto fail;
+    }
+  }
+  if (!((codes[0] == 0u && codes[1] == 1u) ||
+        (codes[0] == 1u && codes[1] == 0u))) {
+    fprintf(stderr, "Windows two-process no-replace codes=%lu,%lu\n",
+            (unsigned long)codes[0], (unsigned long)codes[1]);
+    rc = 58; goto fail;
+  }
+  if (salts_fs_root_file_open(root, target, SALTS_FS_O_RDONLY,
+                              0, &reader) != 0 || !reader) {
+    rc = 59; goto fail;
+  }
+  rc = salts_fs_root_file_read(reader, observed, sizeof(a)-1u);
+  if (salts_fs_root_file_close(reader) != 0 ||
+      rc != (int)(sizeof(a)-1u) ||
+      (memcmp(observed, a, sizeof(a)-1u) != 0 &&
+       memcmp(observed, b, sizeof(b)-1u) != 0)) {
+    reader = NULL; rc = 60; goto fail;
+  }
+  reader = NULL;
+  for (int i = 0; i < 2; ++i) {
+    const int present = salts_fs_root_stat(root, stage[i], &statbuf);
+    if (codes[i] == 0u && present != -ENOENT) {
+      rc = 61; goto fail;
+    }
+    if (codes[i] == 1u && present != 0) {
+      rc = 62; goto fail;
+    }
+    if (codes[i] == 1u && salts_fs_root_unlink(root, stage[i]) != 0) {
+      rc = 63; goto fail;
+    }
+  }
+  if (salts_fs_root_unlink(root, target) != 0) {
+    rc = 64; goto fail;
+  }
+  for (int i = 0; i < 2; ++i) CloseHandle(processes[i]);
+  CloseHandle(begin);
+  puts("Salts::FS Windows two independent processes: one NOREPLACE winner PASS (not durable)");
+  return 0;
+fail:
+  /* Never leave a child blocked on the barrier if the second spawn fails. */
+  (void)SetEvent(begin);
+  for (int i = 0; i < 2; ++i) {
+    if (processes[i]) {
+      if (WaitForSingleObject(processes[i], 10000u) != WAIT_OBJECT_0)
+        (void)TerminateProcess(processes[i], 9u);
+      CloseHandle(processes[i]);
+    }
+  }
+  if (begin) CloseHandle(begin);
+  return rc;
+}
+#endif
+
 /* Namespace-only no-replace is portable on the real native FS but explicitly
  * NOT crash durable. Especially on Windows, this cannot replace the separate
  * ENOSYS/NOT_PUBLISHED durable publisher gate. */
@@ -237,6 +390,10 @@ static int test_native_namespace_noreplace(
   if (salts_fs_root_unlink(root, target) != 0 ||
       salts_fs_root_unlink(root, contender) != 0)
     return 310;
+#ifdef _WIN32
+  rc = win_native_two_process_race(root, pid);
+  if (rc != 0) return rc;
+#endif
   puts("Salts::FS native NOREPLACE namespace + UTF-8 target + collision PASS (not durable)");
   return 0;
 }
@@ -323,7 +480,7 @@ static int test_immutable_revision_file(salts_fs_root_t *root,
 #endif
 }
 
-int main(void) {
+int main(int argc, char **argv) {
   char tmp[1024] = {0}, path[1400] = {0}, name[120] = {0};
   const char body[] = "salts core fs native\n";
   salts_fs_buf_t input = salts_fs_buf_init((char *)body, sizeof(body) - 1u);
@@ -333,8 +490,19 @@ int main(void) {
   char scratch[128] = {0};
   int bytes;
 #ifdef _WIN32
+  if (argc == 4 && strcmp(argv[1], "--fs-native-race-child") == 0) {
+    char *end = NULL;
+    unsigned long owner = strtoul(argv[2], &end, 10);
+    if (!end || *end != '\0') return 70;
+    int slot = (int)strtol(argv[3], &end, 10);
+    if (!end || *end != '\0') return 71;
+    return win_native_child_move(owner, slot);
+  }
+  if (argc != 1) return 72;
   unsigned long pid = GetCurrentProcessId();
 #else
+  (void)argc;
+  (void)argv;
   unsigned long pid = (unsigned long)getpid();
 #endif
   if (salts_fs_get_tmpdir(tmp, sizeof(tmp))) return 1;
