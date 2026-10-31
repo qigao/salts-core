@@ -597,9 +597,24 @@ static int run_python_ssl_client(const char *port_path,
        * close_notify after it receives the authenticated response G.
        * At this point CNet can also own a background NativeIO TLS_READ.
        * Do not release that lease or its buffers until the real terminal. */
+      char close_ready_path[1024];
+      FILE *close_ready;
+      int close_name_bytes;
       REQUIRE(probe.failed == 0u && probe.connected_count == 1u);
       REQUIRE(cnet_close(&server, probe.connection) == SALTS_OK);
       local_close_started = true;
+      /* The Python peer must not win the race *before* native CNet has
+       * accepted local close. It still sends its reciprocal close_notify
+       * while NativeIO cancellation and encrypted shutdown are pending. */
+      close_name_bytes =
+          snprintf(close_ready_path, sizeof(close_ready_path),
+                   "%s.localclose", port_path);
+      REQUIRE(close_name_bytes > 0 &&
+              (size_t)close_name_bytes < sizeof(close_ready_path));
+      close_ready = fopen(close_ready_path, "wb");
+      REQUIRE(close_ready != NULL);
+      REQUIRE(fputs("accepted\n", close_ready) >= 0);
+      REQUIRE(fclose(close_ready) == 0);
     }
     /* A successful app echo cannot substitute for reciprocal close_notify
      * or for exact NativeIO request retirement. */
