@@ -582,6 +582,7 @@ static int salts_fs_root_dir_seek_cookie_win(
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/file.h>
 #include <unistd.h>
 #ifdef SALTS_FS_NATIVE_PUBLISH_TEST_FAULTS
 #include <stdatomic.h>
@@ -1979,6 +1980,155 @@ int salts_fs_root_reserve_generation_recorded(
   *state = SALTS_FS_REPLACE_PUBLISHED_DURABLE;
   return 0;
 #endif
+}
+
+
+/* One native live writer lock per immutable highwater namespace.
+ * It belongs to the SAME Salts::FS C11 module: no registry, second FS
+ * backend, advisory check-then-rename or external lock daemon. */
+#define SALTS_FS_WRITER_LOCK_PATH_CAP 2048u
+struct salts_fs_root_writer_lease_s {
+  const salts_fs_root_t *root;
+  salts_fs_root_file_t *file;
+  char highwater_path[SALTS_FS_WRITER_LOCK_PATH_CAP];
+#ifdef _WIN32
+  DWORD process_id;
+  OVERLAPPED position;
+#else
+  pid_t process_id;
+#endif
+};
+
+int salts_fs_root_writer_lease_acquire(
+    const salts_fs_root_t *root, const char *highwater_path,
+    salts_fs_root_writer_lease_t **out_lease) {
+  salts_fs_root_writer_lease_t *lease = NULL;
+  char lock_path[SALTS_FS_WRITER_LOCK_PATH_CAP];
+  int n, rc;
+  if (!out_lease) return -EINVAL;
+  *out_lease = NULL;
+  if (!root || !highwater_path) return -EINVAL;
+  rc = salts_fs_root_validate_relative_path(highwater_path);
+  if (rc != 0) return rc;
+  n = snprintf(lock_path, sizeof(lock_path),
+               "%s.writer", highwater_path);
+  if (n < 0 || (size_t)n >= sizeof(lock_path))
+    return -ENAMETOOLONG;
+  rc = salts_fs_root_validate_relative_path(lock_path);
+  if (rc != 0) return rc;
+  lease = (salts_fs_root_writer_lease_t *)calloc(1u, sizeof(*lease));
+  if (!lease) return -ENOMEM;
+  lease->root = root;
+  memcpy(lease->highwater_path, highwater_path,
+         strlen(highwater_path) + 1u);
+#ifdef _WIN32
+  lease->process_id = GetCurrentProcessId();
+#else
+  lease->process_id = getpid();
+#endif
+  rc = salts_fs_root_file_open(
+      root, lock_path, SALTS_FS_O_RDWR | SALTS_FS_O_CREAT,
+      0600, &lease->file);
+  if (rc != 0) goto failed;
+#ifdef _WIN32
+  {
+    FILE_STANDARD_INFO standard = {0};
+    if (!GetFileInformationByHandleEx(
+            lease->file->handle, FileStandardInfo,
+            &standard, sizeof(standard))) {
+      rc = salts_fs_root_win32_error(GetLastError());
+      goto failed;
+    }
+    if (standard.Directory || standard.NumberOfLinks != 1u) {
+      rc = -EINVAL; goto failed;
+    }
+    memset(&lease->position, 0, sizeof(lease->position));
+    if (!LockFileEx(
+            lease->file->handle,
+            LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
+            0u, 1u, 0u, &lease->position)) {
+      const DWORD err = GetLastError();
+      rc = (err == ERROR_LOCK_VIOLATION ||
+            err == ERROR_SHARING_VIOLATION)
+          ? -EBUSY : salts_fs_root_win32_error(err);
+      goto failed;
+    }
+  }
+#else
+  {
+    struct stat native;
+    if (fstat(lease->file->fd, &native) != 0) {
+      rc = -errno; goto failed;
+    }
+    if (!S_ISREG(native.st_mode) || native.st_nlink != 1) {
+      rc = -EINVAL; goto failed;
+    }
+    if (flock(lease->file->fd, LOCK_EX | LOCK_NB) != 0) {
+      rc = (errno == EWOULDBLOCK || errno == EAGAIN)
+          ? -EBUSY : -errno;
+      goto failed;
+    }
+    /* Lock identity must be durably present under its rooted parent
+     * before the owner starts writing highwater or immutable journal. */
+    rc = salts_fs_gen_complete_visible_reservation(
+        root, lock_path, lock_path);
+    if (rc != 0) {
+      (void)flock(lease->file->fd, LOCK_UN);
+      goto failed;
+    }
+  }
+#endif
+  *out_lease = lease;
+  return 0;
+failed:
+  if (lease->file) (void)salts_fs_root_file_close(lease->file);
+  free(lease);
+  return rc;
+}
+
+int salts_fs_root_writer_lease_release(
+    salts_fs_root_writer_lease_t *lease) {
+  int rc = 0;
+  if (!lease || !lease->file) return -EINVAL;
+#ifdef _WIN32
+  if (lease->process_id != GetCurrentProcessId())
+    return -EPERM;
+  if (!UnlockFileEx(
+          lease->file->handle, 0u, 1u, 0u, &lease->position))
+    rc = salts_fs_root_win32_error(GetLastError());
+#else
+  if (lease->process_id != getpid()) return -EPERM;
+  if (flock(lease->file->fd, LOCK_UN) != 0)
+    rc = -errno;
+#endif
+  {
+    const int closed = salts_fs_root_file_close(lease->file);
+    if (rc == 0) rc = closed;
+  }
+  free(lease);
+  return rc;
+}
+
+int salts_fs_root_reserve_generation_recorded_owned(
+    const salts_fs_root_writer_lease_t *lease,
+    const char *unique_highwater_staging_path,
+    const char *request_id, uint64_t *out_generation,
+    salts_fs_replace_state_t *state) {
+  if (!state || !out_generation) return -EINVAL;
+  *state = SALTS_FS_REPLACE_NOT_PUBLISHED;
+  *out_generation = 0u;
+  if (!lease || !lease->root || !lease->file ||
+      !unique_highwater_staging_path || !request_id)
+    return -EINVAL;
+#ifdef _WIN32
+  if (lease->process_id != GetCurrentProcessId()) return -EPERM;
+#else
+  if (lease->process_id != getpid()) return -EPERM;
+#endif
+  return salts_fs_root_reserve_generation_recorded(
+      lease->root, lease->highwater_path,
+      unique_highwater_staging_path, request_id,
+      out_generation, state);
 }
 
 int salts_fs_root_file_stat(
