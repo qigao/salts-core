@@ -1135,6 +1135,159 @@ static int test_generation_reservation_before_current(
 #endif
 }
 
+
+#if !defined(_WIN32) && defined(SALTS_FS_NATIVE_PUBLISH_TEST_FAULTS)
+/* M8: actual child death while replacing the mutable CURRENT pointer
+ * and the independent generation highwater. A parent can reconcile
+ * actual namespace content after SIGKILL, but CANNOT infer power-cut
+ * durability solely from visible bytes. */
+static int test_current_highwater_sigkill_reconcile(
+    salts_fs_root_t *root, unsigned long pid) {
+  static const char old_current[] = "CURRENT old A1 generation=1";
+  static const char next_current[] = "CURRENT new B2 generation=2";
+  static const char req1[] = "00112233445566778899aabbccddeeff";
+  static const char req2[] = "10112233445566778899aabbccddeeff";
+  for (int failpoint = 5; failpoint <= 8; ++failpoint) {
+    char current[96], first[96], second[96], highwater[96],
+         reserve_one[96], reserve_two[96], actual[128] = {0},
+         observed_request[33] = {0};
+    salts_fs_root_file_t *reader = NULL;
+    salts_fs_replace_state_t result = SALTS_FS_REPLACE_NOT_PUBLISHED;
+    salts_fs_stat_t statbuf = {0};
+    uint64_t generation = 0u;
+    int rc, status = 0, from_stage, from_current;
+    pid_t child;
+    if (snprintf(current, sizeof(current),
+                 "fs-m8-%lu-current-%d", pid, failpoint) <= 0 ||
+        snprintf(first, sizeof(first),
+                 "fs-m8-%lu-first-%d", pid, failpoint) <= 0 ||
+        snprintf(second, sizeof(second),
+                 "fs-m8-%lu-second-%d", pid, failpoint) <= 0 ||
+        snprintf(highwater, sizeof(highwater),
+                 "fs-m8-%lu-highwater-%d", pid, failpoint) <= 0 ||
+        snprintf(reserve_one, sizeof(reserve_one),
+                 "fs-m8-%lu-reserve1-%d", pid, failpoint) <= 0 ||
+        snprintf(reserve_two, sizeof(reserve_two),
+                 "fs-m8-%lu-reserve2-%d", pid, failpoint) <= 0)
+      return 801;
+
+    /* The old pointer is durably published before the child starts. */
+    if (stage_revision_file(root, first, old_current,
+                            sizeof(old_current)-1u) != 0 ||
+        salts_fs_root_replace_file_durable(
+            root, first, current, &result) != 0 ||
+        result != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+      return 802;
+    if (stage_revision_file(root, second, next_current,
+                            sizeof(next_current)-1u) != 0)
+      return 803;
+    child = fork();
+    if (child < 0) return 804;
+    if (child == 0) {
+      if (salts_fs_test_set_publish_fail_stage(-failpoint) != 0)
+        _exit(241);
+      (void)salts_fs_root_replace_file_durable(
+          root, second, current, &result);
+      _exit(242);
+    }
+    if (waitpid(child, &status, 0) != child ||
+        !WIFSIGNALED(status) || WTERMSIG(status) != SIGKILL)
+      return 805;
+    from_stage = salts_fs_root_stat(root, second, &statbuf);
+    from_current = salts_fs_root_stat(root, current, &statbuf);
+    if (from_current != 0 || !statbuf.is_file)
+      return 806;
+    if (salts_fs_root_file_open(root, current, SALTS_FS_O_RDONLY,
+                                0, &reader) != 0 || !reader)
+      return 807;
+    const char *expected = failpoint <= 6 ? old_current : next_current;
+    const size_t expected_length = strlen(expected);
+    rc = salts_fs_root_file_read(reader, actual, expected_length);
+    if (salts_fs_root_file_close(reader) != 0 ||
+        rc != (int)expected_length ||
+        memcmp(actual, expected, expected_length) != 0)
+      return 808;
+    reader = NULL;
+    if (failpoint <= 6) {
+      if (from_stage != 0) return 809;
+      rc = salts_fs_root_replace_file_durable(
+          root, second, current, &result);
+      if (rc != 0 || result != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+        return 810;
+    } else {
+      if (from_stage != -ENOENT) return 811;
+      /* No safe replay after a namespace move, even though the
+       * original child died without returning a commit status. */
+      rc = salts_fs_root_replace_file_durable(
+          root, second, current, &result);
+      if (rc != -ENOENT ||
+          result != SALTS_FS_REPLACE_NOT_PUBLISHED)
+        return 812;
+    }
+    if (salts_fs_root_unlink(root, current) != 0)
+      return 813;
+
+    /* Now kill the generation reservation owner at the same four points.
+     * Before rename: highwater is still 1 and stage2 is retained.
+     * After rename: highwater may show 2, but the retry must reflush
+     * BOTH original parents and check the request ID before success. */
+    rc = salts_fs_root_reserve_generation(
+        root, highwater, reserve_one, req1, &generation, &result);
+    if (rc != 0 || generation != 1u ||
+        result != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+      return 814;
+    child = fork();
+    if (child < 0) return 815;
+    if (child == 0) {
+      if (salts_fs_test_set_publish_fail_stage(-failpoint) != 0)
+        _exit(241);
+      (void)salts_fs_root_reserve_generation(
+          root, highwater, reserve_two, req2, &generation, &result);
+      _exit(242);
+    }
+    if (waitpid(child, &status, 0) != child ||
+        !WIFSIGNALED(status) || WTERMSIG(status) != SIGKILL)
+      return 816;
+    rc = salts_fs_root_generation_read(
+        root, highwater, &generation, observed_request);
+    if (rc != 0 ||
+        generation != (failpoint <= 6 ? 1u : 2u) ||
+        strcmp(observed_request, failpoint <= 6 ? req1 : req2) != 0)
+      return 817;
+    const int reserve_stage_state =
+        salts_fs_root_stat(root, reserve_two, &statbuf);
+    if (failpoint <= 6) {
+      if (reserve_stage_state != 0) return 818;
+      /* The child never performed the rename. Reconcile the complete
+       * staged record, then finish precisely that committed replacement. */
+      rc = salts_fs_root_replace_file_durable(
+          root, reserve_two, highwater, &result);
+      if (rc != 0 || result != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+        return 819;
+    } else {
+      if (reserve_stage_state != -ENOENT) return 820;
+      /* Idempotent resubmission of the same latest request must perform
+       * real file and both-parent fsyncs BEFORE a durable-success reply. */
+      generation = 0u;
+      rc = salts_fs_root_reserve_generation(
+          root, highwater, reserve_two, req2, &generation, &result);
+      if (rc != 0 || result != SALTS_FS_REPLACE_PUBLISHED_DURABLE ||
+          generation != 2u)
+        return 821;
+    }
+    rc = salts_fs_root_generation_read(
+        root, highwater, &generation, observed_request);
+    if (rc != 0 || generation != 2u ||
+        strcmp(observed_request, req2) != 0)
+      return 822;
+    if (salts_fs_root_unlink(root, highwater) != 0)
+      return 823;
+  }
+  puts("Salts::FS true SIGKILL CURRENT+highwater replay: pre-move old, post-move unknown and resync PASS (not power loss)");
+  return 0;
+}
+#endif
+
 int main(int argc, char **argv) {
   char tmp[1024] = {0}, path[1400] = {0}, name[120] = {0};
   const char body[] = "salts core fs native\n";
@@ -1223,6 +1376,16 @@ int main(int argc, char **argv) {
       return gen_result;
     }
   }
+#if !defined(_WIN32) && defined(SALTS_FS_NATIVE_PUBLISH_TEST_FAULTS)
+  {
+    int recovery = test_current_highwater_sigkill_reconcile(root, pid);
+    if (recovery != 0) {
+      fprintf(stderr, "Salts::FS CURRENT/highwater SIGKILL replay FAIL: %d\n",
+              recovery);
+      return recovery;
+    }
+  }
+#endif
   if (salts_fs_root_close(root)) return 12;
   if (salts_fs_unlink(path)) return 13;
   puts("Salts::FS root ownership and path rejection PASS");

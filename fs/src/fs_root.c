@@ -1273,7 +1273,7 @@ static atomic_int salts_fs_test_publish_fail_stage = ATOMIC_VAR_INIT(0);
 int salts_fs_test_set_publish_fail_stage(int stage) {
   /* Positive 1..4 returns -EIO. Negative -1..-4 kills only the
    * test owner process with SIGKILL inside the real publish sequence. */
-  if (stage < -4 || stage > 4) return -EINVAL;
+  if (stage < -8 || stage > 8) return -EINVAL;
   atomic_store_explicit(
       &salts_fs_test_publish_fail_stage, stage, memory_order_release);
   return 0;
@@ -1447,6 +1447,9 @@ int salts_fs_root_replace_file_durable(
       staging_identity.st_nlink != 1) {
     rc = -EINVAL; goto done;
   }
+  /* Test-only CURRENT/highwater replace points 5..8; production has no
+   * failpoint and performs the exact original native syscall sequence. */
+  SALTS_FS_PUBLISH_TEST_FAIL_AT(5);
   for (;;) {
     if (fsync(staged_fd) == 0) break;
     if (errno != EINTR) { rc = -errno; goto done; }
@@ -1455,12 +1458,16 @@ int salts_fs_root_replace_file_durable(
   /* Single owner only. renameat atomically switches the directory name
    * without following an existing final symlink. A concurrent independent
    * writer of CURRENT would be last-writer-wins, NOT a CAS transaction. */
+  SALTS_FS_PUBLISH_TEST_FAIL_AT(6);
   if (renameat(
           stage_parent, stage_name,
           current_parent, current_name) != 0) {
     rc = -errno; goto done;
   }
   *state = SALTS_FS_REPLACE_DURABILITY_UNKNOWN;
+  /* An interrupted returned status cannot prove persistence just because
+   * the CURRENT/highwater namespace name has already moved. */
+  SALTS_FS_PUBLISH_TEST_FAIL_AT(7);
   {
     struct stat current_identity;
     if (fstatat(current_parent, current_name,
@@ -1482,6 +1489,7 @@ int salts_fs_root_replace_file_durable(
     if (fsync(current_parent) == 0) break;
     if (errno != EINTR) { rc = -errno; goto done; }
   }
+  SALTS_FS_PUBLISH_TEST_FAIL_AT(8);
   for (;;) {
     if (fsync(stage_parent) == 0) break;
     if (errno != EINTR) { rc = -errno; goto done; }
