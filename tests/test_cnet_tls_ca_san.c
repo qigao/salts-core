@@ -477,11 +477,12 @@ static int run_python_ssl_client(const char *port_path,
   const bool expect_idle_read_timeout = strcmp(outcome, "idle") == 0;
   const bool expect_orderly_close = strcmp(outcome, "close") == 0;
   const bool expect_local_peer_close = strcmp(outcome, "localclose") == 0;
+  const bool expect_final_send_close = strcmp(outcome, "sendclose") == 0;
   const bool expect_gated_receive = strcmp(outcome, "gated") == 0;
   const bool should_verify =
       strcmp(outcome, "accept") == 0 || expect_idle_read_timeout ||
       expect_orderly_close || expect_local_peer_close ||
-      expect_gated_receive;
+      expect_final_send_close || expect_gated_receive;
   cnet_client server = {0};
   cnet_listener listener = {0};
   cnet_tls_server tls_server = {0};
@@ -585,8 +586,12 @@ static int run_python_ssl_client(const char *port_path,
       REQUIRE(outgoing != NULL);
       *mem_buffer_data(outgoing) = 0x47u;
       mem_set_used(outgoing, 1u);
-      REQUIRE(cnet_send_buffer(
-          &server, probe.connection, outgoing) == SALTS_OK);
+      /* The retained FINAL send must use the same authenticated reciprocal
+       * shutdown as explicit cnet_close. Its public send-success callback
+       * proves data completion, NOT that TLS close_notify was exchanged. */
+      REQUIRE((expect_final_send_close
+                   ? cnet_send_buffer_and_close(&server, probe.connection, outgoing)
+                   : cnet_send_buffer(&server, probe.connection, outgoing)) == SALTS_OK);
       mem_buffer_release(outgoing);
       outgoing = NULL;
       response_sent = true;
@@ -619,16 +624,17 @@ static int run_python_ssl_client(const char *port_path,
     /* A successful app echo cannot substitute for reciprocal close_notify
      * or for exact NativeIO request retirement. */
     if (should_verify && !expect_orderly_close && !expect_local_peer_close &&
+        !expect_final_send_close &&
         response_sent && probe.sent_count) break;
     if (probe.terminal_count) break;
   }
 
   REQUIRE(accepted);
-  if (expect_orderly_close || expect_local_peer_close) {
-    /* Python ssl.unwrap() requires the native server's authenticated
-     * close_notify. It does not count TCP EOF as normal TLS shutdown.
-     * CNet must retire the NativeIO TLS_READ lease exactly once, including
-     * local-close vs peer-close_notify overlap and any queued cancellation. */
+  if (expect_orderly_close || expect_local_peer_close || expect_final_send_close) {
+    /* Python ssl.unwrap() requires a real authenticated reciprocal
+     * close_notify for both explicit cnet_close and retained final send.
+     * TCP EOF, SEND callback or local ciphertext flush are insufficient.
+     * Complete the NativeIO TLS_READ lease and publish exactly one CLOSED. */
     REQUIRE(!expect_local_peer_close || local_close_started);
     REQUIRE(armed && probe.connected_count == 1u);
     REQUIRE(probe.received_count == 1u && probe.received_byte == 0x46u);

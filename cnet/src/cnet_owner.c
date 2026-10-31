@@ -1681,6 +1681,14 @@ static int cnet_owner_tls_pump_impl(cnet_owner_impl *impl, cnet_owner_session *s
       if (status != SALTS_OK && status != SALTS_EALREADY) return status;
       session->close_requested = true;
       session->receive_demand = 0u;
+      /*
+       * A final retained send is an explicitly local-initiated TLS close,
+       * just like cnet_close(). Publishing SEND only proves our application
+       * ciphertext drained. It does not authenticate the peer's reciprocal
+       * close_notify. Reuse the one bounded shutdown-only NativeIO TLS_READ
+       * after the old application receive lease is cancelled.
+       */
+      session->tls_shutdown_wait_peer = true;
       status = cnet_owner_cancel_receive_requests(impl, session->handle);
       if (status != SALTS_OK) return status;
       status = cnet_owner_queue_state_event(impl, session->handle, CNET_EVENT_STATE_CLOSING,

@@ -108,13 +108,16 @@ def scenario(
     *, fragmented: bool = False, idle: bool = False,
     orderly_close: bool = False, gated: bool = False,
     coalesced: bool = False, local_close: bool = False,
+    send_close: bool = False,
 ) -> None:
-    if (idle or orderly_close or gated or coalesced or fragmented or local_close) and (
+    if (idle or orderly_close or gated or coalesced or fragmented or local_close or send_close) and (
         proto != "13" or case != "client" or
-        sum((idle, orderly_close, gated, coalesced, fragmented, local_close)) != 1
+        sum((idle, orderly_close, gated, coalesced, fragmented,
+             local_close, send_close)) != 1
     ):
         raise AssertionError("special TLS1.3 cases require distinct real client credentials")
     expected = (
+        "sendclose" if send_close else
         "localclose" if local_close else
         "gated" if gated else
         "close" if orderly_close else
@@ -124,6 +127,7 @@ def scenario(
     if fragmented and (proto != "13" or case != "client"):
         raise AssertionError("fragmented ciphertext gate is valid TLS1.3 only")
     suffix = (
+        "-sendclose" if send_close else
         "-localclose" if local_close else
         "-gated" if gated else
         "-close" if orderly_close else
@@ -222,10 +226,11 @@ def scenario(
                             peer.sendall(b"F")
                             phase = "authenticated-response"
                             response = peer.recv(1)
-                            if expected in ("accept", "close", "gated", "localclose"):
+                            if expected in ("accept", "close", "gated",
+                                            "localclose", "sendclose"):
                                 if response != b"G":
                                     raise AssertionError(f"valid mTLS app data missing: {response!r}")
-                                if orderly_close or local_close:
+                                if orderly_close or local_close or send_close:
                                     if local_close:
                                         # Deterministic admission ordering:
                                         # CNet must accept its own close
@@ -262,7 +267,8 @@ def scenario(
                             else:
                                 peer_rejected = True
             except (ssl.SSLError, ConnectionError, EOFError):
-                if expected in ("accept", "close", "gated", "localclose"):
+                if expected in ("accept", "close", "gated", "localclose",
+                                "sendclose"):
                     raise
                 if idle:
                     # Native's exact READ-stage timeout assertion below is
@@ -272,7 +278,8 @@ def scenario(
                     peer_rejected = True
         if expected == "reject" and not peer_rejected:
             raise AssertionError("invalid client was not rejected")
-        if expected in ("accept", "idle", "close", "gated", "localclose") and not peer_completed:
+        if expected in ("accept", "idle", "close", "gated",
+                        "localclose", "sendclose") and not peer_completed:
             raise AssertionError("authenticated peer did not reach required terminal")
     except (socket.timeout, TimeoutError) as exc:
         failure = f"deadline exceeded during {phase}: {type(exc).__name__}"
@@ -338,6 +345,13 @@ def main() -> int:
                 scenario(
                     args.binary, private, python_mtls, fixtures, "13", "client",
                     local_close=True,
+                )
+                # Final retained application send (not explicit cnet_close)
+                # must also complete a two-way TLS1.3 close_notify. Python's
+                # unwrap() rejects an early TCP teardown on Windows as well.
+                scenario(
+                    args.binary, private, python_mtls, fixtures, "13", "client",
+                    send_close=True,
                 )
                 # Before the immediate-send case, force the real encrypted
                 # ClientFinished+ApplicationData to arrive in a single
