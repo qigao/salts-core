@@ -2139,11 +2139,15 @@ int salts_fs_root_reserve_generation_recorded_owned(
 struct salts_fs_root_revision_pin_s {
   salts_fs_root_file_t *guard;
   salts_fs_root_file_t *revision;
+  bool observed;
 #ifdef _WIN32
   DWORD process_id;
   OVERLAPPED position;
+  FILE_STANDARD_INFO original_standard;
+  FILE_BASIC_INFO original_basic;
 #else
   pid_t process_id;
+  struct stat original_stat;
 #endif
 };
 
@@ -2300,6 +2304,79 @@ static int salts_fs_root_revision_check_regular(
 #endif
 }
 
+
+/* Capture the FIRST native observation from the exact opened file handle.
+ * Later checked-copy calls must compare every native high-resolution
+ * mutation signal they can inspect. This is evidence of observation
+ * stability, not resistance to a hostile process that can tamper with a
+ * published inode or spoof/write between checks. */
+static int salts_fs_root_revision_observe(
+    salts_fs_root_revision_pin_t *pin, bool first) {
+  if (!pin || !pin->revision) return -EINVAL;
+#ifdef _WIN32
+  FILE_STANDARD_INFO standard = {0};
+  FILE_BASIC_INFO basic = {0};
+  if (!GetFileInformationByHandleEx(pin->revision->handle,
+                                    FileStandardInfo,
+                                    &standard, sizeof(standard)) ||
+      !GetFileInformationByHandleEx(pin->revision->handle,
+                                    FileBasicInfo,
+                                    &basic, sizeof(basic)))
+    return salts_fs_root_win32_error(GetLastError());
+  if (standard.Directory || standard.NumberOfLinks != 1u ||
+      standard.EndOfFile.QuadPart < 0)
+    return -EAGAIN;
+  if (first) {
+    pin->original_standard = standard;
+    pin->original_basic = basic;
+  } else if (!pin->observed ||
+      standard.EndOfFile.QuadPart !=
+          pin->original_standard.EndOfFile.QuadPart ||
+      standard.NumberOfLinks !=
+          pin->original_standard.NumberOfLinks ||
+      basic.ChangeTime.QuadPart !=
+          pin->original_basic.ChangeTime.QuadPart ||
+      basic.LastWriteTime.QuadPart !=
+          pin->original_basic.LastWriteTime.QuadPart ||
+      basic.FileAttributes != pin->original_basic.FileAttributes) {
+    return -EAGAIN;
+  }
+#else
+  struct stat native;
+  if (fstat(pin->revision->fd, &native) != 0) return -errno;
+  if (!S_ISREG(native.st_mode) || native.st_nlink != 1 ||
+      native.st_size < 0)
+    return -EAGAIN;
+  if (first) {
+    pin->original_stat = native;
+  } else {
+    const struct stat *old = &pin->original_stat;
+    if (!pin->observed ||
+        native.st_dev != old->st_dev ||
+        native.st_ino != old->st_ino ||
+        native.st_mode != old->st_mode ||
+        native.st_nlink != old->st_nlink ||
+        native.st_size != old->st_size)
+      return -EAGAIN;
+#if defined(__APPLE__)
+    if (native.st_mtimespec.tv_sec != old->st_mtimespec.tv_sec ||
+        native.st_mtimespec.tv_nsec != old->st_mtimespec.tv_nsec ||
+        native.st_ctimespec.tv_sec != old->st_ctimespec.tv_sec ||
+        native.st_ctimespec.tv_nsec != old->st_ctimespec.tv_nsec)
+      return -EAGAIN;
+#else
+    if (native.st_mtim.tv_sec != old->st_mtim.tv_sec ||
+        native.st_mtim.tv_nsec != old->st_mtim.tv_nsec ||
+        native.st_ctim.tv_sec != old->st_ctim.tv_sec ||
+        native.st_ctim.tv_nsec != old->st_ctim.tv_nsec)
+      return -EAGAIN;
+#endif
+  }
+#endif
+  pin->observed = true;
+  return 0;
+}
+
 int salts_fs_root_revision_pin_open(
     const salts_fs_root_t *root, const char *revision_path,
     salts_fs_root_revision_pin_t **out_pin) {
@@ -2314,6 +2391,8 @@ int salts_fs_root_revision_pin_open(
       root, revision_path, SALTS_FS_O_RDONLY, 0, &pin->revision);
   if (rc == 0)
     rc = salts_fs_root_revision_check_regular(pin->revision);
+  if (rc == 0)
+    rc = salts_fs_root_revision_observe(pin, true);
   if (rc != 0) {
     (void)salts_fs_root_revision_guard_close(pin);
     return rc;
@@ -2331,6 +2410,94 @@ int salts_fs_root_revision_pin_read(
   if (pin->process_id != getpid()) return -EPERM;
 #endif
   return salts_fs_root_file_read(pin->revision, buffer, bytes);
+}
+
+
+int salts_fs_root_revision_pin_copy_checked(
+    salts_fs_root_revision_pin_t *pin,
+    char *buffer, size_t capacity, size_t *out_length) {
+  unsigned char verify[8192];
+  size_t length, copied = 0u;
+  int rc;
+  if (!out_length) return -EINVAL;
+  *out_length = 0u;
+  if (!pin || !pin->revision ||
+      (!buffer && capacity != 0u))
+    return -EINVAL;
+#ifdef _WIN32
+  if (pin->process_id != GetCurrentProcessId()) return -EPERM;
+  if (pin->original_standard.EndOfFile.QuadPart < 0)
+    return -EAGAIN;
+  {
+    const uint64_t extent =
+        (uint64_t)pin->original_standard.EndOfFile.QuadPart;
+    if (extent > (uint64_t)SIZE_MAX ||
+        extent > (uint64_t)capacity)
+      return -ERANGE;
+    length = (size_t)extent;
+  }
+#else
+  if (pin->process_id != getpid()) return -EPERM;
+  if (pin->original_stat.st_size < 0) return -EAGAIN;
+  {
+    const uint64_t extent = (uint64_t)pin->original_stat.st_size;
+    if (extent > (uint64_t)SIZE_MAX ||
+        extent > (uint64_t)capacity)
+      return -ERANGE;
+    length = (size_t)extent;
+  }
+#endif
+  /* Caller controls the entire bounded allocation. No extra mmap,
+   * heap buffer, filesystem clone or alternate file-decoding engine. */
+  rc = salts_fs_root_revision_observe(pin, false);
+  if (rc != 0) return rc;
+  if (salts_fs_root_file_seek(pin->revision, 0, SEEK_SET) != 0)
+    return -EIO;
+  while (copied < length) {
+    const size_t remaining = length - copied;
+    const size_t chunk = remaining > (size_t)INT_MAX
+        ? (size_t)INT_MAX : remaining;
+    const int n = salts_fs_root_file_read(
+        pin->revision, buffer + copied, chunk);
+    if (n <= 0) {
+      rc = n < 0 ? n : -EAGAIN;
+      goto rejected;
+    }
+    copied += (size_t)n;
+  }
+  /* The same handle is then read again, comparing each native chunk
+   * to the frozen caller bytes. An intervening writer that is observed
+   * by the double read or metadata checks rejects the whole snapshot. */
+  if (salts_fs_root_file_seek(pin->revision, 0, SEEK_SET) != 0) {
+    rc = -EIO;
+    goto rejected;
+  }
+  for (size_t pos = 0; pos < length; ) {
+    const size_t remaining = length - pos;
+    const size_t chunk = remaining > sizeof(verify)
+        ? sizeof(verify) : remaining;
+    const int n = salts_fs_root_file_read(
+        pin->revision, (char *)verify, chunk);
+    if (n <= 0) {
+      rc = n < 0 ? n : -EAGAIN;
+      goto rejected;
+    }
+    if (memcmp(verify, buffer + pos, (size_t)n) != 0) {
+      rc = -EAGAIN;
+      goto rejected;
+    }
+    pos += (size_t)n;
+  }
+  rc = salts_fs_root_revision_observe(pin, false);
+  if (rc != 0) goto rejected;
+  *out_length = length;
+  return 0;
+
+rejected:
+  /* The caller MUST NOT observe a partially accepted encoded image
+   * on failure. Clear only those bytes that were actually copied. */
+  if (copied != 0u) memset(buffer, 0, copied);
+  return rc;
 }
 
 int64_t salts_fs_root_revision_pin_seek(
