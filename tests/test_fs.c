@@ -1470,6 +1470,18 @@ static int test_generation_historical_journal(
         state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
       return 925;
   }
+#else
+  /* Installed C11 FS SDK uses the SAME production API without test-only
+   * SIGKILL hooks. It must still qualify generations 4/5/6 and historical
+   * replays instead of skipping journal creation and failing at cleanup. */
+  for (int i = 3; i < 6; ++i) {
+    rc = salts_fs_root_reserve_generation_recorded(
+        root, highwater, stages[i], ids[i], &generation, &state);
+    if (rc != 0 || generation != (uint64_t)i+1u ||
+        state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+      return 936;
+  }
+#endif /* SALTS_FS_NATIVE_PUBLISH_TEST_FAULTS */
   /* The historical gen-4 and gen-1 records remain addressable. */
   rc = salts_fs_root_reserve_generation_recorded(
       root, highwater, stages[6], ids[6], &generation, &state);
@@ -1513,7 +1525,6 @@ static int test_generation_historical_journal(
     if (rc != 0 || highest != 7u)
       return 933;
   }
-#endif /* SALTS_FS_NATIVE_PUBLISH_TEST_FAULTS */
   for (int i = 0; i < 7; ++i) {
     if (snprintf(request_path, sizeof(request_path),
                  "%s.r.%s", highwater, ids[i]) <= 0 ||
