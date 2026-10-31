@@ -480,6 +480,82 @@ static int test_immutable_revision_file(salts_fs_root_t *root,
 #endif
 }
 
+
+#if !defined(_WIN32) && defined(SALTS_FS_NATIVE_PUBLISH_TEST_FAULTS)
+/* Test-only symbol from the SAME original FS shared library, compiled only
+ * for BUILD_TESTING on POSIX. No installed public header or second engine. */
+extern int salts_fs_test_set_publish_fail_stage(int stage);
+
+static int test_durable_file_publish_failpoints(
+    salts_fs_root_t *root, unsigned long pid) {
+  static const char original[] = "immutable-commit-revision";
+  for (int step = 1; step <= 4; ++step) {
+    char stage_path[96], revision_path[96];
+    salts_fs_replace_state_t state = SALTS_FS_REPLACE_PUBLISHED_DURABLE;
+    salts_fs_stat_t staged = {0}, published = {0};
+    salts_fs_root_file_t *reader = NULL;
+    char actual[sizeof(original)] = {0};
+    int rc, src_stat, dst_stat;
+    if (snprintf(stage_path, sizeof(stage_path),
+                 "fs-fault-%lu-stage-%d", pid, step) <= 0 ||
+        snprintf(revision_path, sizeof(revision_path),
+                 "fs-fault-%lu-revision-%d", pid, step) <= 0)
+      return 401;
+    if (stage_revision_file(root, stage_path,
+                            original, sizeof(original)-1u) != 0)
+      return 402;
+    if (salts_fs_test_set_publish_fail_stage(step) != 0)
+      return 403;
+    rc = salts_fs_root_publish_file_noreplace(
+        root, stage_path, revision_path, &state);
+    if (salts_fs_test_set_publish_fail_stage(0) != 0)
+      return 404;
+    if (rc != -EIO)
+      return 405;
+    if (state != (step < 3 ? SALTS_FS_REPLACE_NOT_PUBLISHED :
+                              SALTS_FS_REPLACE_DURABILITY_UNKNOWN))
+      return 406;
+    src_stat = salts_fs_root_stat(root, stage_path, &staged);
+    dst_stat = salts_fs_root_stat(root, revision_path, &published);
+    if (step < 3) {
+      /* Only a confirmed non-publication permits retry. */
+      if (src_stat != 0 || dst_stat != -ENOENT)
+        return 407;
+      state = SALTS_FS_REPLACE_DURABILITY_UNKNOWN;
+      rc = salts_fs_root_publish_file_noreplace(
+          root, stage_path, revision_path, &state);
+      if (rc != 0 || state != SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+        return 408;
+    } else {
+      /* Post-rename error MUST NOT masquerade as NOT_PUBLISHED.
+       * Reconcile by named destination bytes, never retry the old stage. */
+      if (src_stat != -ENOENT || dst_stat != 0 ||
+          !published.is_file ||
+          published.size != sizeof(original)-1u)
+        return 409;
+      state = SALTS_FS_REPLACE_DURABILITY_UNKNOWN;
+      rc = salts_fs_root_publish_file_noreplace(
+          root, stage_path, revision_path, &state);
+      if (rc != -ENOENT || state != SALTS_FS_REPLACE_NOT_PUBLISHED)
+        return 410;
+    }
+    if (salts_fs_root_file_open(root, revision_path, SALTS_FS_O_RDONLY,
+                                0, &reader) != 0 || !reader)
+      return 411;
+    rc = salts_fs_root_file_read(
+        reader, actual, sizeof(original)-1u);
+    if (salts_fs_root_file_close(reader) != 0 ||
+        rc != (int)(sizeof(original)-1u) ||
+        memcmp(actual, original, sizeof(original)-1u) != 0)
+      return 412;
+    if (salts_fs_root_unlink(root, revision_path) != 0)
+      return 413;
+  }
+  puts("Salts::FS POSIX publish failpoints: NOT_PUBLISHED vs DURABILITY_UNKNOWN/reconcile PASS");
+  return 0;
+}
+#endif
+
 int main(int argc, char **argv) {
   char tmp[1024] = {0}, path[1400] = {0}, name[120] = {0};
   const char body[] = "salts core fs native\n";
@@ -530,6 +606,16 @@ int main(int argc, char **argv) {
       return pub_result;
     }
   }
+#if !defined(_WIN32) && defined(SALTS_FS_NATIVE_PUBLISH_TEST_FAULTS)
+  {
+    int fault_result = test_durable_file_publish_failpoints(root, pid);
+    if (fault_result != 0) {
+      fprintf(stderr, "Salts::FS publisher failure-state FAIL: %d\n",
+              fault_result);
+      return fault_result;
+    }
+  }
+#endif
   if (salts_fs_root_close(root)) return 12;
   if (salts_fs_unlink(path)) return 13;
   puts("Salts::FS root ownership and path rejection PASS");

@@ -26,8 +26,18 @@ install(TARGETS saltscore_fs EXPORT SaltsCoreTargets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(FILES include/salts/fs.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/salts)
 if(BUILD_TESTING)
+  # Compile deterministic failure hooks only into the original native FS
+  # test build; the production SDK has no hook or environment switch.
+  if(UNIX)
+    target_compile_definitions(saltscore_fs PRIVATE
+      SALTS_FS_NATIVE_PUBLISH_TEST_FAULTS=1)
+  endif()
   add_executable(saltscore_fs_test ${PROJECT_SOURCE_DIR}/tests/test_fs.c)
   target_compile_features(saltscore_fs_test PRIVATE c_std_11)
+  if(UNIX)
+    target_compile_definitions(saltscore_fs_test PRIVATE
+      SALTS_FS_NATIVE_PUBLISH_TEST_FAULTS=1)
+  endif()
   set_target_properties(saltscore_fs_test PROPERTIES
     C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
   target_link_libraries(saltscore_fs_test PRIVATE Salts::FS)
