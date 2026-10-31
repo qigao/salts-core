@@ -1496,6 +1496,213 @@ done:
 #endif
 }
 
+
+/* Fixed small high-water record: no high-level parser or alternate DB.
+ * String length is constant so malformed/truncated input fails closed. */
+#define SALTS_FS_GEN_RECORD_BYTES 63u
+static int salts_fs_gen_is_hex32(const char *value) {
+  size_t i;
+  if (!value) return 0;
+  for (i = 0; i < 32u; ++i) {
+    const char c = value[i];
+    if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
+      return 0;
+  }
+  return value[32] == '\0';
+}
+
+int salts_fs_root_generation_read(
+    const salts_fs_root_t *root, const char *highwater_path,
+    uint64_t *out_generation, char out_request_id[33]) {
+  salts_fs_root_file_t *reader = NULL;
+  salts_fs_stat_t info = {0};
+  char record[SALTS_FS_GEN_RECORD_BYTES + 1u] = {0};
+  uint64_t generation = 0u;
+  int rc;
+  size_t i;
+  if (!out_generation || !out_request_id) return -EINVAL;
+  *out_generation = 0u;
+  out_request_id[0] = '\0';
+  if (!root || !highwater_path) return -EINVAL;
+  rc = salts_fs_root_file_open(
+      root, highwater_path, SALTS_FS_O_RDONLY, 0, &reader);
+  if (rc != 0) return rc;
+  rc = salts_fs_root_file_stat(reader, &info);
+  if (rc == 0 && (!info.is_file ||
+                   info.size != SALTS_FS_GEN_RECORD_BYTES))
+    rc = -EINVAL;
+  if (rc == 0) {
+    const int n = salts_fs_root_file_read(
+        reader, record, SALTS_FS_GEN_RECORD_BYTES);
+    if (n < 0) rc = n;
+    else if ((size_t)n != SALTS_FS_GEN_RECORD_BYTES) rc = -EINVAL;
+  }
+  if (rc == 0) {
+    if (memcmp(record, "SFS-GEN1 ", 9u) != 0 ||
+        record[29] != ' ' || record[62] != '\n')
+      rc = -EINVAL;
+    for (i = 9u; rc == 0 && i < 29u; ++i) {
+      const unsigned char d = (unsigned char)record[i];
+      if (d < (unsigned char)'0' || d > (unsigned char)'9') {
+        rc = -EINVAL;
+        break;
+      }
+      const uint64_t digit = (uint64_t)(d - (unsigned char)'0');
+      if (generation > (UINT64_MAX - digit) / 10u) {
+        rc = -EINVAL;
+        break;
+      }
+      generation = generation * 10u + digit;
+    }
+    if (rc == 0 && generation == 0u) rc = -EINVAL;
+    if (rc == 0) {
+      char request_id[33];
+      memcpy(request_id, record + 30u, 32u);
+      request_id[32] = '\0';
+      if (!salts_fs_gen_is_hex32(request_id)) rc = -EINVAL;
+      else {
+        /* No state escapes on a failed close. */
+        const int close_rc = salts_fs_root_file_close(reader);
+        reader = NULL;
+        if (close_rc != 0) return close_rc;
+        *out_generation = generation;
+        memcpy(out_request_id, request_id, sizeof(request_id));
+        return 0;
+      }
+    }
+  }
+  if (reader) (void)salts_fs_root_file_close(reader);
+  return rc;
+}
+
+#ifndef _WIN32
+/* A visible highwater record may be the result of a previous post-rename
+ * DURABILITY_UNKNOWN. A matching request ID is NOT a successful durable
+ * retry until we flush the retained file and BOTH original parent dirs.
+ * This stays inside the existing trusted single-writer FS owner. */
+static int salts_fs_gen_complete_visible_reservation(
+    const salts_fs_root_t *root, const char *highwater_path,
+    const char *unique_staging_path) {
+  salts_fs_root_file_t *file = NULL;
+  int current_parent = -1, stage_parent = -1;
+  char current_name[SALTS_FS_ROOT_COMPONENT_MAX];
+  char stage_name[SALTS_FS_ROOT_COMPONENT_MAX];
+  int rc = salts_fs_root_file_open(
+      root, highwater_path, SALTS_FS_O_RDONLY, 0, &file);
+  if (rc != 0) return rc;
+  rc = salts_fs_root_file_fsync(file);
+  {
+    const int close_rc = salts_fs_root_file_close(file);
+    if (rc == 0) rc = close_rc;
+  }
+  if (rc != 0) return rc;
+  rc = salts_fs_root_open_parent_posix(
+      root, highwater_path, &current_parent, current_name);
+  if (rc == 0)
+    rc = salts_fs_root_open_parent_posix(
+        root, unique_staging_path, &stage_parent, stage_name);
+  if (rc == 0) {
+    for (;;) {
+      if (fsync(current_parent) == 0) break;
+      if (errno != EINTR) { rc = -errno; break; }
+    }
+  }
+  if (rc == 0) {
+    for (;;) {
+      if (fsync(stage_parent) == 0) break;
+      if (errno != EINTR) { rc = -errno; break; }
+    }
+  }
+  if (current_parent >= 0) (void)close(current_parent);
+  if (stage_parent >= 0) (void)close(stage_parent);
+  return rc;
+}
+#endif
+
+int salts_fs_root_reserve_generation(
+    const salts_fs_root_t *root,
+    const char *highwater_path, const char *unique_staging_path,
+    const char *request_id,
+    uint64_t *out_generation, salts_fs_replace_state_t *state) {
+  char previous_request[33] = {0};
+  uint64_t previous = 0u, next;
+  salts_fs_root_file_t *stage = NULL;
+  char record[SALTS_FS_GEN_RECORD_BYTES + 1u];
+  int rc, count;
+  if (!state || !out_generation) return -EINVAL;
+  *state = SALTS_FS_REPLACE_NOT_PUBLISHED;
+  *out_generation = 0u;
+  if (!root || !highwater_path || !unique_staging_path ||
+      strcmp(highwater_path, unique_staging_path) == 0 ||
+      !salts_fs_gen_is_hex32(request_id))
+    return -EINVAL;
+#ifdef _WIN32
+  (void)previous_request;
+  (void)previous;
+  (void)next;
+  (void)stage;
+  (void)record;
+  (void)count;
+  return -ENOSYS;
+#else
+  rc = salts_fs_root_generation_read(
+      root, highwater_path, &previous, previous_request);
+  if (rc == -ENOENT) previous = 0u;
+  else if (rc != 0) return rc;
+  if (previous != 0u &&
+      memcmp(previous_request, request_id, 32u) == 0) {
+    /* A prior call can have returned DURABILITY_UNKNOWN after rename.
+     * Merely finding the same bytes is NOT evidence of durability.
+     * Reflush the retained highwater and BOTH parent directories, then
+     * recheck the exact request and generation before declaring success. */
+    uint64_t rechecked = 0u;
+    char rechecked_request[33] = {0};
+    *state = SALTS_FS_REPLACE_DURABILITY_UNKNOWN;
+    rc = salts_fs_gen_complete_visible_reservation(
+        root, highwater_path, unique_staging_path);
+    if (rc != 0) return rc;
+    rc = salts_fs_root_generation_read(
+        root, highwater_path, &rechecked, rechecked_request);
+    if (rc != 0) return rc;
+    if (rechecked != previous ||
+        memcmp(rechecked_request, request_id, 32u) != 0)
+      return -EAGAIN;
+    *out_generation = previous;
+    *state = SALTS_FS_REPLACE_PUBLISHED_DURABLE;
+    return 0;
+  }
+  if (previous == UINT64_MAX) return -EOVERFLOW;
+  next = previous + 1u;
+  count = snprintf(record, sizeof(record),
+                   "SFS-GEN1 %020llu %s\n",
+                   (unsigned long long)next, request_id);
+  if (count != (int)SALTS_FS_GEN_RECORD_BYTES) return -EOVERFLOW;
+
+  rc = salts_fs_root_file_open(root, unique_staging_path,
+      SALTS_FS_O_WRONLY | SALTS_FS_O_CREAT | SALTS_FS_ROOT_O_EXCL,
+      0600, &stage);
+  if (rc != 0) return rc;
+  {
+    const int written = salts_fs_root_file_write(
+        stage, record, SALTS_FS_GEN_RECORD_BYTES);
+    if (written < 0) rc = written;
+    else if (written != (int)SALTS_FS_GEN_RECORD_BYTES) rc = -EIO;
+    if (rc == 0) rc = salts_fs_root_file_fsync(stage);
+  }
+  {
+    const int close_rc = salts_fs_root_file_close(stage);
+    stage = NULL;
+    if (rc == 0) rc = close_rc;
+  }
+  if (rc != 0) return rc;
+  rc = salts_fs_root_replace_file_durable(
+      root, unique_staging_path, highwater_path, state);
+  if (rc == 0 && *state == SALTS_FS_REPLACE_PUBLISHED_DURABLE)
+    *out_generation = next;
+  return rc;
+#endif
+}
+
 int salts_fs_root_file_stat(
     const salts_fs_root_file_t *file, salts_fs_stat_t *out_stat) {
   if (!file || !out_stat)

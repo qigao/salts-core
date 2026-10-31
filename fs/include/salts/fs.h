@@ -652,6 +652,54 @@ int salts_fs_root_replace_file_durable(
     const salts_fs_root_t *root, const char *staging_path,
     const char *current_path, salts_fs_replace_state_t *state);
 
+/* One trusted writer's crash-stable generation HIGH-WATER in an already
+ * admitted root. Record format is exactly:
+ * "SFS-GEN1 " + 20 decimal digits + " " + 32 lowercase hex request-id + "\n".
+ * Generation 0 means no record yet; zero is never published/reserved.
+ *
+ * Each (publisher, asset) MUST have a distinct stable highwater pathname.
+ * The publisher itself must arbitrate single-writer ownership, keep this
+ * record forever (including after immutable content GC), preserve the root,
+ * and never submit an old request-id as a NEW request. This is NOT a CAS,
+ * global actor, authenticated ID, or a replay journal for arbitrary old IDs.
+ * Only the CURRENT highwater's request ID is idempotently recognized.
+ *
+ * read(): -ENOENT if highwater does not exist; outputs cleared on failure,
+ * -EINVAL for malformed/torn/unsafe records, no partial generation accepted.
+ *
+ * reserve(): validates the token and reads CURRENT highwater, allocates
+ * N+1 (rejects overflow), then creates a UNIQUE staging file O_EXCL,
+ * writes+fsyncs its exact record, and uses the existing root-relative
+ * durable file replace. A repeated latest request first reflushes the
+ * highwater file and BOTH original source/destination parents, then checks
+ * the exact same generation/ID again. Visible bytes after an UNKNOWN
+ * return ALONE never authorize a durable-success claim. Reconciliation
+ * must reuse the original staging path, including its parent directory.
+ * A successful return reserves N+1 BEFORE the caller publishes immutable
+ * content, even if content later aborts.
+ * On a failed staging write the source name may remain and MUST be
+ * reconciled/cleaned by the single owner, not silently discarded.
+ * A post-rename failure is DURABILITY_UNKNOWN: reread the highwater
+ * and reconcile request ID/generation; NEVER guess or blindly retry.
+ * request_id: exactly 32 lowercase ASCII hex bytes plus trailing NUL.
+ * stage and highwater must be distinct root-relative file paths.
+ *
+ * Windows: reserve() is explicitly -ENOSYS/NOT_PUBLISHED until
+ * root-relative durable replacement is qualified; read() is supported
+ * for inspection only. POSIX local-volume durable publication follows
+ * the existing file+both-parent fsync contract. Physical power-loss,
+ * concurrent external writers and arbitrary old-request idempotency are
+ * separate gates.
+ */
+int salts_fs_root_generation_read(
+    const salts_fs_root_t *root, const char *highwater_path,
+    uint64_t *out_generation, char out_request_id[33]);
+int salts_fs_root_reserve_generation(
+    const salts_fs_root_t *root,
+    const char *highwater_path, const char *unique_staging_path,
+    const char *request_id,
+    uint64_t *out_generation, salts_fs_replace_state_t *state);
+
 /*
  * stat is secure no-follow in capability v1: a final symlink/reparse point
  * returns -ELOOP. lstat reports the final link itself. Intermediate links are
