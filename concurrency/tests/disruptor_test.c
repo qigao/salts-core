@@ -1,7 +1,7 @@
-#include <salts/disruptor.h>
+#include <disruptor.h>
 #include "tinytest.h"
-#include <salts/thread.h>
-#include <salts/clock.h>
+#include <thread.h>
+#include <clock.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>

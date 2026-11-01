@@ -1,4 +1,4 @@
-#include <salts/thread.h>
+#include <thread.h>
 
 #ifdef _WIN32
   #include <windows.h>

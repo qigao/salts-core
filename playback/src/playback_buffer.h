@@ -1,7 +1,7 @@
 #ifndef SALTS_PLAYBACK_BUFFER_H
 #define SALTS_PLAYBACK_BUFFER_H
 
-#include <salts/spsc_ring.h>
+#include <spsc_ring.h>
 
 #include <stddef.h>
 #include <stdint.h>

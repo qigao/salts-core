@@ -1,7 +1,7 @@
 #ifndef SALTS_NATIVE_IO_INTERNAL_ACCEPT_H
 #define SALTS_NATIVE_IO_INTERNAL_ACCEPT_H
 
-#include <salts/native_io.h>
+#include <native_io.h>
 
 #include <stdint.h>
 

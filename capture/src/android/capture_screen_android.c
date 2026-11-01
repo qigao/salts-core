@@ -14,8 +14,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <salts/thread.h>
-#include <salts_capture.h>
+#include <thread.h>
+#include <capture.h>
 #include <tlog.h>
 
 /* =============================================================================

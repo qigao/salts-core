@@ -13,7 +13,7 @@
 #include <crypto/tls_ext.h>
 #include <crypto/tls_auth.h>
 #include <crypto/tls_peer.h>
-#include <salts/error_codes.h>
+#include <error_codes.h>
 
 #include <stdatomic.h>
 #include <stdbool.h>

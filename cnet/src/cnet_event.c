@@ -1,7 +1,7 @@
 #include "cnet_event.h"
 
 #include <cnet/cnet.h>
-#include <salts/disruptor.h>
+#include <disruptor.h>
 #include <cmeta_buffer.h>
 
 #include <limits.h>

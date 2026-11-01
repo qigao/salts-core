@@ -4,7 +4,7 @@
  * Uses ScreenCaptureKit for display capture. ScreenCaptureKit is the supported
  * replacement for CGDisplayStream on current macOS SDKs.
  */
-#import "salts_capture.h"
+#import "capture.h"
 
 #if defined(__APPLE__) && defined(__MACH__)
 

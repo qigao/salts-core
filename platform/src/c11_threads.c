@@ -1,6 +1,6 @@
 #define SALTS_C11_THREADS_EXPERIMENTAL 1
-#include <salts_core/c11/threads.h>
-#include <salts/clock.h>
+#include <c11/threads.h>
+#include <clock.h>
 #include <stdint.h>
 #include <stdlib.h>
 

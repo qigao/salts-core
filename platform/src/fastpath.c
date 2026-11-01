@@ -1,4 +1,4 @@
-#include <salts/fastpath.h>
+#include <fastpath.h>
 
 bool salts_fast_key_read(const salts_fast_key_state *key) {
     return salts_fast_branch(key);

@@ -1,6 +1,6 @@
-#include <salts/native_io_sharded.h>
+#include <native_io_sharded.h>
 
-#include <salts/thread.h>
+#include <thread.h>
 #include <coro_executor.h>
 
 #include <limits.h>

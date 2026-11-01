@@ -1,7 +1,7 @@
 SaltsSerial examples
 ====================
 
-These examples use the public SaltsSerial ABI from `salts_serial.h`.
+These examples use the public SaltsSerial ABI from `serial.h`.
 They do not include `libserialport.h` or call `sp_*` APIs directly.
 The examples are regular executables; they are not registered as CTest cases
 because most of them require real serial hardware or a configured virtual port.

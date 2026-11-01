@@ -4,7 +4,7 @@
  * Never ship this as part of the SDK.
  */
 #include <cmeta_buffer.h>
-#include <salts/thread.h>
+#include <thread.h>
 
 #if defined(_WIN32)
 #  define OWNER_PROBE_API __declspec(dllexport)

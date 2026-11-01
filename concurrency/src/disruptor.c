@@ -1,5 +1,5 @@
-#include <salts/disruptor.h>
-#include <salts/thread.h>
+#include <disruptor.h>
+#include <thread.h>
 
 #include <limits.h>
 #include <stdatomic.h>

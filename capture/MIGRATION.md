@@ -24,7 +24,7 @@ target_link_libraries(application PRIVATE Salts::Capture)
 Core and Platform provide the existing native logging/thread primitives. No
 CMeta reflection runtime, CFlow runtime, or alternative Capture provider is
 introduced. The Android implementation's `cmeta_mutex_*` and `cmeta_cond_*`
-spellings are the retained native functions in `<salts/thread.h>`, owned by
+spellings are the retained native functions in `<thread.h>`, owned by
 `Salts::Platform`; their historical names are not a CMeta runtime dependency.
 
 The original 26 common public symbols and three Android extension symbols keep

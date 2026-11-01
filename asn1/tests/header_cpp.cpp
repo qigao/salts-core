@@ -1,5 +1,5 @@
-#include <salts/asn1.h>
-#include <salts/asn1_value.h>
+#include <asn1.h>
+#include <asn1_value.h>
 #include "test.h"
 #include <cstddef>
 #include <cstdint>

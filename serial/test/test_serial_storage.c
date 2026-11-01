@@ -1,4 +1,4 @@
-#include "salts_serial_internal.h"
+#include "serial_internal.h"
 #include <tinytest.h>
 
 static size_t clone_call;

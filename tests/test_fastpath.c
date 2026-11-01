@@ -1,5 +1,5 @@
-#include <salts/fastpath.h>
-#include <salts/error_codes.h>
+#include <fastpath.h>
+#include <error_codes.h>
 #include <stdio.h>
 
 int main(void) {

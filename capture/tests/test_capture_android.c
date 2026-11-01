@@ -1,5 +1,5 @@
-#include <salts_capture.h>
-#include <salts_capture_android.h>
+#include <capture.h>
+#include <capture_android.h>
 #include <tinytest.h>
 
 suite("capture Android MediaProjection surface") {

@@ -112,8 +112,8 @@ def main() -> int:
             THREAD_API,
             "frozen 3-function cmeta_thread public inventory changed")
 
-    header = (ROOT / "platform/include/salts/platform.h").read_text()
-    thread_header = (ROOT / "platform/include/salts/thread.h").read_text()
+    header = (ROOT / "platform/include/platform.h").read_text()
+    thread_header = (ROOT / "platform/include/thread.h").read_text()
     source = (ROOT / "platform/src/platform.c").read_text()
     thread_source = (ROOT / "platform/src/thread_policy.c").read_text()
     cmake = (ROOT / "platform/CMakeLists.txt").read_text()
@@ -137,8 +137,8 @@ def main() -> int:
             "restored Platform header reintroduced DLL decoration")
     for token in ("SALTS_WIN32", "_SSIZE_T_DEFINED", "UNUSED", "likely", "unlikely"):
         require(token in header, "restored Platform public macro missing: " + token)
-    require("#include <salts/clock.h>" in header and
-            "#include <salts/random.h>" in header,
+    require("#include <clock.h>" in header and
+            "#include <random.h>" in header,
             "restored Platform umbrella clock/random includes are incomplete")
     require("TLOG_" not in source and '#include "tlog.h"' not in source,
             "Platform reintroduced reverse TLog/Core dependency")

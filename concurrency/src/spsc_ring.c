@@ -1,4 +1,4 @@
-#include <salts/spsc_ring.h>
+#include <spsc_ring.h>
 
 #include <assert.h>
 

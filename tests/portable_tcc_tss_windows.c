@@ -2,7 +2,7 @@
 #define WIN32_LEAN_AND_MEAN 1
 #endif
 #include <windows.h>
-#include <salts_core/platform_thread.h>
+#include <platform_thread.h>
 #include <stdint.h>
 #include <stdio.h>
 

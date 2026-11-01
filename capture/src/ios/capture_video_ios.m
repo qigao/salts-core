@@ -8,7 +8,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <Foundation/Foundation.h>
 #import "capture_ios_guard.h"
-#include "salts_capture.h"
+#include "capture.h"
 #include "capture_video_ios_backend.h"
 #include <limits.h>
 #include <stdlib.h>

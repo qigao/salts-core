@@ -41,7 +41,7 @@ existing module owns its own source and header tree:
   duplicate providers or old module aliases.
 
 The **installed** C11/C++17 SDK maintains documented include spellings
-(`<base64_utils.h>`, `<salts/random.h>`, `<cnet/cnet.h>`) and
+(`<base64_utils.h>`, `<random.h>`, `<cnet/cnet.h>`) and
 `Salts::*` target identities; flat installed includes do **not** imply
 flat root source ownership. `tools/check_module_layout.py` gates this
 invariant on Linux, Windows and macOS.
@@ -130,5 +130,6 @@ OS threads and verifies that each sees only its own scheduler, then restores
 an empty current-scheduler state on thread exit.
 
 The migration integration must pass the same full native graph before a
-0.1.001 source release is published. SIMD execution is owned by SaltsUtils and
+The 0.1.002 source release carries the flattened public headers. SIMD execution
+is owned by SaltsUtils and
 is no longer built or exported by SaltsCore.

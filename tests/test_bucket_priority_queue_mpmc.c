@@ -1,6 +1,6 @@
 #include "bucket_priority_queue_mpmc.h"
 #include "tinytest.h"
-#include <salts/thread.h>
+#include <thread.h>
 #include <stdatomic.h>
 #include <stdlib.h>
 

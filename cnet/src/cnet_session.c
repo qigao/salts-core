@@ -1,6 +1,6 @@
 #include "cnet_session.h"
 
-#include <salts/thread.h>
+#include <thread.h>
 
 #include <limits.h>
 #include <stdlib.h>

@@ -1,5 +1,5 @@
 #include "tinytest.hpp"
-#include <salts/error_codes.h>
+#include <error_codes.h>
 #include "cmeta_uuid.h"
 
 static_assert(sizeof(Salts::UUID) == SALTS_UUID_SIZE,

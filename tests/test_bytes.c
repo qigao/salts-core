@@ -1,4 +1,4 @@
-#include <salts_core/bytes.h>
+#include <bytes.h>
 
 #include <stdint.h>
 #define CHECK(condition) do { if (!(condition)) return __LINE__; } while (0)

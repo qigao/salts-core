@@ -9,8 +9,8 @@
 #include "cnet_test_named_pipe.h"
 #include "cnet_test_pipe.h"
 #include "tinytest.h"
-#include <salts/clock.h>
-#include <salts/thread.h>
+#include <clock.h>
+#include <thread.h>
 #include <cmeta_buffer.h>
 
 #include <limits.h>

@@ -2,7 +2,7 @@
 #define SALTS_ERROR_H
 
 #include "cmeta_api.h"
-#include <salts/error_codes.h>
+#include <error_codes.h>
 #include <errno.h>
 #include <stdbool.h>
 #include <stddef.h>

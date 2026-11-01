@@ -1,6 +1,6 @@
 #include "cmeta_uuid.h"
-#include <salts/random.h>
-#include <salts/clock.h>
+#include <random.h>
+#include <clock.h>
 
 #include <string.h>
 

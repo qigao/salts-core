@@ -1,5 +1,5 @@
 #include "cnet_transport.h"
-#include <salts/native_ipc.h>
+#include <native_ipc.h>
 #include <string.h>
 #include <stdlib.h>
 

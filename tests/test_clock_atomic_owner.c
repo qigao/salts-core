@@ -1,8 +1,8 @@
 /* Real production clock owner: concurrent first-use frequency publication.
  * All clients use the one Platform Atomic ABI, never a volatile race.
  */
-#include <salts/clock.h>
-#include <salts_core/platform_thread.h>
+#include <clock.h>
+#include <platform_thread.h>
 #include <stdint.h>
 #include <stdio.h>
 

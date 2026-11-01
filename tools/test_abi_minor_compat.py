@@ -13,7 +13,7 @@ def probe(cmake: str, data: str, provider: str, consumer: str,
     directory = root / (provider.replace(".", "_") + "_" + consumer.replace(".", "_"))
     directory.mkdir()
     metadata = directory / "SaltsCoreConfigVersion.cmake"
-    metadata.write_text(data.replace("0.1.1", provider), encoding="utf-8")
+    metadata.write_text(data.replace("0.1.2", provider), encoding="utf-8")
     major, minor, patch = consumer.split(".")
     check = directory / "probe.cmake"
     check.write_text(
@@ -45,14 +45,14 @@ def main() -> int:
     parser.add_argument("--cmake", default="cmake")
     args = parser.parse_args()
     metadata = args.version_file.read_text(encoding="utf-8")
-    if 'set(PACKAGE_VERSION "0.1.1")' not in metadata or metadata.count("0.1.1") < 2:
-        raise ValueError("Installed 0.1.1 package version metadata is absent or malformed")
+    if 'set(PACKAGE_VERSION "0.1.2")' not in metadata or metadata.count("0.1.2") < 2:
+        raise ValueError("Installed 0.1.2 package version metadata is absent or malformed")
     with tempfile.TemporaryDirectory() as tmp:
         for provider, consumer, accepted in (
-            ("0.1.1", "0.1.0", True),
-            ("0.1.9", "0.1.1", True),
-            ("0.2.0", "0.1.1", False),
-            ("0.1.1", "0.2.0", False),
+            ("0.1.2", "0.1.0", True),
+            ("0.1.9", "0.1.2", True),
+            ("0.2.0", "0.1.2", False),
+            ("0.1.2", "0.2.0", False),
         ):
             probe(args.cmake, metadata, provider, consumer, accepted, Path(tmp))
     return 0

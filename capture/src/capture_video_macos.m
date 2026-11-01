@@ -3,7 +3,7 @@
  *
  * Uses AVFoundation for camera capture
  */
-#import "salts_capture.h"
+#import "capture.h"
 #import "capture_video_backend.h"
 
 #if defined(__APPLE__) && defined(__MACH__)

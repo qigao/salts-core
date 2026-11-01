@@ -1,8 +1,8 @@
 #ifndef SALTS_BUCKET_PRIORITY_QUEUE_MPMC_H
 #define SALTS_BUCKET_PRIORITY_QUEUE_MPMC_H
 
-#include <salts/disruptor.h>
-#include <salts/thread.h>
+#include <disruptor.h>
+#include <thread.h>
 #ifdef __cplusplus
   #include <atomic>
   #define ATOMIC_UINT32_T std::atomic<uint32_t>

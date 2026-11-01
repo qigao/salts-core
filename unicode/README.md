@@ -73,7 +73,7 @@ upstream Draft is merged, and Stun must not consume unshipped API exports.
 ## 使用
 
 ```c
-#include <salts_unicode.h>
+#include <unicode.h>
 
 #include <stdio.h>
 
@@ -207,14 +207,14 @@ Android/iOS 仅在构建阶段验证，不将宿主执行结果当作移动端�
 
 ## Unicode 17 NFC 与 IDNA（#1091）
 
-`<salts_unicode_normalize.h>` 提供显式 `salts_unicode_nfc`，版本参数必须为
+`<unicode_normalize.h>` 提供显式 `salts_unicode_nfc`，版本参数必须为
 `SALTS_UNICODE_NFC_17_0_0`。调用者提供 uint32_t workspace 和 UTF-8 output，
 无隐藏堆分配；所有区域互不重叠，任意失败保持 output 和成功长度不变。
 NFC 支持合法 NUL scalar，实施规范分解、CCC 稳定重排、受阻组合、composition
 exclusions 和 Hangul；不会隐式改变现有 scanner/case/property API 行为。
 
 ```c
-#include <salts_unicode_normalize.h>
+#include <unicode_normalize.h>
 uint32_t work[32];
 char output[32];
 size_t size = 0;

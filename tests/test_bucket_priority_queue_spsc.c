@@ -1,6 +1,6 @@
 #include "bucket_priority_queue_spsc.h"
 #include "tinytest.h"
-#include <salts/thread.h>
+#include <thread.h>
 #include <stdatomic.h>
 
 #include <stdbool.h>

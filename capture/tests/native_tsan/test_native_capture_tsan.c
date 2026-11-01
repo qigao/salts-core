@@ -1,6 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
-#include <salts_capture.h>
+#include <capture.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdint.h>

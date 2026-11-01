@@ -4,9 +4,9 @@
 
 #include <ares.h>
 #include <cnet/name_lookup.h>
-#include <salts/clock.h>
+#include <clock.h>
 #include <stdatomic.h>
-#include <salts/thread.h>
+#include <thread.h>
 
 #include <limits.h>
 #include <stdio.h>

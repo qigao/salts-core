@@ -1,4 +1,4 @@
-#include <salts_core/bytes.h>
+#include <bytes.h>
 
 int salts_core_bytes_view_init(salts_core_bytes_view *out,
                                const void *data, size_t length) {

@@ -1,5 +1,5 @@
-#include <salts/rcu.h>
-#include <salts/thread.h>
+#include <rcu.h>
+#include <thread.h>
 #include "tinytest.h"
 #include <stdatomic.h>
 #include <stdlib.h>

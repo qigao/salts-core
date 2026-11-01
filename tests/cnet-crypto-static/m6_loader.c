@@ -6,9 +6,9 @@
  */
 #include "m6_shared_owner.h"
 #include <cmeta_buffer.h>
-#include <salts/thread.h>
-#include <salts/clock.h>
-#include <salts/error_codes.h>
+#include <thread.h>
+#include <clock.h>
+#include <error_codes.h>
 
 #include <stdint.h>
 #include <stdio.h>

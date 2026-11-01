@@ -1,4 +1,4 @@
-#include <salts_core/platform_thread.h>
+#include <platform_thread.h>
 #ifndef _WIN32
 #include <pthread.h>
 #include <stdlib.h>

@@ -1,6 +1,6 @@
-#include <salts/native_io.h>
-#include <salts/native_io_sharded.h>
-#include <salts/error_codes.h>
+#include <native_io.h>
+#include <native_io_sharded.h>
+#include <error_codes.h>
 
 #include <stdio.h>
 

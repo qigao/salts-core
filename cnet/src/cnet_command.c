@@ -2,7 +2,7 @@
 
 #include <cmeta_buffer.h>
 #if defined(CNET_INTERNAL_PROFILING)
-  #include <salts/clock.h>
+  #include <clock.h>
 #endif
 
 #include <stdbool.h>

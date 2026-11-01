@@ -7,7 +7,7 @@
 #define FMT_H
 
 #include "cmeta_api.h"
-#include <salts/timeval.h>
+#include <timeval.h>
 #include "fmt_pp.h"
 #include "fmt_lexer.h"
 #include "tstr.h"

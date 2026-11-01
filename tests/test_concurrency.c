@@ -1,9 +1,9 @@
-#include <salts/deadline_queue.h>
-#include <salts/disruptor.h>
-#include <salts/error_codes.h>
-#include <salts/rcu.h>
-#include <salts/spsc_ring.h>
-#include <salts/thread_pool.h>
+#include <deadline_queue.h>
+#include <disruptor.h>
+#include <error_codes.h>
+#include <rcu.h>
+#include <spsc_ring.h>
+#include <thread_pool.h>
 
 #include <stdatomic.h>
 #include <stdint.h>

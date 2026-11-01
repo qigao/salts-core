@@ -1,4 +1,4 @@
-#include <salts_playback.h>
+#include <playback.h>
 #include <tinytest.h>
 
 #include <stdint.h>

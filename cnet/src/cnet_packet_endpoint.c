@@ -10,7 +10,7 @@
 
 #include "cnet_monocypher_namespace.h"
 #include <monocypher.h>
-#include <salts/clock.h>
+#include <clock.h>
 
 #include <limits.h>
 #include <stdlib.h>

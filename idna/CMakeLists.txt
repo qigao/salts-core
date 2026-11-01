@@ -16,4 +16,4 @@ target_include_directories(saltscore_idna
 target_link_libraries(saltscore_idna PUBLIC Salts::Unicode)
 install(TARGETS saltscore_idna EXPORT SaltsCoreTargets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES include/salts_idna.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES include/idna.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

@@ -1,4 +1,4 @@
-#include <salts_core/platform_thread.h>
+#include <platform_thread.h>
 #include <stdint.h>
 #include <stdio.h>
 enum { N=6 };

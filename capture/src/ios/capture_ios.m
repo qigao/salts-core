@@ -6,7 +6,7 @@
 
 #import <AVFoundation/AVFoundation.h>
 #import <Foundation/Foundation.h>
-#include "salts_capture.h"
+#include "capture.h"
 #include "capture_video_ios_backend.h"
 #include <stdlib.h>
 #include <string.h>

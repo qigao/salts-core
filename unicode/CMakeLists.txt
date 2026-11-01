@@ -123,7 +123,7 @@ add_library(saltscore_unicode STATIC
   src/salts_unicode_word.c src/unicode_word_data.h
   src/salts_unicode_line_break.c src/unicode_line_break_data.h
   src/salts_unicode_bidi.c src/unicode_bidi_data.h
-  src/salts_unicode_emoji.c src/salts_unicode_emoji.h src/unicode_emoji_data.h
+  src/salts_unicode_emoji.c src/unicode_emoji.h src/unicode_emoji_data.h
   src/salts_unicode_names.c src/unicode_names_data.h
   "${SALTS_UNICODE_LEXER_GEN}")
 add_library(Salts::Unicode ALIAS saltscore_unicode)
@@ -138,7 +138,7 @@ target_include_directories(saltscore_unicode
 target_link_libraries(saltscore_unicode PUBLIC Salts::Core)
 install(TARGETS saltscore_unicode EXPORT SaltsCoreTargets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES include/salts_unicode.h include/salts_unicode_normalize.h
+install(FILES include/unicode.h include/unicode_normalize.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES data/LICENSE.txt
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/unicode)
