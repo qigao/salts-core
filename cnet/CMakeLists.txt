@@ -162,7 +162,7 @@ install(DIRECTORY include/cnet
   FILES_MATCHING PATTERN "*.h")
 
 if(BUILD_TESTING)
-  # Link maps retain the physical archive member even when native symbols
+  # Link maps retain physical GmSSL and Crypto archive members even when symbols
   # are hidden or stripped from a PE export table. They are test evidence,
   # never an additional library or an installed SDK artifact.
   function(saltscore_cnet_owner_link_map target)
@@ -205,6 +205,7 @@ if(BUILD_TESTING)
     COMMAND "${Python3_EXECUTABLE}" -B
       "${PROJECT_SOURCE_DIR}/tests/cnet-owner/audit_native_crypto_owner.py"
       --archive "$<TARGET_FILE:salts_crypto>"
+      --gmssl-archive "$<TARGET_FILE:GmSSL::GmSSL>"
       --runtime "$<TARGET_FILE:saltscore_cnet>"
       --map "${PROJECT_BINARY_DIR}/cnet-owner-maps/saltscore_cnet-$<CONFIG>.map"
       --system "${CMAKE_SYSTEM_NAME}"
