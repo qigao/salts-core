@@ -158,7 +158,7 @@ jobs:
         id: vcpkg
         # The PR #263 port overlay must match the manifest's pinned registry
         # GmSSL 3.2.0#17; the older shared action injects #16/#15.
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@6ccef26ffcbd0c471067f851a1865e87099de2e0
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@2fd6fc9503801968715c6e8bd5bab0c2be2ef826
         with:
           mode: read
           token: ${{ github.token }}
