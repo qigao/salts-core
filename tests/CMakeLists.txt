@@ -1,5 +1,5 @@
-# Every runtime native C/C++ test in this tree uses TinyTest assertions.
-# CTest remains responsible for scheduling, timeout and platform selection.
+# TinyTest is required for native runtime tests; migrate source-owned suites in
+# batches while retaining all original behavior and CTest registrations.
 if(NOT TARGET Salts::TinyTest)
   message(FATAL_ERROR "Native runtime tests require Salts::TinyTest")
 endif()
@@ -90,7 +90,7 @@ add_test(NAME saltscore.original_error COMMAND saltscore_original_error_test)
 # Core Platform is the sole owner of native fast-key state; no CMeta ABI.
 add_executable(saltscore_fastpath_test test_fastpath.c)
 target_compile_features(saltscore_fastpath_test PRIVATE c_std_11)
-target_link_libraries(saltscore_fastpath_test PRIVATE Salts::Platform)
+target_link_libraries(saltscore_fastpath_test PRIVATE Salts::Platform Salts::TinyTest)
 set_target_properties(saltscore_fastpath_test PROPERTIES
   C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.fastpath COMMAND saltscore_fastpath_test)
@@ -138,7 +138,7 @@ add_test(NAME saltscore.buffer COMMAND saltscore_buffer_test)
 
 if(TARGET Salts::URI)
   add_executable(saltscore_uri_test test_uri.c)
-  target_link_libraries(saltscore_uri_test PRIVATE Salts::URI)
+  target_link_libraries(saltscore_uri_test PRIVATE Salts::URI Salts::TinyTest)
   set_target_properties(saltscore_uri_test PROPERTIES
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
   add_test(NAME saltscore.uri COMMAND saltscore_uri_test)
@@ -423,7 +423,7 @@ endif()
 # provider. The C11 smoke test also runs when TinyTest is disabled.
 add_executable(saltscore_original_object_pool_smoke test_original_object_pool_smoke.c)
 target_compile_features(saltscore_original_object_pool_smoke PRIVATE c_std_11)
-target_link_libraries(saltscore_original_object_pool_smoke PRIVATE Salts::Core)
+target_link_libraries(saltscore_original_object_pool_smoke PRIVATE Salts::Core Salts::TinyTest)
 add_test(NAME saltscore.original_object_pool_smoke
   COMMAND saltscore_original_object_pool_smoke)
 if(TARGET Salts::TinyTest)
@@ -440,7 +440,7 @@ endif()
 # critical/high/normal/low ordering, with strict bounded storage.
 add_executable(saltscore_original_priority_queue_smoke test_original_priority_queue_smoke.c)
 target_compile_features(saltscore_original_priority_queue_smoke PRIVATE c_std_11)
-target_link_libraries(saltscore_original_priority_queue_smoke PRIVATE Salts::Core)
+target_link_libraries(saltscore_original_priority_queue_smoke PRIVATE Salts::Core Salts::TinyTest)
 add_test(NAME saltscore.original_priority_queue_smoke COMMAND saltscore_original_priority_queue_smoke)
 if(TARGET Salts::TinyTest)
   add_executable(saltscore_original_priority_queue_contract test_bucket_priority_queue.c)
@@ -470,7 +470,7 @@ endif()
 
 add_executable(saltscore_original_spsc_smoke test_original_spsc_smoke.c)
 target_compile_features(saltscore_original_spsc_smoke PRIVATE c_std_11)
-target_link_libraries(saltscore_original_spsc_smoke PRIVATE Salts::Concurrency)
+target_link_libraries(saltscore_original_spsc_smoke PRIVATE Salts::Concurrency Salts::TinyTest)
 add_test(NAME saltscore.original_spsc_smoke COMMAND saltscore_original_spsc_smoke)
 
 # The original seven-function MPMC API is owned by the existing concurrency
@@ -487,7 +487,7 @@ endif()
 # Original 8-case formatter lexer TinyTest suite plus dependency-free C11 smoke.
 add_executable(saltscore_fmt_lexer_smoke test_fmt_lexer_smoke.c)
 target_compile_features(saltscore_fmt_lexer_smoke PRIVATE c_std_11)
-target_link_libraries(saltscore_fmt_lexer_smoke PRIVATE Salts::Core)
+target_link_libraries(saltscore_fmt_lexer_smoke PRIVATE Salts::Core Salts::TinyTest)
 add_test(NAME saltscore.original_fmt_lexer_smoke COMMAND saltscore_fmt_lexer_smoke)
 if(TARGET Salts::TinyTest)
   add_executable(saltscore_original_fmt_lexer_test test_fmt_re2c.c)
@@ -554,7 +554,7 @@ endif()
 # Original RFC 4122/9562 UUID v4/v7 and canonical parse/format.
 add_executable(saltscore_uuid_smoke test_uuid_smoke.c)
 target_compile_features(saltscore_uuid_smoke PRIVATE c_std_11)
-target_link_libraries(saltscore_uuid_smoke PRIVATE Salts::Core)
+target_link_libraries(saltscore_uuid_smoke PRIVATE Salts::Core Salts::TinyTest)
 add_test(NAME saltscore.original_uuid_smoke COMMAND saltscore_uuid_smoke)
 if(TARGET Salts::TinyTest)
   add_executable(saltscore_original_uuid_test test_cmeta_uuid.c)
@@ -571,7 +571,7 @@ endif()
 # the borrowed-only salts_core_bytes_view/slice contract.
 add_executable(saltscore_cmeta_bytes_smoke test_cmeta_bytes_smoke.c)
 target_compile_features(saltscore_cmeta_bytes_smoke PRIVATE c_std_11)
-target_link_libraries(saltscore_cmeta_bytes_smoke PRIVATE Salts::Core)
+target_link_libraries(saltscore_cmeta_bytes_smoke PRIVATE Salts::Core Salts::TinyTest)
 add_test(NAME saltscore.original_bytes_accumulator_smoke COMMAND saltscore_cmeta_bytes_smoke)
 if(TARGET Salts::TinyTest)
   add_executable(saltscore_original_bytes_accumulator test_cmeta_bytes.c)
@@ -586,7 +586,7 @@ endif()
 # portable C11 implementation; SIMD throughput parity is tracked separately.
 add_executable(saltscore_simd_scan_contract test_simd_scan_contract.c)
 target_compile_features(saltscore_simd_scan_contract PRIVATE c_std_11)
-target_link_libraries(saltscore_simd_scan_contract PRIVATE Salts::Core)
+target_link_libraries(saltscore_simd_scan_contract PRIVATE Salts::Core Salts::TinyTest)
 add_test(NAME saltscore.original_simd_scan_contract COMMAND saltscore_simd_scan_contract)
 
 
