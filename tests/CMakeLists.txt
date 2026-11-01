@@ -158,7 +158,7 @@ if(TARGET saltscore_wsparser)
     C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
   target_include_directories(saltscore_wsparser_test PRIVATE
     "${PROJECT_SOURCE_DIR}/cnet/src/wsparser")
-  target_link_libraries(saltscore_wsparser_test PRIVATE saltscore_wsparser)
+  target_link_libraries(saltscore_wsparser_test PRIVATE saltscore_wsparser Salts::TinyTest)
   add_test(NAME saltscore.wsparser COMMAND saltscore_wsparser_test)
 endif()
 
@@ -176,7 +176,7 @@ target_include_directories(saltscore_cnet_policy_test PRIVATE
   "${PROJECT_SOURCE_DIR}/cnet/include"
   "${PROJECT_SOURCE_DIR}/platform/include"
   "${PROJECT_SOURCE_DIR}/core/include")
-target_link_libraries(saltscore_cnet_policy_test PRIVATE Salts::Platform)
+target_link_libraries(saltscore_cnet_policy_test PRIVATE Salts::Platform Salts::TinyTest)
 if(MSVC)
   target_compile_options(saltscore_cnet_policy_test PRIVATE
     $<$<COMPILE_LANGUAGE:C>:-experimental:c11atomics>)
@@ -403,7 +403,7 @@ add_executable(saltscore_original_string_parity_test test_original_string_parity
 target_compile_features(saltscore_original_string_parity_test PRIVATE c_std_11)
 set_target_properties(saltscore_original_string_parity_test PROPERTIES
   C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
-target_link_libraries(saltscore_original_string_parity_test PRIVATE Salts::Core)
+target_link_libraries(saltscore_original_string_parity_test PRIVATE Salts::Core Salts::TinyTest)
 add_test(NAME saltscore.original_utils_string_parity
   COMMAND saltscore_original_string_parity_test)
 set_tests_properties(saltscore.original_utils_string_parity PROPERTIES TIMEOUT 20)
