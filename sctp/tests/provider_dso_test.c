@@ -195,7 +195,7 @@ static void *canceller_main(void *context) {
   return NULL;
 }
 
-static void exercise_generation(const char *dso_path, uint32_t generation) {
+static int exercise_generation(const char *dso_path, uint32_t generation) {
   provider_generation g = {0};
   pthread_t owner, canceller;
   void *symbol;
@@ -253,14 +253,20 @@ static void exercise_generation(const char *dso_path, uint32_t generation) {
     assert(stale == NULL);
   }
   assert(pthread_cond_destroy(&g.changed) == 0);
+  const int verified = (g.cancel_requested && g.callback_returned &&
+      g.release_callback && g.allow_owner_stop && g.owner_destroyed &&
+      g.unloaded && g.active_calls == 0u && g.handle == NULL &&
+      g.api == NULL && g.assoc.magic == 0u);
   assert(pthread_mutex_destroy(&g.mutex) == 0);
+  return verified;
 }
 static const char *sctp_test_provider_path;
 
 spec("SCTP real DSO Provider callback generation") {
   for (uint32_t generation = 1u; generation <= TEST_DSO_GENERATIONS; ++generation) {
     it("real DSO generation %u", (unsigned)generation) {
-      exercise_generation(sctp_test_provider_path, generation);
+      check(exercise_generation(sctp_test_provider_path, generation), "DSO generation %u did not drain and unload",
+            (unsigned)generation);
     }
   }
 }

@@ -299,7 +299,7 @@ static void *post_cancel_during_callback(void *context) {
   return NULL;
 }
 
-static void test_cancel_while_provider_callback_in_flight(void) {
+static unsigned test_cancel_while_provider_callback_in_flight(void) {
   unsigned round;
   for (round = 0u; round < 64u; ++round) {
     inflight_cancel_fixture f = {0};
@@ -317,6 +317,7 @@ static void test_cancel_while_provider_callback_in_flight(void) {
     assert(pthread_cond_destroy(&f.changed) == 0);
     assert(pthread_mutex_destroy(&f.mutex) == 0);
   }
+  return round;  /* Every callback was joined before returning to TinyTest. */
 }
 
 spec("SCTP real POSIX Owner handoff") {
@@ -334,7 +335,8 @@ spec("SCTP real POSIX Owner handoff") {
   check(f.assoc.magic == 0u);
   check(pthread_cond_destroy(&f.turn_changed) == 0);
   check(pthread_mutex_destroy(&f.mutex) == 0);
-  test_cancel_while_provider_callback_in_flight();
-  puts("CNet SCTP Owner-thread handoff/stop/event/drain/destroy: PASS");
+  }
+  it("settles 64 real in-flight provider cancellations after owner drain") {
+    check(test_cancel_while_provider_callback_in_flight() == 64u);
   }
 }

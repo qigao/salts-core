@@ -228,7 +228,15 @@ jobs:
 
       - name: Configure full graph
         shell: bash
-        run: cmake --preset "${{ matrix.preset }}"
+        run: |
+          # Qualify real Owner handoff and genuine dlopen/dlclose in the
+          # existing Linux native + TSan lanes, never an extra probe job.
+          if [[ "${{ matrix.rid }}" == "linux-x64" ||
+                "${{ matrix.rid }}" == "linux-x64-tsan" ]]; then
+            cmake --preset "${{ matrix.preset }}" -DCNET_SCTP_TEST_OWNER_THREADS=ON
+          else
+            cmake --preset "${{ matrix.preset }}"
+          fi
 
       - name: Build full graph
         shell: bash

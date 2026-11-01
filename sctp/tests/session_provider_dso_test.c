@@ -243,7 +243,7 @@ static void *canceller_main(void *context) {
   assert(dlclose(old_handle) == 0);
   return NULL;
 }
-static void run_generation(const char *path, uint32_t generation) {
+static int run_generation(const char *path, uint32_t generation) {
   session_provider_fixture f = {0};
   pthread_t owner, canceller;
   const cnet_sctp_test_dso_api *stale_api = NULL;
@@ -275,14 +275,20 @@ static void run_generation(const char *path, uint32_t generation) {
   assert(f.active_calls == 0u && f.handle == NULL && f.api == NULL);
   assert(unload_admission(&f) == PROVIDER_BUSY);
   assert(pthread_cond_destroy(&f.changed) == 0);
+  const int verified = (f.cancel_requested && f.created &&
+      f.revoked_checked && f.allow_cleanup && f.owner_destroyed &&
+      f.unloaded && f.active_calls == 0u && f.handle == NULL &&
+      f.api == NULL && f.session == NULL);
   assert(pthread_mutex_destroy(&f.mutex) == 0);
+  return verified;
 }
 static const char *sctp_test_provider_path;
 
 spec("SCTP opaque Session real DSO drain and cancellation") {
   for (uint32_t generation = 1u; generation <= SESSION_DSO_ROUNDS; ++generation) {
     it("real DSO generation %u", (unsigned)generation) {
-      run_generation(sctp_test_provider_path, generation);
+      check(run_generation(sctp_test_provider_path, generation), "DSO generation %u did not drain and unload",
+            (unsigned)generation);
     }
   }
 }

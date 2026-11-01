@@ -362,6 +362,7 @@ if(CNET_SCTP_TEST_OWNER_THREADS)
     -Wall -Wextra -Wpedantic -Werror)
   add_test(NAME cnet_sctp_owner_thread_test
     COMMAND cnet_sctp_owner_thread_test)
+  set_tests_properties(cnet_sctp_owner_thread_test PROPERTIES TIMEOUT 60)
   # Actual dlopen/dlclose validation is POSIX only and never installed.
   # Keep the provider and host as independently compiled C11 code: a future
   # DSO unload must wait until the last borrowed callback has settled.
@@ -387,6 +388,7 @@ if(CNET_SCTP_TEST_OWNER_THREADS)
   add_test(NAME cnet_sctp_provider_dso_test
     COMMAND cnet_sctp_provider_dso_test
       $<TARGET_FILE:cnet_sctp_test_provider_dso>)
+  set_tests_properties(cnet_sctp_provider_dso_test PROPERTIES TIMEOUT 90)
 
   # Test-only public opaque Session + real DSO cancellation/Owner/drain.
   # The existing private Association DSO gate remains separate.
@@ -405,6 +407,7 @@ if(CNET_SCTP_TEST_OWNER_THREADS)
   add_test(NAME cnet_sctp_session_provider_dso_test
     COMMAND cnet_sctp_session_provider_dso_test
       $<TARGET_FILE:cnet_sctp_test_provider_dso>)
+  set_tests_properties(cnet_sctp_session_provider_dso_test PROPERTIES TIMEOUT 90)
 endif()
 
 # Test-only independent Pion SCTP oracle. Real UDP datagrams to an external
