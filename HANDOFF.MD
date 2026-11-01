@@ -79,3 +79,10 @@
   before its IOCP receive becomes terminal. CancelIoEx, graceful shutdown and
   abortive-close experiments did not establish a safe fix and were reverted;
   keep this as a separate fail-closed handshake-termination issue.
+- `setup-re2c-tools` uses `actions/setup-python`, which narrows
+  `PKG_CONFIG_PATH` to the hosted Python prefix. On Linux this hides native
+  multiarch `.pc` files from vcpkg's `pkgconf`, even after the SDK packages
+  are installed. Append `/usr/lib/$(dpkg-architecture
+  -qDEB_HOST_MULTIARCH)/pkgconfig`, `/usr/lib/pkgconfig` and
+  `/usr/share/pkgconfig` after the action, and probe the required PipeWire
+  module before configure.
