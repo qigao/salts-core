@@ -21,7 +21,8 @@ CRYPTO_CMAKE = ROOT / "crypto/CMakeLists.txt"
 LOCAL_NATIVE = ROOT / "crypto/native/gmssl"
 EXPECTED_SOURCE_SHA = "720abc55eca41cc7f676d0b5dbb38e8605d091b9"
 EXPECTED_PORT_TREE = "9eee73ae12ad32e499425f8cc28b740c5f84d89e"
-EXPECTED_REGISTRY = "2fd6fc9503801968715c6e8bd5bab0c2be2ef826"
+EXPECTED_REGISTRY = "05a10d73a5b1d01598e59d8cf34074513bd49df4"
+EXPECTED_REGISTRY_VERSION = "v0.1.0"
 EXPECTED_UPSTREAM = "7c9f02904ef33e59c87b4f16621cc8fd434e7579"
 
 
@@ -40,7 +41,8 @@ def verify_lock(lock: dict) -> int:
     require((package.get("name"), package.get("version"), package.get("port_version")) ==
             ("gmssl", "3.2.0", 17), "wrong pinned GmSSL vcpkg version")
     require(package.get("port_tree") == EXPECTED_PORT_TREE
-            and package.get("registry_commit") == EXPECTED_REGISTRY,
+            and package.get("registry_commit") == EXPECTED_REGISTRY
+            and package.get("registry_reference") == EXPECTED_REGISTRY_VERSION,
             "unreviewed GmSSL port revision or registry")
     require(lock["upstream"].get("commit") == EXPECTED_UPSTREAM,
             "unpinned GmSSL upstream source")
@@ -72,9 +74,10 @@ def verify_manifest(lock: dict) -> None:
         raise ValueError("GmSSL must be declared in root vcpkg.json")
     matches = [item for item in registry.get("registries", [])
                if "gmssl" in item.get("packages", [])]
-    if len(matches) != 1 or matches[0].get("reference") != EXPECTED_REGISTRY or (
-        matches[0].get("baseline") != EXPECTED_REGISTRY
-    ):
+    if (len(matches) != 1
+        or matches[0].get("repository") != package.get("registry_repository")
+        or matches[0].get("reference") != EXPECTED_REGISTRY_VERSION
+        or matches[0].get("baseline") != EXPECTED_REGISTRY):
         raise ValueError("GmSSL registry must be immutable and unique")
     cmake = CRYPTO_CMAKE.read_text(encoding="utf-8")
     if ("find_package(GmSSL CONFIG REQUIRED)" not in cmake

@@ -89,7 +89,13 @@ ctest --test-dir build-cnet --output-on-failure
 ```
 
 The checked-in vcpkg manifest declares GmSSL and CNet dependencies directly.
-The pinned registry snapshot and shared action source use GmSSL 3.2.0#17.
+The shared cache Actions use published `qigao/vcpkg-cache@v0.1.0` and the
+custom registry selects `reference: v0.1.0`. vcpkg requires a 40-hex Git
+`baseline`, which is pinned to the commit tagged by this release
+(`05a10d73a5b1d01598e59d8cf34074513bd49df4`); this is the required registry schema, not a second
+infrastructure version. GmSSL 3.2.0#17 remains pinned to its original
+source and exact Git port tree. Binary-cache ABIs are still verified
+independently of the Action release version.
 The unified LLVM workflow builds and tests the native graph; the migration
 remains Draft until the **same exact HEAD** passes its complete checks.
 

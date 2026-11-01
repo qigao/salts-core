@@ -45,6 +45,34 @@ class NativeSourceAdmission(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     CHECK.verify_lock(changed)
 
+    def test_wrong_release_reference_or_baseline_rejected(self):
+        for key, value in (
+            ("registry_reference", "master"),
+            ("registry_reference", "v0.1.1"),
+            ("registry_commit", "0" * 40),
+        ):
+            with self.subTest(key=key, value=value):
+                changed = copy.deepcopy(self.lock)
+                changed["package"][key] = value
+                with self.assertRaisesRegex(ValueError, "unreviewed GmSSL"):
+                    CHECK.verify_lock(changed)
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp) / "vcpkg-configuration.json"
+            original = json.loads(CHECK.REGISTRY.read_text(encoding="utf-8"))
+            for key, value in (
+                ("reference", "master"),
+                ("reference", CHECK.EXPECTED_REGISTRY),
+                ("baseline", "v0.1.0"),
+                ("baseline", "0" * 40),
+            ):
+                with self.subTest(key=key, value=value):
+                    wrong = copy.deepcopy(original)
+                    wrong["registries"][0][key] = value
+                    config.write_text(json.dumps(wrong), encoding="utf-8")
+                    with patch.object(CHECK, "REGISTRY", config):
+                        with self.assertRaisesRegex(ValueError, "GmSSL registry must"):
+                            CHECK.verify_manifest(self.lock)
+
     def test_changed_extension_bytes_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / "gmssl-extensions"
