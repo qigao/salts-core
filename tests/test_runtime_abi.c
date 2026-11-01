@@ -1,4 +1,4 @@
-#include <salts_core/runtime_abi.h>
+#include <runtime_abi.h>
 #include <tinytest.h>
 #include <cmeta_buffer.h>
 spec("Core runtime ABI 0.1") {

@@ -4,10 +4,10 @@
 
 #include "tinytest.h"
 #include "tlog.h"
-#include "salts_serial_internal.h"
-#include "salts_serial_test.h"
-#include "salts/thread.h"
-#include "salts/clock.h"
+#include "serial_internal.h"
+#include "serial_test.h"
+#include "thread.h"
+#include "clock.h"
 
 #include <stdatomic.h>
 #include <string.h>

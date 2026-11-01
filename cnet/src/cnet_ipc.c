@@ -3,7 +3,7 @@
 #include "cnet_uri.h"
 #include <cnet/ipc.h>
 #include <limits.h>
-#include <salts/native_ipc.h>
+#include <native_ipc.h>
 #include <stdlib.h>
 #include <string.h>
 

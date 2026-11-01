@@ -1,4 +1,4 @@
-#include <salts/thread.h>
+#include <thread.h>
 
 #include <errno.h>
 #include <process.h>

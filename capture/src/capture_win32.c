@@ -20,7 +20,7 @@
 
 
 #endif /* _WIN32 */
-#include "salts_capture.h"
+#include "capture.h"
 
 #ifdef _WIN32
 

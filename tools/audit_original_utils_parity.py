@@ -14,6 +14,9 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "tools/original_utils_parity.json"
+CURRENT_PATH_RENAMES = {
+    "platform/include/salts/timeval.h": "platform/include/timeval.h",
+}
 
 
 def check_stage_a(root: Path, manifest: dict) -> list[str]:
@@ -44,7 +47,8 @@ def check_stage_a(root: Path, manifest: dict) -> list[str]:
         if "<cmeta/" in h or "CMETA_STRUCT(" in h:
             errors.append(f"{entry['module']}: forbidden CMeta reflection in public header")
     for file in manifest["stage_a_support_files"]:
-        if not (root / file).is_file():
+        current_file = CURRENT_PATH_RENAMES.get(file, file)
+        if not (root / current_file).is_file():
             errors.append(f"Missing original string/allocator support file: {file}")
     if any(e.get("module") == "fmt_lexer" for e in manifest["stage_a"]) and (
         "add_subdirectory(parser)" not in core_cmake

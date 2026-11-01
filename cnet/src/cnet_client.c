@@ -9,8 +9,8 @@
 #include "cnet_transport.h"
 #include "cnet_uri.h"
 
-#include <salts/clock.h>
-#include <salts/thread.h>
+#include <clock.h>
+#include <thread.h>
 
 #include <limits.h>
 #include <stdatomic.h>

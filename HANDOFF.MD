@@ -1,5 +1,17 @@
 # Handoff
 
+## 2026-11-01 public header path flattening
+
+- Public headers no longer use `include/salts/`, `include/salts_core/`, or
+  `salts_*.h` filenames. Include them from their module include root directly;
+  functional directories that already own a namespace, such as `cnet/`,
+  `crypto/`, `cserde/`, and `tinytest/`, remain unchanged.
+- This is a source-path migration only. Existing C ABI symbol prefixes and
+  CMake target names remain stable. Do not restore forwarding headers or
+  compatibility directory trees for the retired paths.
+- Frozen donor inventories and `serial/original/` retain historical upstream
+  names as provenance evidence; they are not current public include paths.
+
 ## 2026-11-01 Windows LLVM release identity
 
 - CMake's MinGW platform defaults add a `lib` prefix to Windows DLLs. Keep
@@ -112,7 +124,7 @@
 - `Salts::SIMD` moved to SaltsUtils following qigao/salts-utils#732. SaltsCore
   0.1.1 must not build, install or export a second SIMD target. SIMDe remains a
   private base dependency because CNet Reed still uses its SSE2 facade.
-- The next immutable package/tag is `SaltsCore.Native 0.1.1` / `v0.1.001`.
+- The next immutable package/tag is `SaltsCore.Native 0.1.2` / `v0.1.002`.
   Downstreams that own `Salts::SIMD` must reject the previous 0.1.0 package,
   which still exports that target.
 
@@ -121,4 +133,4 @@
 - The active native Serial owner lives at `serial/`; `salts_serial/` is only
   the historical donor path recorded in frozen migration inventories and must
   not return as a root source directory. Public `salts_serial_*` ABI names and
-  `<salts_serial.h>` remain unchanged.
+  `<serial.h>` remain unchanged.

@@ -2,10 +2,10 @@
  * Platform abstraction implementation - minimal but sufficient
  * "Write portable code, but test on real systems" - Linus
  */
-#include <salts/platform.h>
-#include <salts/clock.h>
-#include <salts/random.h>
-#include <salts/thread.h>
+#include <platform.h>
+#include <clock.h>
+#include <random.h>
+#include <thread.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>

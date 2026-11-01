@@ -3,7 +3,7 @@
  *
  * Centralizes capture start/stop/destroy for all types on Linux
  */
-#include "salts_capture.h"
+#include "capture.h"
 
 #if defined(__linux__) && !defined(__ANDROID__)
 

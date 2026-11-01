@@ -1,6 +1,6 @@
-#include <salts/thread_pool.h>
-#include <salts/thread.h>
-#include <salts/clock.h>
+#include <thread_pool.h>
+#include <thread.h>
+#include <clock.h>
 #include <tinytest.h>
 #include <stdatomic.h>
 #include <limits.h>

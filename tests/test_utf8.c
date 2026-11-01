@@ -1,4 +1,4 @@
-#include <salts_core/utf8.h>
+#include <utf8.h>
 #include <tinytest.h>
 #include <stddef.h>
 #include <stdint.h>

@@ -1,5 +1,5 @@
 #include "cmeta_buffer.h"
-#include <salts/thread.h>
+#include <thread.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdatomic.h>

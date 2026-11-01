@@ -1,6 +1,6 @@
 #include <libusb.h>
 
-#include <salts/thread.h>
+#include <thread.h>
 
 #include <stdatomic.h>
 #include <stdlib.h>

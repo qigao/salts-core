@@ -1,4 +1,4 @@
-#include <salts/rcu.h>
+#include <rcu.h>
 #include "tinytest.hpp"
 #include <type_traits>
 

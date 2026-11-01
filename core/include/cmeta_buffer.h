@@ -11,7 +11,7 @@
   #define ATOMIC_SIZE_T _Atomic size_t
   #define ATOMIC_UINT32_T _Atomic uint32_t
 #endif
-#include <salts/thread.h>
+#include <thread.h>
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>

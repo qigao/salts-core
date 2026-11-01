@@ -1,7 +1,7 @@
 #ifndef CNET_RESOLVER_H
 #define CNET_RESOLVER_H
 
-#include <salts/error_codes.h>
+#include <error_codes.h>
 
 #include <stdbool.h>
 #include <stddef.h>

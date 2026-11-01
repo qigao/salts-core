@@ -1,7 +1,7 @@
 /* Original Platform Readiness on the single installed shared owner. */
-#include <salts/readiness.h>
-#include <salts/error_codes.h>
-#include <salts/thread.h>
+#include <readiness.h>
+#include <error_codes.h>
+#include <thread.h>
 #include <stddef.h>
 #include <stdint.h>
 

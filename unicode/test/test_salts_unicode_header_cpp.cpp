@@ -1,4 +1,4 @@
-#include "salts_unicode.h"
+#include "unicode.h"
 #include "tinytest.hpp"
 
 spec("salts_unicode_header_cpp") {

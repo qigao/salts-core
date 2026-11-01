@@ -1,7 +1,7 @@
 #include <cnet/destination_policy.h>
 #include <cnet/owner_placement.h>
 #include <cnet/recovery_policy.h>
-#include <salts/error_codes.h>
+#include <error_codes.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <tinytest.h>

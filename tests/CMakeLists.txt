@@ -376,7 +376,7 @@ set_tests_properties(saltscore.portable_timed_mutex PROPERTIES TIMEOUT 35)
 # Explicit C11 threads.h source-compatibility admission (not a global CRT override).
 add_executable(saltscore_c11_threads_test test_c11_threads.c)
 target_include_directories(saltscore_c11_threads_test BEFORE PRIVATE
-  "${PROJECT_SOURCE_DIR}/platform/include/salts_core/c11")
+  "${PROJECT_SOURCE_DIR}/platform/include/c11")
 target_compile_definitions(saltscore_c11_threads_test PRIVATE
   SALTS_C11_THREADS_EXPERIMENTAL=1)
 set_target_properties(saltscore_c11_threads_test PROPERTIES

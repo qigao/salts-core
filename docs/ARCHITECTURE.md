@@ -30,7 +30,7 @@ reflection. Source/API renaming is not itself a reason to discard ABI tests.
   byte views, clock, log/error and crypto algorithms (split into targets).
 - `qigao/salts/utils/src/cmeta_buffer.c`: move mem_pool/mem_buffer/mem_slice
   ownership and public C11 headers to Core, replacing only the old aggregate
-  `cmeta_thread.h` include with `<salts/thread.h>`. Consumers of CNet
+  `cmeta_thread.h` include with `<thread.h>`. Consumers of CNet
   must not need CMeta Reflection for buffer storage.
 - `qigao/salts/concurrency`: all six direct C11 primitives; names `cmeta_*`
   remain only for existing binary/API shape, with no Reflection dependency.

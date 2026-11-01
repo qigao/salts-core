@@ -1,9 +1,9 @@
 #include <coro.h>
 #include <tinytest.h>
 #include <coro_executor.h>
-#include <salts/error_codes.h>
-#include <salts/thread.h>
-#include <salts_core/platform_thread.h>
+#include <error_codes.h>
+#include <thread.h>
+#include <platform_thread.h>
 
 #include <stdatomic.h>
 

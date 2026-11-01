@@ -2,7 +2,7 @@
 
 `Salts::Capture` 是 Windows 默认提供、其他平台可选的原生音频、摄像头与屏幕
 采集组件。它保留
-`salts_capture.h` 的 C 接口、枚举值、结构布局和符号名称；播放、编解码、录制、
+`capture.h` 的 C 接口、枚举值、结构布局和符号名称；播放、编解码、录制、
 RTSP、WebRTC 以及移动端 Java/Swift 包装不属于该组件。
 
 ## 构建与链接
@@ -57,7 +57,7 @@ Camera2、Media、OpenSL ES 和 NativeWindow。miniaudio 与 libyuv 是实现依
 - `frame_size_ms` 是 producer period 合同。iOS 的 preferred I/O buffer duration 与 AVAudioEngine tap frame count 均按 `sample_rate * frame_size_ms / 1000` 请求，不再使用固定 5 ms / 1024 frames。
 - callback payload 仍是 borrowed view。若底层平台实际回调长度与请求 period 不一致，消费端应显式失败或自行采用有界转换层，不得截断、拼接或静默改变帧语义。
 
-Android MediaProjection 使用 `<salts_capture_android.h>`。Salts 拥有
+Android MediaProjection 使用 `<capture_android.h>`。Salts 拥有
 `salts_capture_t`、`AImageReader` 与其 `ANativeWindow`；Java 拥有权限结果、
 `MediaProjection`、`VirtualDisplay` 和从 JNI 返回的 `Surface` 对象。控制顺序必须是：
 创建 capture、取得 Surface、创建 VirtualDisplay、启动 capture；关闭时先释放

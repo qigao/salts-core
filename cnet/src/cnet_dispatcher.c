@@ -1,7 +1,7 @@
 #include "cnet_dispatcher.h"
 
-#include <salts/clock.h>
-#include <salts/thread.h>
+#include <clock.h>
+#include <thread.h>
 
 #include <stdatomic.h>
 #include <stdbool.h>

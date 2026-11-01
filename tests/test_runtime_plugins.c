@@ -6,8 +6,8 @@
 #define TINYTEST_NO_MAIN
 #include <tinytest.h>
 #include <cmeta_buffer.h>
-#include <salts/thread.h>
-#include <salts/error_codes.h>
+#include <thread.h>
+#include <error_codes.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdint.h>

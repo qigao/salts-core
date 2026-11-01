@@ -1,5 +1,5 @@
-#include <salts/platform.h>
-#include <salts/thread.h>
+#include <platform.h>
+#include <thread.h>
 #include <tinytest.hpp>
 
 #include <cstddef>

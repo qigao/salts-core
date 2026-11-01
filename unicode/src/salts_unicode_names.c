@@ -1,4 +1,4 @@
-#include "salts_unicode.h"
+#include "unicode.h"
 #include <string.h>
 
 typedef struct salts_unicode_name_entry {

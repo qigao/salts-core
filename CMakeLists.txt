@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 include(CMakeOptions.cmake)
-project(SaltsCore VERSION 0.1.1 LANGUAGES C)
+project(SaltsCore VERSION 0.1.2 LANGUAGES C)
 # Pre-stable ABI epoch: 0.2 must not silently satisfy an installed 0.1 DLL/DSO.
 set(SALTSCORE_NATIVE_SOVERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
 

@@ -1,4 +1,4 @@
-#include "salts_idna.h"
+#include "idna.h"
 #include "tinytest.h"
 #include <string.h>
 

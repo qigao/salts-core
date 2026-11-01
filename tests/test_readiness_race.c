@@ -3,10 +3,10 @@
  * MUST drain its callback before either owner may be reclaimed.
  */
 #include <tinytest.h>
-#include <salts/error_codes.h>
-#include <salts/readiness.h>
+#include <error_codes.h>
+#include <readiness.h>
 #include "../platform/src/readiness_internal.h"
-#include <salts/thread.h>
+#include <thread.h>
 #include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>

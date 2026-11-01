@@ -1,4 +1,4 @@
-#include <salts_core/runtime_abi.h>
+#include <runtime_abi.h>
 #include <cmeta_buffer.h>
 
 void salts_core_runtime_abi_0_1_required(void) {

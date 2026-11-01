@@ -1,6 +1,6 @@
-#include <salts/atomic.h>
-#include <salts/rcu.h>
-#include <salts/thread.h>
+#include <atomic.h>
+#include <rcu.h>
+#include <thread.h>
 #include "tinytest.h"
 
 SALTS_ATOMIC_TYPE(IntAtomic, int);

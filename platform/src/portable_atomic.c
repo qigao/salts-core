@@ -1,4 +1,4 @@
-#include <salts_core/platform_atomic.h>
+#include <platform_atomic.h>
 #include <stddef.h>
 #include <stdint.h>
 

@@ -1,4 +1,4 @@
-#include "salts_unicode_normalize.h"
+#include "unicode_normalize.h"
 #include <string.h>
 
 typedef struct { uint32_t scalar, offset; uint8_t length; } nfc_decomposition;

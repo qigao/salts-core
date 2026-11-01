@@ -1,5 +1,5 @@
-#include "salts_unicode.h"
-#include "salts_unicode_emoji.h"
+#include "unicode.h"
+#include "unicode_emoji.h"
 #include "unicode_emoji_data.h"
 
 #include <stddef.h>

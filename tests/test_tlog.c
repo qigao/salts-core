@@ -1,11 +1,11 @@
 #include "tlog.h"
-#include <salts/fs.h>
+#include <fs.h>
 #include "tinytest.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdatomic.h>
 #include <string.h>
-#include <salts/thread.h>
+#include <thread.h>
 
 static int callback_count = 0;
 static vstr callback_file = {NULL, 0};

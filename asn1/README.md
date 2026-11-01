@@ -5,7 +5,7 @@ the same repository as `crypto/`. It is independently buildable and does
 **not** include or link GmSSL, SaltsCore, CMeta, CFlow or Crypto.
 
 `Salts::ASN1` is one **static** C11 library, exporting
-`<salts/asn1.h>` and `<salts/asn1_value.h>` with `salts_asn1_*` APIs:
+`<asn1.h>` and `<asn1_value.h>` with `salts_asn1_*` APIs:
 bounded BER/DER Reader, Validator, Encoder, borrowed TLV views, OID and
 opaque owned Value Tree. On successful child admission, the parent owns
 the child; on error it remains with the caller.

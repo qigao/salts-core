@@ -1,5 +1,5 @@
 #include <tinytest.h>
-#include <salts/fs.h>
+#include <fs.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>

@@ -104,9 +104,8 @@ install(TARGETS saltscore_core EXPORT SaltsCoreTargets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(DIRECTORY include/salts_core
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} FILES_MATCHING PATTERN "*.h")
 install(FILES
+  include/bytes.h include/runtime_abi.h include/utf8.h
   include/base64_utils.h include/vstr.h include/cmeta_api.h
   include/cmeta_buffer.h include/ring_buffer.h include/cmeta_error.h
   include/tstr.h include/str.h include/memory_pool.h include/object_pool.h

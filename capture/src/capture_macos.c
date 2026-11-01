@@ -3,7 +3,7 @@
  *
  * Centralizes capture start/stop/destroy for all types on macOS
  */
-#include "salts_capture.h"
+#include "capture.h"
 
 #if defined(__APPLE__) && defined(__MACH__)
 

@@ -1,4 +1,4 @@
-#include <salts/thread_pool.h>
+#include <thread_pool.h>
 
 typedef struct input {
   uint64_t value, result;

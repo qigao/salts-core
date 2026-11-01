@@ -4,8 +4,8 @@
  */
 #include "m6_shared_owner.h"
 #include <cmeta_buffer.h>
-#include <salts/thread.h>
-#include <salts/error_codes.h>
+#include <thread.h>
+#include <error_codes.h>
 
 #if defined(_WIN32)
 #define M6_PLUGIN_EXPORT __declspec(dllexport)

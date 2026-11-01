@@ -1,9 +1,9 @@
-#include <salts/clock.h>
+#include <clock.h>
 #include <tinytest.h>
-#include <salts/error_codes.h>
-#include <salts/platform.h>
-#include <salts/random.h>
-#include <salts/thread.h>
+#include <error_codes.h>
+#include <platform.h>
+#include <random.h>
+#include <thread.h>
 
 #include <stdatomic.h>
 #include <stddef.h>

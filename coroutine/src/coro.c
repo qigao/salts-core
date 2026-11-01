@@ -8,7 +8,7 @@
 #include "minicoro.h"
 #include <assert.h>
 #include <stdint.h>
-#include <salts/thread.h>
+#include <thread.h>
 #include <stdlib.h>
 #include <string.h>
 

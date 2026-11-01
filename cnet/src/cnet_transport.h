@@ -2,7 +2,7 @@
 #define CNET_TRANSPORT_H
 
 #include <cnet/cnet.h>
-#include <salts/native_io.h>
+#include <native_io.h>
 
 #include <stdbool.h>
 #include <stddef.h>

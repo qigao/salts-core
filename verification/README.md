@@ -20,7 +20,7 @@
 关键事实来源包括：
 
 - `include/disruptor.h` 与 `src/disruptor.c`：Disruptor 的 worker/broadcast/拓扑 API；
-- `../concurrency/include/salts/spsc_ring.h` 与
+- `../concurrency/include/spsc_ring.h` 与
   `../concurrency/src/spsc_ring.c`：SPSC 角色和原子游标的事实源；
 - `include/ring_buffer_spsc.h` 与 `src/ring_buffer_spsc.c`：旧 Core API 的兼容包装；
 - `include/cmeta_buffer.h` 与 `src/cmeta_buffer.c`：buffer/slice 引用和 pool 生命周期；

@@ -1,6 +1,6 @@
 #include <cmeta_error.h>
 #include <tinytest.h>
-#include <salts/thread.h>
+#include <thread.h>
 
 #include <limits.h>
 #include <stdio.h>

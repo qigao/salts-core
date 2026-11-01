@@ -1,8 +1,8 @@
-#include <salts/deadline_queue.h>
-#include <salts/disruptor.h>
-#include <salts/spsc_ring.h>
-#include <salts/thread_pool.h>
-#include <salts/rcu.h>
+#include <deadline_queue.h>
+#include <disruptor.h>
+#include <spsc_ring.h>
+#include <thread_pool.h>
+#include <rcu.h>
 #include <tinytest.hpp>
 #include <type_traits>
 

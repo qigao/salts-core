@@ -7,7 +7,7 @@
  * Windows walks native directory HANDLEs with NtCreateFile RootDirectory and
  * FILE_OPEN_REPARSE_POINT. Intermediate links/reparse points are rejected.
  */
-#include <salts/fs.h>
+#include <fs.h>
 #ifdef _WIN32
 #include <windows.h>
 #endif

@@ -12,8 +12,8 @@
 #include <crypto/tls_auth.h>
 #include <crypto/cipher_bio.h>
 #include <cmeta_buffer.h>
-#include <salts/clock.h>
-#include <salts/error_codes.h>
+#include <clock.h>
+#include <error_codes.h>
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -22,7 +22,7 @@
 #include <string.h>
 #if defined(CNET_M6_BUILD_SHARED)
 #include <stdatomic.h>
-#include <salts/thread.h>
+#include <thread.h>
 #endif
 
 #ifndef SDK_CA_FILE

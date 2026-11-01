@@ -1,4 +1,4 @@
-#include "salts_unicode_normalize.h"
+#include "unicode_normalize.h"
 #include "tinytest.h"
 #include <stdio.h>
 #include <stdlib.h>

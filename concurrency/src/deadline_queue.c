@@ -1,4 +1,4 @@
-#include <salts/deadline_queue.h>
+#include <deadline_queue.h>
 
 #include <stdbool.h>
 #include <stdlib.h>

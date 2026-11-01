@@ -3,7 +3,7 @@
  *
  * Selects PipeWire on Wayland or X11 XShm on X11.
  */
-#include "salts_capture.h"
+#include "capture.h"
 
 #if defined(__linux__) && !defined(__ANDROID__)
 

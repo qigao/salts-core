@@ -1,7 +1,7 @@
 #ifndef SALTS_CAPTURE_VIDEO_BACKEND_H
 #define SALTS_CAPTURE_VIDEO_BACKEND_H
 
-#include "salts_capture.h"
+#include "capture.h"
 
 typedef struct {
     int (*open_device)(const char *device_id, void **backend_ctx);

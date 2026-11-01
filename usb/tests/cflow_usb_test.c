@@ -1,5 +1,5 @@
 #include <cflow/usb.h>
-#include <salts/error_codes.h>
+#include <error_codes.h>
 #include <tinytest.h>
 
 #include <stdlib.h>

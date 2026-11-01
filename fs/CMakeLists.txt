@@ -24,7 +24,7 @@ install(TARGETS saltscore_fs EXPORT SaltsCoreTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES include/salts/fs.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/salts)
+install(FILES include/fs.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 if(BUILD_TESTING)
   add_executable(saltscore_fs_test ${PROJECT_SOURCE_DIR}/tests/test_fs.c)
   target_compile_features(saltscore_fs_test PRIVATE c_std_11)
