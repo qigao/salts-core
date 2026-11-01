@@ -1,5 +1,8 @@
 # Whole-tree Salts / Salts-utils migration completeness admission
 
+> Historical provenance ledger. The SIMD owner recorded below moved to
+> SaltsUtils; it is no longer a SaltsCore build/install target.
+
 ## Immutable source identities
 
 - `qigao/salts@386f81328c656f416d61a6d2ef662f05443e1b4a`, tree `e0c0881d202a8c9620fd7d3d2d4611a03a8aa8df`: **1,554 exact original Git blobs**.

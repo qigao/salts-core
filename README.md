@@ -50,7 +50,7 @@ invariant on Linux, Windows and macOS.
 
 | Mandatory | Optional on supported platforms |
 |---|---|
-| Core byte views, Platform, Concurrency, FS, Coroutine, NativeIO, ASN1, Crypto, URI, CNet | Process, Unicode, IDNA, SIMD, Serial, USB, Capture, Playback |
+| Core byte views, Platform, Concurrency, FS, Coroutine, NativeIO, ASN1, Crypto, URI, CNet | Process, Unicode, IDNA, Serial, USB, Capture, Playback |
 
 Unicode stays pinned to Unicode 17.0.0 with re2c as a **build-time** tool only;
 IDNA depends only on the new Unicode module. FS and Process are native system
@@ -130,4 +130,5 @@ OS threads and verifies that each sees only its own scheduler, then restores
 an empty current-scheduler state on thread exit.
 
 The migration integration must pass the same full native graph before a
-0.1.000 source release is published.
+0.1.001 source release is published. SIMD execution is owned by SaltsUtils and
+is no longer built or exported by SaltsCore.
