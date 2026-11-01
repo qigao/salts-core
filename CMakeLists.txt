@@ -56,6 +56,13 @@ endif()
 if(TARGET Salts::Crypto)
   message(FATAL_ERROR "Duplicate Crypto owner: use exactly one static archive")
 endif()
+# Import the immutable vcpkg provider in the ROOT directory. CMake imported
+# targets are otherwise directory-scoped and invisible to sibling CNet/tests.
+# Crypto and CNet must resolve the SAME single imported GmSSL::GmSSL target.
+find_package(GmSSL CONFIG REQUIRED)
+if(NOT TARGET GmSSL::GmSSL)
+  message(FATAL_ERROR "Root must own one pinned vcpkg GmSSL imported target")
+endif()
 add_subdirectory(crypto)
 # Keep explicit URI=ON callers compatible; disabling a mandatory dependency
 # must fail rather than omit source or silently change parsing behavior.
