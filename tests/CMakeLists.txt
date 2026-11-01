@@ -103,7 +103,7 @@ add_test(NAME saltscore.platform COMMAND saltscore_platform_test)
 
 add_executable(saltscore_original_platform_cpp_test test_platform_original_cpp.cpp)
 target_compile_features(saltscore_original_platform_cpp_test PRIVATE cxx_std_17)
-target_link_libraries(saltscore_original_platform_cpp_test PRIVATE Salts::Platform)
+target_link_libraries(saltscore_original_platform_cpp_test PRIVATE Salts::Platform Salts::TinyTest)
 set_target_properties(saltscore_original_platform_cpp_test PROPERTIES
   CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 add_test(NAME saltscore.original_platform_cpp17
