@@ -71,3 +71,11 @@
   and the working bytes can disagree.
 - The TLS close fix from PR 129 depends on the reciprocal shutdown machinery;
   do not cherry-pick the close-only change onto an older owner state machine.
+- The exact LLVM-MinGW TLS 1.3 `send_buffer_and_close` scenario from PR 129
+  passes when invoked directly. Do not globally enable
+  `SALTSCORE_CNET_PRODUCTION_REQUIRED_MTLS_TEST` yet: its pre-existing TLS 1.2
+  invalid-EKU negative case leaves the Python peer waiting for alert/EOF until
+  its socket timeout, while the native server waits for the peer to close
+  before its IOCP receive becomes terminal. CancelIoEx, graceful shutdown and
+  abortive-close experiments did not establish a safe fix and were reverted;
+  keep this as a separate fail-closed handshake-termination issue.
