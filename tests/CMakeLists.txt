@@ -1,3 +1,9 @@
+# Every runtime native C/C++ test in this tree uses TinyTest assertions.
+# CTest remains responsible for scheduling, timeout and platform selection.
+if(NOT TARGET Salts::TinyTest)
+  message(FATAL_ERROR "Native runtime tests require Salts::TinyTest")
+endif()
+
 if(UNIX)
   add_executable(saltscore_readiness_race_test test_readiness_race.c)
   target_compile_features(saltscore_readiness_race_test PRIVATE c_std_11)
@@ -27,7 +33,7 @@ add_test(NAME saltscore.readiness_owner COMMAND saltscore_readiness_test)
 set_tests_properties(saltscore.readiness_owner PROPERTIES TIMEOUT 15)
 
 add_executable(saltscore_utf8_test test_utf8.c)
-target_link_libraries(saltscore_utf8_test PRIVATE Salts::Core)
+target_link_libraries(saltscore_utf8_test PRIVATE Salts::Core Salts::TinyTest)
 target_compile_features(saltscore_utf8_test PRIVATE c_std_11)
 set_target_properties(saltscore_utf8_test PROPERTIES
   C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
@@ -35,14 +41,14 @@ add_test(NAME saltscore.utf8_strict COMMAND saltscore_utf8_test)
 
 add_executable(saltscore_runtime_abi_test test_runtime_abi.c)
 target_compile_features(saltscore_runtime_abi_test PRIVATE c_std_11)
-target_link_libraries(saltscore_runtime_abi_test PRIVATE Salts::Core)
+target_link_libraries(saltscore_runtime_abi_test PRIVATE Salts::Core Salts::TinyTest)
 set_target_properties(saltscore_runtime_abi_test PROPERTIES
   C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.runtime_abi_0_1 COMMAND saltscore_runtime_abi_test)
 
 # Plain C11 borrowed string view: no reflection headers, allocator or ABI shim.
 add_executable(saltscore_vstr_contract_test test_vstr_contract.c)
-target_link_libraries(saltscore_vstr_contract_test PRIVATE Salts::Core)
+target_link_libraries(saltscore_vstr_contract_test PRIVATE Salts::Core Salts::TinyTest)
 set_target_properties(saltscore_vstr_contract_test PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.vstr_c11 COMMAND saltscore_vstr_contract_test)
@@ -50,7 +56,7 @@ add_test(NAME saltscore.vstr_c11 COMMAND saltscore_vstr_contract_test)
 # Base64 must remain one installed native owner, no unrelated vendor codec.
 add_executable(saltscore_base64_test test_base64_utils.c)
 target_compile_features(saltscore_base64_test PRIVATE c_std_11)
-target_link_libraries(saltscore_base64_test PRIVATE Salts::Core)
+target_link_libraries(saltscore_base64_test PRIVATE Salts::Core Salts::TinyTest)
 set_target_properties(saltscore_base64_test PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 if(MSVC)
@@ -62,7 +68,7 @@ endif()
 add_test(NAME saltscore.base64_unique_owner COMMAND saltscore_base64_test)
 
 add_executable(saltscore_bytes_test test_bytes.c)
-target_link_libraries(saltscore_bytes_test PRIVATE Salts::Core)
+target_link_libraries(saltscore_bytes_test PRIVATE Salts::Core Salts::TinyTest)
 set_target_properties(saltscore_bytes_test PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.bytes COMMAND saltscore_bytes_test)
@@ -76,12 +82,10 @@ set_target_properties(saltscore_error_contract PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.error_native_contract COMMAND saltscore_error_contract)
 set_tests_properties(saltscore.error_native_contract PROPERTIES TIMEOUT 30)
-if(TARGET Salts::TinyTest)
-  add_executable(saltscore_original_error_test test_cmeta_error.c)
-  target_compile_features(saltscore_original_error_test PRIVATE c_std_11)
-  target_link_libraries(saltscore_original_error_test PRIVATE Salts::Core Salts::TinyTest)
-  add_test(NAME saltscore.original_error COMMAND saltscore_original_error_test)
-endif()
+add_executable(saltscore_original_error_test test_cmeta_error.c)
+target_compile_features(saltscore_original_error_test PRIVATE c_std_11)
+target_link_libraries(saltscore_original_error_test PRIVATE Salts::Core Salts::TinyTest)
+add_test(NAME saltscore.original_error COMMAND saltscore_original_error_test)
 
 # Core Platform is the sole owner of native fast-key state; no CMeta ABI.
 add_executable(saltscore_fastpath_test test_fastpath.c)
@@ -127,7 +131,7 @@ set_target_properties(saltscore_native_io_test PROPERTIES
 add_test(NAME saltscore.native_io COMMAND saltscore_native_io_test)
 
 add_executable(saltscore_buffer_test test_buffer.c)
-target_link_libraries(saltscore_buffer_test PRIVATE Salts::Core)
+target_link_libraries(saltscore_buffer_test PRIVATE Salts::Core Salts::TinyTest)
 set_target_properties(saltscore_buffer_test PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.buffer COMMAND saltscore_buffer_test)
@@ -141,7 +145,7 @@ if(TARGET Salts::URI)
 endif()
 
 add_executable(saltscore_ring_test test_ring.c)
-target_link_libraries(saltscore_ring_test PRIVATE Salts::Core)
+target_link_libraries(saltscore_ring_test PRIVATE Salts::Core Salts::TinyTest)
 set_target_properties(saltscore_ring_test PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.ring COMMAND saltscore_ring_test)

@@ -52,6 +52,13 @@ on:
       - "salts_serial/*.h"
       - "verification/*.pml"
       - "vendor/cnet/**"
+      - "CMakeLists.txt"
+      - "CMakeOptions.cmake"
+      - "CMakePresets.json"
+      - ".github/workflows/ci.yml"
+      - "tests/**"
+      - "**/tests/**"
+      - "tinytest/test/**"
   push:
     branches: [master]
     tags: ["v0.1.000"]
@@ -105,6 +112,13 @@ on:
       - "salts_serial/*.h"
       - "verification/*.pml"
       - "vendor/cnet/**"
+      - "CMakeLists.txt"
+      - "CMakeOptions.cmake"
+      - "CMakePresets.json"
+      - ".github/workflows/ci.yml"
+      - "tests/**"
+      - "**/tests/**"
+      - "tinytest/test/**"
   workflow_dispatch:
 
 permissions:

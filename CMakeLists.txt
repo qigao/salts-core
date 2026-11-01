@@ -25,6 +25,17 @@ if(BUILD_TESTING)
 endif()
 find_package(Threads REQUIRED)
 
+# TinyTest is the only native C11/C++17 runtime test framework. Build its
+# standalone target before any source module declares native tests.
+# Production-only profiles may explicitly omit it with BUILD_TESTING=OFF.
+if(BUILD_TESTING AND NOT SALTSCORE_BUILD_TINYTEST)
+  message(FATAL_ERROR
+    "BUILD_TESTING=ON requires SALTSCORE_BUILD_TINYTEST=ON")
+endif()
+if(SALTSCORE_BUILD_TINYTEST)
+  add_subdirectory(tinytest)
+endif()
+
 # Package root assembles canonical modules; modules own sources and installs.
 # Original logging uses existing FS and Concurrency implementations;
 # compile those single owners first, without a second logger provider.
@@ -74,9 +85,6 @@ endif()
 
 if(SALTSCORE_BUILD_CSERDE)
   add_subdirectory(cserde)
-endif()
-if(SALTSCORE_BUILD_TINYTEST)
-  add_subdirectory(tinytest)
 endif()
 if(SALTSCORE_BUILD_SIMD)
   add_subdirectory(simd)
@@ -141,9 +149,7 @@ install(EXPORT SaltsCoreTargets FILE SaltsCoreTargets.cmake
 
 if(BUILD_TESTING)
   add_subdirectory(tests)
-  if(TARGET Salts::TinyTest)
-    add_subdirectory(concurrency/tests)
-  endif()
+  add_subdirectory(concurrency/tests)
   if(SALTSCORE_BUILD_UNICODE OR SALTSCORE_BUILD_IDNA OR
      SALTSCORE_BUILD_CSERDE OR SALTSCORE_BUILD_TINYTEST)
     if(NOT SALTSCORE_BUILD_TINYTEST)
