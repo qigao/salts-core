@@ -49,7 +49,9 @@ on:
       - "serial/*.c"
       - "serial/*.h"
       - "verification/*.pml"
-      - "vendor/cnet/**"
+      - "vendor/reed/**"
+      - "vendor/monocypher/**"
+      - "crypto/gmssl-extensions/**"
   push:
     branches: [master]
     tags: ["v0.1.002"]
@@ -100,7 +102,9 @@ on:
       - "serial/*.c"
       - "serial/*.h"
       - "verification/*.pml"
-      - "vendor/cnet/**"
+      - "vendor/reed/**"
+      - "vendor/monocypher/**"
+      - "crypto/gmssl-extensions/**"
   workflow_dispatch:
 
 permissions:
@@ -152,7 +156,9 @@ jobs:
 
       - name: Set up shared dependency contract
         id: vcpkg
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@529019437597fa71f7d8dcc561d26fc7b0603ae6
+        # The PR #263 port overlay must match the manifest's pinned registry
+        # GmSSL 3.2.0#17; the older shared action injects #16/#15.
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@2fd6fc9503801968715c6e8bd5bab0c2be2ef826
         with:
           mode: read
           token: ${{ github.token }}
