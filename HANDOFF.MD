@@ -23,3 +23,11 @@
 - Do not restore installed-consumer/smoke CMake projects. Configure owns the
   complete graph, build runs it without `--target`, and formal tests run only
   through CTest.
+- When removing an installer/consumer source tree, remove its native-graph
+  registration in the same change. A stale `add_executable` is detected only
+  at CMake generation, even when configure has otherwise found all packages.
+- `setup-vcpkg-curl-cache` is a binary-only admission gate and fails on the
+  first absent immutable ABI package. After the package registry is cleared,
+  product CI must use `setup-vcpkg-cache` in read mode so vcpkg can compile a
+  cache miss from the pinned source graph without publishing from the product
+  repository.

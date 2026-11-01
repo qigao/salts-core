@@ -113,9 +113,8 @@ only when their independent implementations and platform gates are qualified.
 The unified CI workflow uses the shared vcpkg-cache compiler setup on
 Linux/macOS x64 and ARM64 (runner-native Clang), and Windows x64 and ARM64
 (llvm-mingw/UCRT 20261020). It builds the complete configured graph and runs
-its formal native CTest suite. Existing public C11/C++17
-assertions run inside that graph; the workflow no longer builds a second
-installed-consumer project or runs compiler/source preflight probes.
+its formal native CTest suite. The workflow does not build installer/consumer
+projects or run compiler/source preflight probes.
 
 Platform public declarations explicitly export/import their one shared DLL
 owner, including native thread, clock, random, readiness and fast-key APIs.

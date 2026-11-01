@@ -87,16 +87,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {rid: linux-x64, runner: ubuntu-24.04, target: x64, triplet: x64-linux, host: x64-linux, preset: ci-native, features: cnet, android_abi: ""}
-          - {rid: linux-arm64, runner: ubuntu-24.04-arm, target: arm64, triplet: arm64-linux, host: arm64-linux, preset: ci-native, features: cnet, android_abi: ""}
-          - {rid: macos-x64, runner: macos-15-intel, target: x64, triplet: x64-osx, host: x64-osx, preset: ci-native, features: cnet, android_abi: ""}
-          - {rid: macos-arm64, runner: macos-15, target: arm64, triplet: arm64-osx, host: arm64-osx, preset: ci-native, features: cnet, android_abi: ""}
-          - {rid: windows-x64, runner: windows-2025, target: x64, triplet: qigao-x64-windows-llvm-mingw, host: qigao-x64-windows-llvm-mingw, preset: ci-native, features: cnet, android_abi: ""}
-          - {rid: windows-arm64, runner: windows-11-arm, target: arm64, triplet: qigao-arm64-windows-llvm-mingw, host: qigao-arm64-windows-llvm-mingw, preset: ci-native, features: cnet, android_abi: ""}
-          - {rid: linux-x64-asan-ubsan, runner: ubuntu-24.04, target: x64, triplet: x64-linux, host: x64-linux, preset: ci-asan-ubsan, features: cnet, android_abi: ""}
-          - {rid: linux-x64-tsan, runner: ubuntu-24.04, target: x64, triplet: x64-linux, host: x64-linux, preset: ci-tsan, features: cnet, android_abi: ""}
-          - {rid: android-x64, runner: ubuntu-24.04, target: x64, triplet: x64-android, host: x64-linux, preset: ci-android, features: "", android_abi: x86_64}
-          - {rid: android-arm64, runner: ubuntu-24.04, target: arm64, triplet: arm64-android, host: x64-linux, preset: ci-android, features: "", android_abi: arm64-v8a}
+          - {rid: linux-x64, runner: ubuntu-24.04, target: x64, triplet: x64-linux, host: x64-linux, preset: ci-native, android_abi: ""}
+          - {rid: linux-arm64, runner: ubuntu-24.04-arm, target: arm64, triplet: arm64-linux, host: arm64-linux, preset: ci-native, android_abi: ""}
+          - {rid: macos-x64, runner: macos-15-intel, target: x64, triplet: x64-osx, host: x64-osx, preset: ci-native, android_abi: ""}
+          - {rid: macos-arm64, runner: macos-15, target: arm64, triplet: arm64-osx, host: arm64-osx, preset: ci-native, android_abi: ""}
+          - {rid: windows-x64, runner: windows-2025, target: x64, triplet: qigao-x64-windows-llvm-mingw, host: qigao-x64-windows-llvm-mingw, preset: ci-native, android_abi: ""}
+          - {rid: windows-arm64, runner: windows-11-arm, target: arm64, triplet: qigao-arm64-windows-llvm-mingw, host: qigao-arm64-windows-llvm-mingw, preset: ci-native, android_abi: ""}
+          - {rid: linux-x64-asan-ubsan, runner: ubuntu-24.04, target: x64, triplet: x64-linux, host: x64-linux, preset: ci-asan-ubsan, android_abi: ""}
+          - {rid: linux-x64-tsan, runner: ubuntu-24.04, target: x64, triplet: x64-linux, host: x64-linux, preset: ci-tsan, android_abi: ""}
+          - {rid: android-x64, runner: ubuntu-24.04, target: x64, triplet: x64-android, host: x64-linux, preset: ci-android, android_abi: x86_64}
+          - {rid: android-arm64, runner: ubuntu-24.04, target: arm64, triplet: arm64-android, host: x64-linux, preset: ci-android, android_abi: arm64-v8a}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -117,15 +117,12 @@ jobs:
           build-type: toolchain-only
           obfuscator: "false"
 
-      - name: Restore manifest dependencies
+      - name: Set up shared dependency contract
         id: vcpkg
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-curl-cache@22ab039b6505c06e7a2f03f723305050d775ecf3
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@22ab039b6505c06e7a2f03f723305050d775ecf3
         with:
+          mode: read
           token: ${{ github.token }}
-          triplet: ${{ matrix.triplet }}
-          host-triplet: ${{ matrix.host }}
-          manifest-root: .
-          features: ${{ matrix.features }}
 
       - name: Restore re2c and Unicode host data
         uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@22ab039b6505c06e7a2f03f723305050d775ecf3
@@ -171,3 +168,13 @@ jobs:
         if: matrix.preset != 'ci-android'
         shell: bash
         run: ctest --preset "${{ matrix.preset }}"
+
+  result:
+    name: CI result
+    if: ${{ always() }}
+    needs: qualify
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every LLVM qualification job
+        shell: bash
+        run: test '${{ needs.qualify.result }}' = success
