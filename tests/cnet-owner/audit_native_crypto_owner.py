@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Audit the real production CNet link, including hidden static TLS symbols.
 
-The Crypto archive is allowed in the production CNet image only. The existing
-two plugins and their loader must import that shared owner, never extract
-another Crypto archive. Link maps are mandatory evidence on every platform.
+The facade archive and exactly one pinned vcpkg GmSSL static archive are
+admitted to the production CNet image only. Both plugins and their loader
+must import that shared image, never extract their own Crypto/GmSSL archives.
+Link maps are mandatory physical-source evidence on each platform.
 """
 from __future__ import annotations
 
@@ -28,14 +29,17 @@ ARCHIVE_SYMBOLS = NATIVE_SYMBOLS + (
     "crypto_tls_cipher_bio_create", "salts_crypto_sha256",
     "salts_crypto_ed448_sign",
 )
-CRYPTO_MEMBER = re.compile(
-    r"(?:^|[/\\\s])(?:lib)?salts_crypto(?:[.](?:a|lib))?(?:\(|:)", re.I)
+GMSSL_MEMBER = re.compile(
+    r"(?:^|[/\\\s])(?:lib)?gmssl(?:[.](?:a|lib))?(?:\(|:)", re.I)
 CRYPTO_ARCHIVE = re.compile(
     r"(?:^|[/\\\s])(?:lib)?salts_crypto(?:[.](?:a|lib))?(?:\(|:|[\s]|$)", re.I)
 EXTERNAL_CRYPTO = re.compile(
     r"^(?:lib)?(?:gmssl|ssl|crypto|salts_crypto)(?:[-.]|$)", re.I)
 EXTERNAL_ARCHIVE = re.compile(
     r"(?:^|[/\\\s])(?:lib)?(?:gmssl|ssl|crypto)[.](?:a|lib)(?:[\s(:]|$)",
+    re.I | re.M)
+FOREIGN_CRYPTO_ARCHIVE = re.compile(
+    r"(?:^|[/\\\s])(?:lib)?(?:ssl|crypto)[.](?:a|lib)(?:[\s(:]|$)",
     re.I | re.M)
 
 
@@ -230,8 +234,8 @@ def map_definitions(text, system):
 
 
 def validate_runtime_map(text, system, archive_members=None):
-    require(not EXTERNAL_ARCHIVE.search(text),
-            "production link selected an external Crypto/GmSSL archive")
+    require(not FOREIGN_CRYPTO_ARCHIVE.search(text),
+            "production link selected an unexpected SSL/Crypto archive")
     definitions = map_definitions(text, system)
     lld_mingw = system == "Windows" and re.search(
         r"(?m)^Address\s+Size\s+Align\s+Out\s+In\s+Symbol\s*$", text)
@@ -242,10 +246,10 @@ def validate_runtime_map(text, system, archive_members=None):
         if valid and lld_mingw:
             valid = archive_members is not None and archive_members.get(name) == {owners[0]}
         elif valid:
-            valid = CRYPTO_MEMBER.search(owners[0]) is not None
+            valid = GMSSL_MEMBER.search(owners[0]) is not None
         if not valid:
             invalid[name] = owners
-    require(not invalid, "production TLS is not supplied once by local Crypto: " + str(invalid))
+    require(not invalid, "production TLS is not supplied exactly once by vcpkg GmSSL: " + str(invalid))
     return dict(definitions)
 
 
@@ -276,7 +280,13 @@ def validate_dependencies(names):
 
 
 def inspect(args):
-    files = [args.archive, args.runtime, args.map, *args.peer, *args.peer_map]
+    files = [args.archive, args.gmssl_archive, args.runtime, args.map,
+             *args.peer, *args.peer_map]
+    require(args.archive.resolve() != args.gmssl_archive.resolve(),
+            "Crypto facade and installed GmSSL must be distinct archives")
+    require(re.fullmatch(r"(?:lib)?gmssl[.](?:a|lib)",
+                         args.gmssl_archive.name, re.I) is not None,
+            "GmSSL source archive must come from the imported vcpkg target")
     require(all(path.is_file() for path in files), "required native artifact/link map missing")
     require(len(args.peer) == 3 and len(args.peer_map) == 3,
             "require both actual production plugins and their loader")
@@ -284,16 +294,32 @@ def inspect(args):
         reader = args.nm
         require(reader, "COFF symbol reader required")
         dumpbin = "dumpbin" in Path(reader).name.lower()
-        symbols = command(
-            [reader, "/nologo", "/symbols", str(args.archive)] if dumpbin else
-            [reader, "-g", "--defined-only", "--print-file-name", str(args.archive)])
+        def read_archive(path):
+            return command(
+                [reader, "/nologo", "/symbols", str(path)] if dumpbin else
+                [reader, "-g", "--defined-only", "--print-file-name", str(path)])
     else:
         reader = args.nm or shutil.which("nm")
         require(reader, "native nm required")
-        symbols = command([reader, "-g", str(args.archive)])
-    table = archive_definitions(symbols, args.system)
+        dumpbin = False
+        def read_archive(path):
+            return command([reader, "-g", str(path)])
+    crypto_symbols = read_archive(args.archive)
+    gmssl_symbols = read_archive(args.gmssl_archive)
+    crypto_table = archive_definitions(crypto_symbols, args.system)
+    gmssl_table = archive_definitions(gmssl_symbols, args.system)
+    require(all(crypto_table[name] == 0 and gmssl_table[name] == 1
+                for name in NATIVE_SYMBOLS),
+            "native TLS must exist only in one pinned GmSSL archive")
+    require(all(crypto_table[name] == 1 and gmssl_table[name] == 0
+                for name in ARCHIVE_SYMBOLS if name not in NATIVE_SYMBOLS),
+            "Crypto facade symbols must exist only in its own archive")
+    table = crypto_table + gmssl_table
     validate_archive(table)
-    archive_members = nm_archive_members(symbols, args.system) if args.system == "Windows" and not dumpbin else None
+    archive_members = (
+        nm_archive_members(gmssl_symbols, args.system)
+        if args.system == "Windows" and not dumpbin else None
+    )
     ownership = validate_runtime_map(
         args.map.read_text(errors="replace"), args.system, archive_members)
     for path in args.peer_map:
@@ -322,7 +348,9 @@ def inspect(args):
         require(any(re.search(r"(?:lib)?saltscore_cnet(?:[-.]|$)", name, re.I)
                     for name in imports[str(path)]),
                 "production plugin does not import the real CNet owner: " + str(path))
-    return {"ok": True, "archive": str(args.archive), "runtime": str(args.runtime),
+    return {"ok": True, "archive": str(args.archive),
+            "gmssl_archive": str(args.gmssl_archive),
+            "runtime": str(args.runtime),
             "strong_archive_definitions": len(table), "native_owners": ownership,
             "imports": imports, "scope": "production-native-link-not-facade-parity"}
 
@@ -330,6 +358,7 @@ def inspect(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", required=True, type=Path)
+    parser.add_argument("--gmssl-archive", required=True, type=Path)
     parser.add_argument("--runtime", required=True, type=Path)
     parser.add_argument("--map", required=True, type=Path)
     parser.add_argument("--system", required=True)

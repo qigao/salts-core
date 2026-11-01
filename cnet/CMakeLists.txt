@@ -205,6 +205,7 @@ if(BUILD_TESTING)
     COMMAND "${Python3_EXECUTABLE}" -B
       "${PROJECT_SOURCE_DIR}/tests/cnet-owner/audit_native_crypto_owner.py"
       --archive "$<TARGET_FILE:salts_crypto>"
+      --gmssl-archive "$<TARGET_FILE:GmSSL::GmSSL>"
       --runtime "$<TARGET_FILE:saltscore_cnet>"
       --map "${PROJECT_BINARY_DIR}/cnet-owner-maps/saltscore_cnet-$<CONFIG>.map"
       --system "${CMAKE_SYSTEM_NAME}"

@@ -116,21 +116,21 @@ class NativeCryptoOwnerAudit(unittest.TestCase):
     def test_real_member_required_in_all_link_map_formats(self):
         for system in ("Linux", "Darwin", "Windows"):
             if system == "Darwin":
-                prefix = "[ 1] /build/crypto/libsalts_crypto.a(tls.c.o)\n"
+                prefix = "[ 1] /build/vcpkg/libgmssl.a(tls.c.o)\n"
                 text = prefix + "\n".join(
                     f"0x1000 0x10 [ 1] _{name}" for name in audit.NATIVE_SYMBOLS)
             elif system == "Windows":
                 text = "\n".join(
-                    f" 0001:00000010 {name} 0000000140001000 f salts_crypto:tls.c.obj"
+                    f" 0001:00000010 {name} 0000000140001000 f gmssl:tls.c.obj"
                     for name in audit.NATIVE_SYMBOLS)
             else:
-                prefix = " .text 0x1000 0x100 /build/crypto/libsalts_crypto.a(tls.c.o)\n"
+                prefix = " .text 0x1000 0x100 /build/vcpkg/libgmssl.a(tls.c.o)\n"
                 text = prefix + "\n".join(
                     f" 0x00001000 {name}" for name in audit.NATIVE_SYMBOLS)
             with self.subTest(system=system):
                 audit.validate_runtime_map(text, system)
                 with self.assertRaises(ValueError):
-                    audit.validate_runtime_map(text.replace("salts_crypto", "gmssl"), system)
+                    audit.validate_runtime_map(text.replace("gmssl", "salts_crypto"), system)
                 with self.assertRaises(ValueError):
                     audit.validate_runtime_map(text + "\n" + text, system)
                 with self.assertRaises(ValueError):
