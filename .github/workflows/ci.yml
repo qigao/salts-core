@@ -141,14 +141,14 @@ jobs:
 
       - name: Set up native LLVM
         if: runner.os != 'Windows'
-        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-native@529019437597fa71f7d8dcc561d26fc7b0603ae6
+        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-native@v0.1.0
         with:
           build-type: toolchain-only
           obfuscator: "false"
 
       - name: Set up Windows LLVM-MinGW
         if: runner.os == 'Windows'
-        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@529019437597fa71f7d8dcc561d26fc7b0603ae6
+        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@v0.1.0
         with:
           target: ${{ matrix.target }}
           build-type: toolchain-only
@@ -158,13 +158,13 @@ jobs:
         id: vcpkg
         # The PR #263 port overlay must match the manifest's pinned registry
         # GmSSL 3.2.0#17; the older shared action injects #16/#15.
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@2fd6fc9503801968715c6e8bd5bab0c2be2ef826
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@v0.1.0
         with:
           mode: read
           token: ${{ github.token }}
 
       - name: Restore re2c and Unicode host data
-        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@529019437597fa71f7d8dcc561d26fc7b0603ae6
+        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@v0.1.0
         with:
           token: ${{ github.token }}
 
