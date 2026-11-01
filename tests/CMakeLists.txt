@@ -201,7 +201,7 @@ if(TARGET Salts::CNet)
   set_target_properties(saltscore_cnet_tcp_loopback_test PROPERTIES
     C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
   target_link_libraries(saltscore_cnet_tcp_loopback_test PRIVATE
-    Salts::CNet saltscore_runtime_owner_probe)
+    Salts::CNet saltscore_runtime_owner_probe Salts::TinyTest)
   if(WIN32)
     target_link_libraries(saltscore_cnet_tcp_loopback_test PRIVATE ws2_32)
   endif()
@@ -229,7 +229,7 @@ if(TARGET Salts::CNet)
   set_target_properties(saltscore_two_plugins_test PROPERTIES
     C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
   target_link_libraries(saltscore_two_plugins_test PRIVATE
-    Salts::Core Salts::Platform ${CMAKE_DL_LIBS})
+    Salts::Core Salts::Platform ${CMAKE_DL_LIBS} Salts::TinyTest)
   saltscore_cnet_owner_link_map(saltscore_two_plugins_test)
   add_dependencies(saltscore_two_plugins_test
     saltscore_runtime_plugin_a saltscore_runtime_plugin_b)
@@ -257,7 +257,7 @@ if(TARGET Salts::CNet)
   target_compile_features(saltscore_gmssl_shangmi_provider_test PRIVATE c_std_11)
   set_target_properties(saltscore_gmssl_shangmi_provider_test PROPERTIES
     C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
-  target_link_libraries(saltscore_gmssl_shangmi_provider_test PRIVATE Salts::Crypto)
+  target_link_libraries(saltscore_gmssl_shangmi_provider_test PRIVATE Salts::Crypto Salts::TinyTest)
   target_include_directories(saltscore_gmssl_shangmi_provider_test PRIVATE
     "$<TARGET_PROPERTY:salts_crypto,SALTS_CRYPTO_NATIVE_INCLUDE_DIR>")
   target_compile_definitions(saltscore_gmssl_shangmi_provider_test PRIVATE
@@ -273,7 +273,7 @@ if(TARGET Salts::CNet)
   target_compile_features(saltscore_cnet_tls_ca_san_test PRIVATE c_std_11)
   set_target_properties(saltscore_cnet_tls_ca_san_test PROPERTIES
     C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
-  target_link_libraries(saltscore_cnet_tls_ca_san_test PRIVATE Salts::CNet)
+  target_link_libraries(saltscore_cnet_tls_ca_san_test PRIVATE Salts::CNet Salts::TinyTest)
   if(MSVC)
     target_compile_options(saltscore_cnet_tls_ca_san_test PRIVATE
       $<$<COMPILE_LANGUAGE:C>:-experimental:c11atomics>)
@@ -596,7 +596,7 @@ add_executable(saltscore_original_native_mmap_test test_original_native_mmap.c)
 target_compile_features(saltscore_original_native_mmap_test PRIVATE c_std_11)
 set_target_properties(saltscore_original_native_mmap_test PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
-target_link_libraries(saltscore_original_native_mmap_test PRIVATE Salts::Core)
+target_link_libraries(saltscore_original_native_mmap_test PRIVATE Salts::Core Salts::TinyTest)
 add_test(NAME saltscore.original_native_mmap
   COMMAND saltscore_original_native_mmap_test)
 set_tests_properties(saltscore.original_native_mmap PROPERTIES TIMEOUT 30)
