@@ -94,3 +94,7 @@
   `aclocal`. Install Homebrew `automake` and `libtool` before vcpkg configures
   libusb; otherwise a cleared binary cache fails before the Salts graph is
   generated.
+- `SaltsCore.Native` publication stays inside the existing eight-RID LLVM CI.
+  The tag run installs the already-qualified graph and packages those install
+  trees; do not restore the removed standalone consumer/installer workflow or
+  publish from a locally assembled SDK.
