@@ -84,7 +84,7 @@
       "cacheVariables": {
         "BUILD_TESTING": "OFF",
         "ANDROID_ABI": "$env{SALTSCORE_ANDROID_ABI}",
-        "ANDROID_PLATFORM": "android-24",
+        "ANDROID_PLATFORM": "android-26",
         "VCPKG_MANIFEST_FEATURES": "cnet;simd;usb;playback;capture;zstd",
         "SALTSCORE_BUILD_URI": "ON",
         "SALTSCORE_BUILD_WEBSOCKET_PARSER": "ON",

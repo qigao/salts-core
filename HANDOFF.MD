@@ -86,3 +86,7 @@
   -qDEB_HOST_MULTIARCH)/pkgconfig`, `/usr/lib/pkgconfig` and
   `/usr/share/pkgconfig` after the action, and probe the required PipeWire
   module before configure.
+- The full Android preset must use `ANDROID_PLATFORM=android-26`. Capture's
+  retained MediaProjection ABI calls `ANativeWindow_toSurface`, and its
+  compiler guard intentionally rejects API 24; do not weaken that guard or
+  add a lower-API fallback.
