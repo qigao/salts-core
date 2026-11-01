@@ -16,7 +16,7 @@ Core TLS 1.2 empty-authority, TLS 1.3 ticket-bound and strict handshake-reader
 adaptations. The recipe includes its original ordered TLS, X.509, RSA,
 portability, P-384 verification and undefined-behavior corrections. The P-384
 backport is verification-only; its original provenance remains in
-`vendor/gmssl-extensions`.
+`crypto/gmssl-extensions`.
 
 The former production CNet registry at
 `2e214ae44a3e3244eded5db6361194576356fc9e` selected port `3.2.0#13`.

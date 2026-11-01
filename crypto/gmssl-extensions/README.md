@@ -1,6 +1,6 @@
 # GmSSL extension source ownership
 
-This directory preserves the original additional C11 source inputs:
+The Crypto-owned extension source directory preserves the original additional C11 source inputs:
 MD5 (legacy protocol
 interoperability only), DES-CBC (legacy protocol interoperability only),
 AES Key Wrap (RFC 3394), bounded RSA encodings/private operations and

@@ -84,7 +84,7 @@ if(SALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION)
     "${PROJECT_SOURCE_DIR}/cnet/src"
     "${PROJECT_SOURCE_DIR}/cnet/src/wsparser"
     "${PROJECT_SOURCE_DIR}/native-io/src"
-    "${PROJECT_SOURCE_DIR}/vendor/cnet/monocypher"
+    "${PROJECT_SOURCE_DIR}/vendor/monocypher"
     "${PROJECT_SOURCE_DIR}/vendor/cnet/reed"
     "${PROJECT_SOURCE_DIR}/tests/cnet-crypto-static")
   target_compile_definitions(saltscore_cnet_crypto_static_original_owner PRIVATE
@@ -198,7 +198,7 @@ if(SALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION)
         "${PROJECT_SOURCE_DIR}/cnet/src"
         "${PROJECT_SOURCE_DIR}/cnet/src/wsparser"
         "${PROJECT_SOURCE_DIR}/native-io/src"
-        "${PROJECT_SOURCE_DIR}/vendor/cnet/monocypher"
+        "${PROJECT_SOURCE_DIR}/vendor/monocypher"
         "${PROJECT_SOURCE_DIR}/vendor/cnet/reed"
         "${PROJECT_SOURCE_DIR}/tests/cnet-crypto-static")
     target_link_libraries(saltscore_cnet_crypto_m6_shared

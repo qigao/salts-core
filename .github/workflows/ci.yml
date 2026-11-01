@@ -50,6 +50,8 @@ on:
       - "serial/*.h"
       - "verification/*.pml"
       - "vendor/cnet/**"
+      - "vendor/monocypher/**"
+      - "crypto/gmssl-extensions/**"
   push:
     branches: [master]
     tags: ["v0.1.002"]
@@ -101,6 +103,8 @@ on:
       - "serial/*.h"
       - "verification/*.pml"
       - "vendor/cnet/**"
+      - "vendor/monocypher/**"
+      - "crypto/gmssl-extensions/**"
   workflow_dispatch:
 
 permissions:

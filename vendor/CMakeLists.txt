@@ -3,15 +3,10 @@
 # Never install or export these source-private libraries as Salts:: providers.
 find_path(SALTSCORE_CNET_SIMDE_INCLUDE_DIR NAMES simde/x86/sse2.h REQUIRED)
 
-# Single CNet-private Monocypher namespace avoids duplicate crypto_argon2 and
-# other generic symbols in programs containing more than one consumer DSO.
-add_library(saltscore_cnet_monocypher STATIC
-  ${CMAKE_CURRENT_SOURCE_DIR}/cnet/monocypher/cnet_monocypher.c)
-target_compile_features(saltscore_cnet_monocypher PUBLIC c_std_11)
-target_include_directories(saltscore_cnet_monocypher
-  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/cnet/monocypher")
-set_target_properties(saltscore_cnet_monocypher PROPERTIES
-  POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
+# Monocypher is an INDEPENDENT CMake library under vendor/monocypher.
+# Keep its original CNet-private namespace for ABI/wire parity; do not fold
+# it into Salts::Crypto or rename its algorithm implementations.
+add_subdirectory(monocypher)
 
 add_library(saltscore_cnet_reed STATIC
   ${CMAKE_CURRENT_SOURCE_DIR}/cnet/reed/gf256.c)
@@ -26,5 +21,5 @@ set_target_properties(saltscore_cnet_reed PROPERTIES
 # making CNet a second owner of the vendored source or license inputs.
 install(FILES cnet/reed/LICENSE
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/reed)
-install(FILES cnet/monocypher/UPSTREAM.md
+install(FILES monocypher/UPSTREAM.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/SaltsCore/monocypher)
