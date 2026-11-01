@@ -165,6 +165,13 @@ jobs:
         with:
           token: ${{ github.token }}
 
+      - name: Install macOS native autotools
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: brew install automake libtool
+
       - name: Install Linux native capture SDK headers
         if: runner.os == 'Linux' && matrix.preset != 'ci-android'
         shell: bash

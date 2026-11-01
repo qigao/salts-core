@@ -90,3 +90,7 @@
   retained MediaProjection ABI calls `ANativeWindow_toSurface`, and its
   compiler guard intentionally rejects API 24; do not weaken that guard or
   add a lower-API fallback.
+- The Intel macOS runner can provide `autoreconf` without Automake's
+  `aclocal`. Install Homebrew `automake` and `libtool` before vcpkg configures
+  libusb; otherwise a cleared binary cache fails before the Salts graph is
+  generated.
