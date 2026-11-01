@@ -13,7 +13,7 @@ There is no replacement external TLS prefix or provider selection flag.
 `Salts::Crypto` is the single public static Crypto archive. It contains its
 seven existing facade translation units, the existing 33-unit private
 libecc Ed448 subset, and 84 locally compiled native units. The native source,
-headers and license live in `crypto/native/gmssl`; its OBJECT target is not
+headers and license come from pinned vcpkg GmSSL; its imported STATIC target is not
 exported or installed independently. No GmSSL package lookup, imported native
 archive, post-build archive merge, provider DSO or duplicate public target is
 part of this build.

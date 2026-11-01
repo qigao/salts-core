@@ -12,12 +12,7 @@ reader and owned Value Tree are under [../asn1/](../asn1/), exported as
 CMake targets, C11 source and C++17-usable C headers.
 
 Use the repo root for the default ASN1/Crypto/CNet build or `cmake -S crypto`
-to compile just Crypto against a previously installed ASN1 module. The
-native implementation is compiled from the locked local sources in
-`native/gmssl/`, including the reviewed Core extension inputs under
-`gmssl-extensions/`. It does not import a provider archive or require
-an external Crypto SDK. The native TLS and algorithm objects are private and
-are folded directly into the one `Salts::Crypto` archive.
+to compile just Crypto against a previously installed ASN1 module. The native GmSSL implementation is installed from the immutable `gmssl 3.2.0#16` vcpkg port, whose extension sources are pinned from `gmssl-extensions/`. `Salts::Crypto` links the imported `GmSSL::GmSSL` static library; it never compiles a duplicate GmSSL implementation.
 Private Ed448 libecc objects live under `vendor/libecc/` in this module.
 No backwards-compatibility alias, fallback or duplicate BER/DER owner.
 

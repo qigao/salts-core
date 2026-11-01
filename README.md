@@ -68,7 +68,7 @@ See [architecture](docs/ARCHITECTURE.md) for ownership and migration gates.
 The default graph builds the whole CNet transport source tree, including the
 original IPC FIFO, peer index and native-path changes. Production CNet links
 the sole source-built static `Salts::Crypto` archive. Its private native TLS
-and algorithm sources are locked under `crypto/native/gmssl/`; Crypto's
+and algorithm sources are provided by pinned vcpkg GmSSL 3.2.0#16; Crypto's
 Ed448 objects remain under `crypto/vendor/libecc/`. No separately installed
 GmSSL archive or external Crypto prefix is consumed.
 
