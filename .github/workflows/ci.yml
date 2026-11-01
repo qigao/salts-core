@@ -54,6 +54,7 @@ on:
       - "vendor/cnet/**"
   push:
     branches: [master]
+    tags: ["v0.1.000"]
     paths:
       - "platform/src/**"
       - "platform/include/**"
@@ -123,16 +124,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {rid: linux-x64, runner: ubuntu-24.04, target: x64, triplet: x64-linux, host: x64-linux, preset: ci-native, android_abi: ""}
-          - {rid: linux-arm64, runner: ubuntu-24.04-arm, target: arm64, triplet: arm64-linux, host: arm64-linux, preset: ci-native, android_abi: ""}
-          - {rid: macos-x64, runner: macos-15-intel, target: x64, triplet: x64-osx, host: x64-osx, preset: ci-native, android_abi: ""}
-          - {rid: macos-arm64, runner: macos-15, target: arm64, triplet: arm64-osx, host: arm64-osx, preset: ci-native, android_abi: ""}
-          - {rid: windows-x64, runner: windows-2025, target: x64, triplet: qigao-x64-windows-llvm-mingw, host: qigao-x64-windows-llvm-mingw, preset: ci-native, android_abi: ""}
-          - {rid: windows-arm64, runner: windows-11-arm, target: arm64, triplet: qigao-arm64-windows-llvm-mingw, host: qigao-arm64-windows-llvm-mingw, preset: ci-native, android_abi: ""}
-          - {rid: linux-x64-asan-ubsan, runner: ubuntu-24.04, target: x64, triplet: x64-linux, host: x64-linux, preset: ci-asan-ubsan, android_abi: ""}
-          - {rid: linux-x64-tsan, runner: ubuntu-24.04, target: x64, triplet: x64-linux, host: x64-linux, preset: ci-tsan, android_abi: ""}
-          - {rid: android-x64, runner: ubuntu-24.04, target: x64, triplet: x64-android, host: x64-linux, preset: ci-android, android_abi: x86_64}
-          - {rid: android-arm64, runner: ubuntu-24.04, target: arm64, triplet: arm64-android, host: x64-linux, preset: ci-android, android_abi: arm64-v8a}
+          - {rid: linux-x64, runner: ubuntu-24.04, target: x64, triplet: x64-linux, host: x64-linux, preset: ci-native, android_abi: "", package: true}
+          - {rid: linux-arm64, runner: ubuntu-24.04-arm, target: arm64, triplet: arm64-linux, host: arm64-linux, preset: ci-native, android_abi: "", package: true}
+          - {rid: macos-x64, runner: macos-15-intel, target: x64, triplet: x64-osx, host: x64-osx, preset: ci-native, android_abi: "", package: true}
+          - {rid: macos-arm64, runner: macos-15, target: arm64, triplet: arm64-osx, host: arm64-osx, preset: ci-native, android_abi: "", package: true}
+          - {rid: windows-x64, runner: windows-2025, target: x64, triplet: qigao-x64-windows-llvm-mingw, host: qigao-x64-windows-llvm-mingw, preset: ci-native, android_abi: "", package: true}
+          - {rid: windows-arm64, runner: windows-11-arm, target: arm64, triplet: qigao-arm64-windows-llvm-mingw, host: qigao-arm64-windows-llvm-mingw, preset: ci-native, android_abi: "", package: true}
+          - {rid: linux-x64-asan-ubsan, runner: ubuntu-24.04, target: x64, triplet: x64-linux, host: x64-linux, preset: ci-asan-ubsan, android_abi: "", package: false}
+          - {rid: linux-x64-tsan, runner: ubuntu-24.04, target: x64, triplet: x64-linux, host: x64-linux, preset: ci-tsan, android_abi: "", package: false}
+          - {rid: android-x64, runner: ubuntu-24.04, target: x64, triplet: x64-android, host: x64-linux, preset: ci-android, android_abi: x86_64, package: true}
+          - {rid: android-arm64, runner: ubuntu-24.04, target: arm64, triplet: arm64-android, host: x64-linux, preset: ci-android, android_abi: arm64-v8a, package: true}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -212,7 +213,7 @@ jobs:
             echo "SALTSCORE_VCPKG_TARGET_TRIPLET=$TARGET_TRIPLET"
             echo "SALTSCORE_VCPKG_HOST_TRIPLET=$HOST_TRIPLET"
             echo "SALTSCORE_ANDROID_ABI=$ANDROID_ABI"
-            echo "SALTSCORE_INSTALL_PREFIX=$RUNNER_TEMP/saltscore-$RID"
+            echo "SALTSCORE_INSTALL_PREFIX=$GITHUB_WORKSPACE/package/sdk/$RID"
           } >> "$GITHUB_ENV"
 
       - name: Configure full graph
@@ -228,12 +229,125 @@ jobs:
         shell: bash
         run: ctest --preset "${{ matrix.preset }}"
 
+      - name: Install release SDK
+        if: matrix.package && github.ref == 'refs/tags/v0.1.000'
+        shell: bash
+        run: cmake --build --preset "install-${{ matrix.preset }}"
+
+      - name: Record immutable SDK provenance
+        if: matrix.package && github.ref == 'refs/tags/v0.1.000'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $prefix = Join-Path $env:GITHUB_WORKSPACE 'package/sdk/${{ matrix.rid }}'
+          if (-not (Test-Path "$prefix/lib/cmake/SaltsCore/SaltsCoreConfig.cmake")) {
+            throw 'SaltsCore SDK installation is missing'
+          }
+          @(
+            'release=0.1.000'
+            'package=0.1.0'
+            "commit=$env:GITHUB_SHA"
+            'rid=${{ matrix.rid }}'
+            'profile=release'
+            'compiler=llvm'
+            'protection=none'
+          ) | Set-Content -Encoding utf8 "$prefix/saltscore-sdk-manifest.txt"
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.package && github.ref == 'refs/tags/v0.1.000'
+        with:
+          name: saltscore-sdk-${{ matrix.rid }}
+          path: package
+          if-no-files-found: error
+          retention-days: 14
+
+  package:
+    name: Publish SaltsCore.Native 0.1.0
+    if: github.ref == 'refs/tags/v0.1.000'
+    needs: qualify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: saltscore-sdk-*
+          path: package
+          merge-multiple: true
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Pack immutable eight-RID SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-list -n 1 v0.1.000)" = "$GITHUB_SHA"
+          test "$(find package/sdk -maxdepth 2 -name saltscore-sdk-manifest.txt | wc -l)" -eq 8
+          dotnet pack packaging/nuget/SaltsCore.Native.csproj \
+            --configuration Release --output dist \
+            -p:PackageVersion=0.1.0 \
+            -p:PackageRoot="$GITHUB_WORKSPACE/package"
+          package=dist/SaltsCore.Native.0.1.0.nupkg
+          test -f "$package"
+          sha256sum "$package" > dist/SHA256SUMS
+      - name: Refuse an existing release or normalized package version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.1.000 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'GitHub Release v0.1.000 already exists' >&2
+            exit 1
+          fi
+          inventory="$RUNNER_TEMP/saltscore-packages.json"
+          error="$RUNNER_TEMP/saltscore-packages.err"
+          if gh api --paginate '/users/qigao/packages/nuget/SaltsCore.Native/versions?per_page=100' > "$inventory" 2> "$error"; then
+            python3 - "$inventory" <<'PY'
+          import json, sys
+          if any(item.get('name', '').lower() == '0.1.0' for item in json.load(open(sys.argv[1]))):
+              raise SystemExit('SaltsCore.Native 0.1.0 already exists')
+          PY
+          elif ! grep -Fq 'HTTP 404' "$error"; then
+            cat "$error" >&2
+            exit 1
+          fi
+      - name: Publish NuGet package and GitHub Release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          config="$RUNNER_TEMP/saltscore-release-nuget.config"
+          printf '<configuration><packageSources><clear /></packageSources></configuration>\n' > "$config"
+          dotnet nuget add source https://nuget.pkg.github.com/qigao/index.json \
+            --name github --username qigao --password "$GITHUB_TOKEN" \
+            --store-password-in-clear-text --configfile "$config"
+          dotnet nuget push dist/SaltsCore.Native.0.1.0.nupkg \
+            --api-key "$GITHUB_TOKEN" --source github --configfile "$config"
+          gh release create v0.1.000 \
+            dist/SaltsCore.Native.0.1.0.nupkg dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --target "$GITHUB_SHA" \
+            --title 'SaltsCore 0.1.000' --generate-notes --latest
+
   result:
     name: CI result
     if: ${{ always() }}
-    needs: qualify
+    needs: [qualify, package]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every LLVM qualification job
         shell: bash
-        run: test '${{ needs.qualify.result }}' = success
+        run: |
+          test '${{ needs.qualify.result }}' = success
+          if [[ '${{ github.ref }}' == refs/tags/v0.1.000 ]]; then
+            test '${{ needs.package.result }}' = success
+          fi
