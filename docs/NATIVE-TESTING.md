@@ -76,11 +76,16 @@ cmake --build --preset ci-native
 ctest --preset ci-native --output-on-failure
 ```
 
-The Linux x64 job of the unified LLVM CI enables these options against the
-real pinned certificate fixtures; ordinary non-Linux profiles keep the
-optional duplicate source-built CNet test graph off. More costly Python
-independent-peer mTLS/SAN options remain separate exact-head acceptance gates,
-not automatic claims of production correctness.
+The existing LLVM CI has a **workflow_dispatch** boolean
+`cnet_crypto_optional`, which enables this genuine M5/M6 qualification on
+Linux x64 using the committed certificate fixtures. Ordinary pull requests
+keep the optional duplicate source-built CNet test graph OFF, because the
+underlying Crypto TLS v1.0 engine cannot yet prove authenticated reciprocal
+`close_notify` (Issue #81). On a manual run, all real native and M5/M6 CTest
+entries remain active and fail on a genuine error; nothing is silently
+`DISABLED`, marked `WILL_FAIL`, or considered accepted from a build-only pass.
+Python independent-peer mTLS/SAN options still require their own exact-head
+acceptance and are not production correctness claims.
 
 The standalone `sctp/tests/independent/dtls` and
 `crypto/tests/x509/standalone` CMake projects predate this migration and
