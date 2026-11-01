@@ -123,6 +123,10 @@ if not (ROOT / "crypto/gmssl-extensions/source-lock.json").is_file():
 if (ROOT / "crypto/native/gmssl/src").exists() or (
         ROOT / "crypto/native/gmssl/include").exists():
     raise SystemExit("mirrored native GmSSL source must not remain in Crypto")
+for retired in ("crypto/tools/merge_static_crypto.cmake",
+                "crypto/tools/stage_mtls_gmssl_overlay.py"):
+    if (ROOT / retired).exists():
+        raise SystemExit(f"obsolete local GmSSL merge/staging script: {retired}")
 if "${CRYPTO_GMSSL_ROOT}" in crypto_cmake or "${CRYPTO_GMSSL_ROOT}" in cnet_cmake:
     raise SystemExit("retired external GmSSL prefix override forbidden")
 
