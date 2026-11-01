@@ -135,6 +135,11 @@ only when their independent implementations and platform gates are qualified.
 
 ## Native LLVM thread and scheduler contract
 
+The mandatory TinyTest / CTest division, exact native module ownership,
+worker-thread failure rules, and opt-in original CNet Crypto test admission are
+documented in [Native Test Ownership](docs/NATIVE-TESTING.md).
+
+
 The unified CI workflow uses the shared vcpkg-cache compiler setup on
 Linux/macOS x64 and ARM64 (runner-native Clang), and Windows x64 and ARM64
 (llvm-mingw/UCRT 20261020). It builds the complete configured graph and runs
