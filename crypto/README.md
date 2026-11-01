@@ -30,8 +30,11 @@ ownership does not imply independent TLS reimplementation or completed
 platform/security qualification. Production CNet consumes this same archive.
 
 Installed consumers require `find_package(Crypto 0.1 CONFIG REQUIRED)`
-and link `Salts::Crypto`. This imports the sibling `Salts::ASN1` via
-`find_dependency(ASN1)`. Direct protocol consumers should instead use only
+and link `Salts::Crypto`. The config imports the sibling `Salts::ASN1`
+and the pinned external `GmSSL::GmSSL` through `find_dependency`. The
+installed GmSSL static SDK must therefore be available in the same verified
+vcpkg dependency environment; Crypto does not silently bundle a second copy.
+Direct protocol consumers should instead use only
 `find_package(ASN1 0.1 CONFIG REQUIRED)` and `Salts::ASN1`.
 
 ## X.509 certificate inspection for TLS callers

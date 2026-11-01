@@ -11,18 +11,20 @@ The SaltsCore root always assembles and installs it; it is not controlled
 by a build option. Its independent C/C++ module tests also run in a standalone
 ASN1 configure, separately from the default Core graph.
 
-Salts::Crypto is the one TLS and algorithms owner in the default Core graph.
-The locked local `crypto/native/gmssl/` implementation and private libecc
-objects are compiled directly into its single static archive. No installed
-GmSSL prefix or imported provider archive is required. The independent
-`crypto/` configure uses the same local sources and requires only the sibling
-installed ASN1 package and native system dependencies.
+Salts::Crypto is the canonical TLS/X.509 service facade in the default Core
+graph. Its static archive contains its own C11 wrapper/Ed448 sources and links
+the versioned `GmSSL::GmSSL` static archive delivered by vcpkg, rather than
+duplicating a checked-in GmSSL native source build. The original pinned
+extension C/H inputs live under `crypto/gmssl-extensions` and are staged
+by the vcpkg-cache port with a hash-verified immutable source checkout.
 
-Production CNet retains its original GmSSL API calls and TLS behavior, but
-resolves them through the same local Salts::Crypto archive. It does not
-compile another native TLS implementation. This is a source/build ownership
-change; the static Crypto still contains the GmSSL-derived engine and is
-NOT a third-party-free native TLS implementation. The additional
+Production CNet retains its original GmSSL TLS API use temporarily; it now
+links the same imported vcpkg GmSSL archive along with Salts::Crypto. This
+single package source does not, by itself, prove one physical process-wide
+provider across multiple independently linked DSO images. The original
+native/TLS/DSO negative checks remain mandatory. Removing direct private
+GmSSL CNet calls is a separate semantic gate; no additional provider fallback
+is added. The additional
 `SALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION` graph is test-only and cannot
 substitute for real production CNet, installed SDK or runtime owner evidence.
 
@@ -34,9 +36,9 @@ RETIREMENT BLOCKERS:
   pinned patch must reconstruct the active CMake file. They must still pass real TLS/mTLS
   native tests before retirement. Their original GmSSL-backed workflow
   is preserved as a historical input, not a production approval.
-- Qualify the actual locked local TLS/TLCP implementation, including its
-  third-party provenance, on every supported platform; local compilation
-  alone does not prove a different engine or completion of a TLS rewrite.
+- Qualify the pinned vcpkg TLS/TLCP implementation and its exact port/source
+  provenance on every supported platform. An imported package alone does not
+  prove an independent engine or completed TLS rewrite.
 - Preserve TLS1.2/1.3, ShangMi, TLCP, CA/SAN, mTLS, full binary ALPN,
   RFC5929/9266, alert/EOF and bounded NativeIO ownership semantics.
 - Migrate all other active consumers, workflow inputs and release pins.

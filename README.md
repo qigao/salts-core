@@ -88,8 +88,8 @@ cmake --build build-cnet --parallel
 ctest --test-dir build-cnet --output-on-failure
 ```
 
-The checked-in vcpkg manifest keeps CNet under an explicit feature; the
-pinned registry snapshot uses GmSSL 3.2.0#13. The unified LLVM workflow
+The checked-in vcpkg manifest pins `gmssl 3.2.0#16` through the immutable
+qigao/vcpkg-cache registry. The unified LLVM workflow
 qualifies the complete native graph through the checked-in presets.
 
 An unavailable dependency fails configuration, without substituting another

@@ -1,43 +1,32 @@
-# Canonical two-module native source ownership
+# ASN1 / Crypto static library boundaries
 
-**The SaltsCore source tree contains two independently consumable C11
-modules**, each with exactly one public static archive and canonical
-`Salts::XXX` target:
+`Salts::ASN1` is the single first-party BER/DER implementation and can be
+used independently without bringing in TLS or the Crypto facade.
 
-| Module | CMake target | Native implementation | Link dependencies |
-| --- | --- | --- | --- |
-| `asn1/` | `Salts::ASN1` | BER/DER TLV, OID, strict validator, bounded owned Value Tree | C11 |
-| `crypto/` | `Salts::Crypto` | Locked local TLS/algorithms, Ed448, TLS/CipherBIO, ECDSA DER and RFC 8410 formats | `Salts::ASN1` + native system libraries |
+`Salts::Crypto` is the single first-party C11 TLS/X.509/CipherBIO/hash facade.
+It is a STATIC target composed of first-party sources and original Ed448
+libecc objects. **GmSSL is a separate pinned vcpkg STATIC archive**,
+imported as `GmSSL::GmSSL`. Its native C and H sources are owned by the
+vcpkg port, not mirrored in this repository.
 
-Plain SNMP and LDAP applications can link only `Salts::ASN1`; no GmSSL,
-CMeta, Core or Crypto is pulled in. The Crypto archive does not compile or
-reexport a second generic BER/DER implementation.
+The original extension C/H/patch blobs and their cryptographic provenance
+are pinned under `crypto/gmssl-extensions/source-lock.json`. The custom
+registry supplies `gmssl 3.2.0#16`; its public CMake import is required
+by installed `CryptoConfig.cmake` and consequently by SaltsCore's
+installed package.
 
-The GmSSL-derived native implementation is locked under
-`crypto/gmssl-extensions/`; its source record also identifies the exact Core
-extension inputs under `crypto/gmssl-extensions/`. GmSSL's external vcpkg-native and local Ed448
-libecc OBJECT targets compile locally and enter `libsalts_crypto.a` / the
-Windows equivalent exactly once. There is no imported GmSSL archive,
-post-build archive merge, or separate installed native provider target.
-`crypto/tools/check_local_native_source.py` verifies the raw input bytes.
+`Monocypher::Monocypher` and `Reed::Reed` are independent, hidden PIC
+vendor libraries; Monocypher remains the existing Secure-KCP algorithm
+dependency, Reed is FEC (not cryptography). No additional TLS engine or
+Monocypher copy is compiled into `Salts::Crypto`.
 
-Production `Salts::CNet` links this archive privately. A static archive can
-still be copied into multiple final images, so an installed archive count
-alone does not prove one physical runtime owner. The production CNet link-map
-audit and the additional two-plugin qualification graph retain that separate
-obligation; consumers must not add another Crypto implementation to the same
-process and call it unified ownership.
+A source-local target uniqueness check does not establish process-wide
+physical uniqueness. The CNet native linker-map audit must prove the
+imported GmSSL native TLS symbols originate once, the Crypto facade is
+separate and defined once, and plugin/DSO peers do not import or copy
+another static provider.
 
-Install the root project to produce two sibling packages:
-`lib/cmake/ASN1/ASN1Config.cmake` and
-`lib/cmake/Crypto/CryptoConfig.cmake`. Crypto declares
-`find_dependency(ASN1)` and exports no private GmSSL target. The
-`crypto/tools/audit_static_crypto.py` check confirms one archive per
-module and rejects generic ASN.1 definitions inside the Crypto archive.
-Standalone Crypto installations can pass `--asn1-prefix` to the auditor.
-
-The source lock preserves the reviewed native input and patch provenance;
-local ownership does not remove the GmSSL or libecc attribution. No fallback
-provider or alternate namespace is introduced. Exact-current-source
-C11/C++17, installed SDK, sanitizer, runtime owner and consumer wire tests
-still gate production release.
+Use `crypto/tools/audit_static_crypto.py` with the first-party installed
+prefix and an explicit `--gmssl-prefix` pointing at the imported vcpkg
+target triplet. Preserve real TLS, ASN1, plugin, sanitizer and platform
+qualification; an SDK configure or empty CTest result alone is insufficient.
