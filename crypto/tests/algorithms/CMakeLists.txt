@@ -1,6 +1,6 @@
 add_executable(salts_crypto_sha_ed448_vectors sha_ed448_vectors.c)
 target_compile_features(salts_crypto_sha_ed448_vectors PRIVATE c_std_11)
-target_link_libraries(salts_crypto_sha_ed448_vectors PRIVATE Salts::Crypto)
+target_link_libraries(salts_crypto_sha_ed448_vectors PRIVATE Salts::Crypto Salts::TinyTest)
 # Source-tree tests use the verified local native header; installed tests
 # resolve their own header from the Crypto SDK instead.
 target_include_directories(salts_crypto_sha_ed448_vectors PRIVATE

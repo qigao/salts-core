@@ -18,7 +18,7 @@ endif()
 # backend hook failures: register, arm, unarm, close, shutdown, stale events.
 add_executable(saltscore_readiness_faults_test test_readiness_faults.c)
 target_compile_features(saltscore_readiness_faults_test PRIVATE c_std_11)
-target_link_libraries(saltscore_readiness_faults_test PRIVATE Salts::Platform)
+target_link_libraries(saltscore_readiness_faults_test PRIVATE Salts::Platform Salts::TinyTest)
 set_target_properties(saltscore_readiness_faults_test PROPERTIES
   C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.readiness_faults COMMAND saltscore_readiness_faults_test)
@@ -26,7 +26,7 @@ set_tests_properties(saltscore.readiness_faults PROPERTIES TIMEOUT 20)
 
 add_executable(saltscore_readiness_test test_readiness.c)
 target_compile_features(saltscore_readiness_test PRIVATE c_std_11)
-target_link_libraries(saltscore_readiness_test PRIVATE Salts::Platform)
+target_link_libraries(saltscore_readiness_test PRIVATE Salts::Platform Salts::TinyTest)
 set_target_properties(saltscore_readiness_test PROPERTIES
   C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.readiness_owner COMMAND saltscore_readiness_test)
@@ -514,16 +514,16 @@ if(TARGET Salts::TinyTest)
   target_link_libraries(saltscore_original_fmt_view_test PRIVATE Salts::Core Salts::TinyTest)
   add_test(NAME saltscore.original_fmt_bounded_vstr COMMAND saltscore_original_fmt_view_test)
 endif()
-# Always-on no-framework formatter contract (also when TinyTest is OFF).
+# Original formatter contract: TinyTest is the mandatory source assertion runner.
 add_executable(saltscore_fmt_smoke test_fmt_smoke.c)
 target_compile_features(saltscore_fmt_smoke PRIVATE c_std_11)
-target_link_libraries(saltscore_fmt_smoke PRIVATE Salts::Core)
+target_link_libraries(saltscore_fmt_smoke PRIVATE Salts::Core Salts::TinyTest)
 add_test(NAME saltscore.original_fmt_smoke COMMAND saltscore_fmt_smoke)
 
 # Original log pattern lexer tokens, C11 parser/format ownership.
 add_executable(saltscore_log_pattern_lexer_test test_log_pattern_lexer.c)
 target_compile_features(saltscore_log_pattern_lexer_test PRIVATE c_std_11)
-target_link_libraries(saltscore_log_pattern_lexer_test PRIVATE Salts::Core)
+target_link_libraries(saltscore_log_pattern_lexer_test PRIVATE Salts::Core Salts::TinyTest)
 add_test(NAME saltscore.original_log_pattern_lexer
   COMMAND saltscore_log_pattern_lexer_test)
 
@@ -531,7 +531,7 @@ add_test(NAME saltscore.original_log_pattern_lexer
 # real Disruptor/FS providers, thread drain, shutdown, not a logger mock.
 add_executable(saltscore_tlog_smoke test_tlog_smoke.c)
 target_compile_features(saltscore_tlog_smoke PRIVATE c_std_11)
-target_link_libraries(saltscore_tlog_smoke PRIVATE Salts::Core)
+target_link_libraries(saltscore_tlog_smoke PRIVATE Salts::Core Salts::TinyTest)
 add_test(NAME saltscore.original_tlog_smoke COMMAND saltscore_tlog_smoke)
 set_tests_properties(saltscore.original_tlog_smoke PROPERTIES TIMEOUT 40)
 if(TARGET Salts::TinyTest)
@@ -610,7 +610,7 @@ add_executable(saltscore_original_re_smoke test_re_smoke.c)
 target_compile_features(saltscore_original_re_smoke PRIVATE c_std_11)
 set_target_properties(saltscore_original_re_smoke PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
-target_link_libraries(saltscore_original_re_smoke PRIVATE Salts::Core)
+target_link_libraries(saltscore_original_re_smoke PRIVATE Salts::Core Salts::TinyTest)
 add_test(NAME saltscore.original_re_smoke COMMAND saltscore_original_re_smoke)
 set_tests_properties(saltscore.original_re_smoke PROPERTIES TIMEOUT 25)
 
