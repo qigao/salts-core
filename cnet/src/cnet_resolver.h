@@ -43,7 +43,8 @@ int cnet_resolver_submit(cnet_resolver *resolver, const char *host, uint16_t por
                          uintptr_t user_data, cnet_resolver_query *out_query);
 
 #if defined(CNET_INTERNAL_TESTING)
-/** Test-only pure regression hook; not part of the installed CNet ABI. */
+/** Test-only pure regression for provider-independent IPv4/IPv6 port order.
+ * Never installed or exported from production Salts::CNet. */
 int cnet_resolver_test_apply_requested_port(void *address, size_t address_length,
                                             int family, uint16_t port);
 #endif

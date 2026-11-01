@@ -1758,3 +1758,201 @@ void salts_process_destroy(salts_process_t *process) {
   cmeta_mutex_destroy(&process->mutex);
   free(process);
 }
+
+
+typedef enum salts_process_retainer_slot_state {
+  SALTS_PROCESS_RETAINER_EMPTY = 0,
+  SALTS_PROCESS_RETAINER_RESERVED,
+  SALTS_PROCESS_RETAINER_ADOPTED
+} salts_process_retainer_slot_state;
+
+typedef struct salts_process_retainer_slot {
+  uint64_t generation;
+  salts_process_retainer_slot_state state;
+  salts_process_t *process;
+  void *payload;
+  salts_process_retainer_release_fn release;
+} salts_process_retainer_slot;
+
+typedef struct salts_process_retainer_impl {
+  salts_process_retainer_slot *slots;
+  size_t capacity;
+} salts_process_retainer_impl;
+
+static salts_process_retainer_impl *process_retainer_impl(
+    salts_process_retainer_t *owner) {
+  return owner ? (salts_process_retainer_impl *)owner->impl : NULL;
+}
+
+static salts_process_retainer_slot *process_retainer_reserved_slot(
+    salts_process_retainer_impl *impl, salts_process_retainer_token_t token) {
+  salts_process_retainer_slot *slot;
+  if (!impl || token.index >= impl->capacity || token.generation == 0u)
+    return NULL;
+  slot = &impl->slots[token.index];
+  return slot->state == SALTS_PROCESS_RETAINER_RESERVED &&
+                 slot->generation == token.generation
+             ? slot
+             : NULL;
+}
+
+static int process_retainer_can_adopt(salts_process_t *process) {
+  int allowed;
+  if (!process) return 0;
+  cmeta_mutex_lock(&process->mutex);
+  allowed = process->terminate_requested || process_state_terminal(process->state);
+  cmeta_mutex_unlock(&process->mutex);
+  return allowed;
+}
+
+int salts_process_retainer_init(salts_process_retainer_t *owner, size_t capacity) {
+  salts_process_retainer_impl *impl;
+  if (!owner || owner->impl || capacity == 0u ||
+      capacity > SIZE_MAX / sizeof(salts_process_retainer_slot))
+    return SALTS_EINVAL;
+  impl = (salts_process_retainer_impl *)calloc(1u, sizeof(*impl));
+  if (!impl) return SALTS_ENOMEM;
+  impl->slots =
+      (salts_process_retainer_slot *)calloc(capacity, sizeof(*impl->slots));
+  if (!impl->slots) {
+    free(impl);
+    return SALTS_ENOMEM;
+  }
+  impl->capacity = capacity;
+  owner->impl = impl;
+  return SALTS_OK;
+}
+
+int salts_process_retainer_reserve(salts_process_retainer_t *owner,
+                                   salts_process_retainer_token_t *out_token) {
+  salts_process_retainer_impl *impl = process_retainer_impl(owner);
+  size_t index;
+  if (out_token) *out_token = (salts_process_retainer_token_t){0};
+  if (!impl || !out_token) return SALTS_EINVAL;
+  for (index = 0u; index < impl->capacity; ++index) {
+    salts_process_retainer_slot *slot = &impl->slots[index];
+    if (slot->state != SALTS_PROCESS_RETAINER_EMPTY) continue;
+    ++slot->generation;
+    if (slot->generation == 0u) ++slot->generation;
+    slot->state = SALTS_PROCESS_RETAINER_RESERVED;
+    out_token->index = index;
+    out_token->generation = slot->generation;
+    return SALTS_OK;
+  }
+  return SALTS_ENOBUFS;
+}
+
+int salts_process_retainer_release(salts_process_retainer_t *owner,
+                                   salts_process_retainer_token_t token) {
+  salts_process_retainer_slot *slot =
+      process_retainer_reserved_slot(process_retainer_impl(owner), token);
+  if (!slot) return SALTS_EINVAL;
+  slot->state = SALTS_PROCESS_RETAINER_EMPTY;
+  return SALTS_OK;
+}
+
+int salts_process_retainer_adopt(salts_process_retainer_t *owner,
+                                 salts_process_retainer_token_t token,
+                                 salts_process_t **source_process,
+                                 void *payload,
+                                 salts_process_retainer_release_fn release) {
+  salts_process_retainer_slot *slot =
+      process_retainer_reserved_slot(process_retainer_impl(owner), token);
+  salts_process_t *process;
+  if (!slot || !source_process || !*source_process || !payload || !release)
+    return SALTS_EINVAL;
+  process = *source_process;
+  if (!process_retainer_can_adopt(process)) return SALTS_EBUSY;
+
+  slot->process = process;
+  slot->payload = payload;
+  slot->release = release;
+  slot->state = SALTS_PROCESS_RETAINER_ADOPTED;
+  *source_process = NULL;
+  return SALTS_OK;
+}
+
+int salts_process_retainer_run_ready(salts_process_retainer_t *owner,
+                                     size_t max_steps,
+                                     size_t *out_reaped,
+                                     size_t *out_pending) {
+  salts_process_retainer_impl *impl = process_retainer_impl(owner);
+  size_t index;
+  size_t advanced = 0u;
+  size_t reaped = 0u;
+  size_t pending = 0u;
+  int first_error = SALTS_OK;
+
+  if (out_reaped) *out_reaped = 0u;
+  if (out_pending) *out_pending = 0u;
+  if (!impl || max_steps == 0u || !out_reaped || !out_pending)
+    return SALTS_EINVAL;
+
+  for (index = 0u; index < impl->capacity; ++index) {
+    salts_process_retainer_slot *slot = &impl->slots[index];
+    salts_process_result_t result;
+    int status;
+
+    if (slot->state == SALTS_PROCESS_RETAINER_EMPTY) continue;
+    if (slot->state == SALTS_PROCESS_RETAINER_RESERVED) {
+      ++pending;
+      continue;
+    }
+    if (advanced >= max_steps) {
+      ++pending;
+      continue;
+    }
+    ++advanced;
+
+    if (!slot->process) {
+      if (first_error == SALTS_OK) first_error = SALTS_EINVAL;
+      ++pending;
+      continue;
+    }
+
+    status = salts_process_poll(slot->process, &result);
+    if (status == SALTS_EBUSY) {
+      status = salts_process_terminate(slot->process);
+      if (status != SALTS_OK && first_error == SALTS_OK) first_error = status;
+      ++pending;
+      continue;
+    }
+    if (status != SALTS_OK) {
+      if (first_error == SALTS_OK) first_error = status;
+      ++pending;
+      continue;
+    }
+
+    {
+      salts_process_retainer_release_fn release = slot->release;
+      void *payload = slot->payload;
+      salts_process_t *process = slot->process;
+      slot->process = NULL;
+      slot->payload = NULL;
+      slot->release = NULL;
+      slot->state = SALTS_PROCESS_RETAINER_EMPTY;
+      salts_process_destroy(process);
+      release(payload);
+      ++reaped;
+    }
+  }
+
+  *out_reaped = reaped;
+  *out_pending = pending;
+  if (first_error != SALTS_OK) return first_error;
+  return pending == 0u ? SALTS_OK : SALTS_EBUSY;
+}
+
+int salts_process_retainer_destroy(salts_process_retainer_t *owner) {
+  salts_process_retainer_impl *impl = process_retainer_impl(owner);
+  size_t index;
+  if (!impl) return SALTS_EINVAL;
+  for (index = 0u; index < impl->capacity; ++index) {
+    if (impl->slots[index].state != SALTS_PROCESS_RETAINER_EMPTY)
+      return SALTS_EBUSY;
+  }
+  free(impl->slots);
+  free(impl);
+  owner->impl = NULL;
+  return SALTS_OK;
+}

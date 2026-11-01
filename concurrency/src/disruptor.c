@@ -202,7 +202,7 @@ static uint64_t disruptor_refresh_slowest_reader(disruptor_t *disruptor, uint64_
         atomic_load_explicit(&disruptor->slowest_consumer.sequence, memory_order_relaxed);
     if (slowest_sequence > cached_sequence) {
       atomic_store_explicit(&disruptor->slowest_consumer.sequence, slowest_sequence,
-                            memory_order_relaxed);
+                            memory_order_release);
     }
     return slowest_sequence;
   }
@@ -222,8 +222,11 @@ static uint64_t disruptor_refresh_slowest_reader(disruptor_t *disruptor, uint64_
   cached_sequence =
       atomic_load_explicit(&disruptor->slowest_consumer.sequence, memory_order_relaxed);
   if (slowest_sequence > cached_sequence) {
+    /* Another producer may reuse a slot using only this cached cursor.
+       Publish the acquire of every consumer release along with its value,
+       so that producer cannot overwrite a slot before its prior read. */
     atomic_store_explicit(&disruptor->slowest_consumer.sequence, slowest_sequence,
-                          memory_order_relaxed);
+                          memory_order_release);
   }
 
   return slowest_sequence;
@@ -311,7 +314,7 @@ static uint64_t disruptor_try_advance_worker_completed_cursor(disruptor_t *disru
                                                 &expected, desired, memory_order_release,
                                                 memory_order_relaxed)) {
         atomic_store_explicit(&disruptor->slowest_consumer.sequence, desired,
-                              memory_order_relaxed);
+                              memory_order_release);
         return desired;
       }
     }

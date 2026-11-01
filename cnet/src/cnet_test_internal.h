@@ -17,5 +17,9 @@ int cnet_test_datagram_process_mixed_batch(size_t *out_callbacks);
 int cnet_test_packet_endpoint_fail_next_datagram_drive(cnet_packet_endpoint *endpoint,
                                                        int status);
 int cnet_test_tls_der_bundle_required_size(size_t current, size_t appended, size_t *out_required);
+/* phase: 0 untouched record, 1 provider-owned header, 2 provider-owned
+ * payload, 3 provider-buffered plaintext. Test-only; no production ABI. */
+int cnet_test_tls_receive_record_gate(unsigned phase, const uint8_t *cipher,
+                                      size_t size, bool *out_ready);
 
 #endif /* CNET_TEST_INTERNAL_H */

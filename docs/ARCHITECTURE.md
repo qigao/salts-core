@@ -14,7 +14,7 @@ Salts::Core [C11 base byte views / future buffer/error]
   ├── FS, Process [native OS; independent bounded queues / native pipes]
   ├── Unicode 17 ──> IDNA UTS #46
   ├── Serial [POSIX / Win32, SPSC]
-  ├── Crypto [private providers, no public provider types]
+  ├── ASN1 ──> Crypto [locked local native objects, one static archive] ──> CNet
   └── optional USB / Capture / Playback
 ```
 
@@ -74,7 +74,7 @@ reflection. Source/API renaming is not itself a reason to discard ABI tests.
    linkage and RFC vectors, with no hidden provider fallback.
 4. **Unicode/IDNA**: re2c >=4.6 is a host **build** requirement only; data
    remains Unicode 17.0.0 SHA-pinned; run official normalization and UTS #46
-   conformance; DNS/TLS/SNI A-label parity is tested in the optional Core CNet target.
+   conformance; DNS/TLS/SNI A-label parity is tested in the default Core CNet target.
 5. **ABI and release**: no published `Salts::Core` replacement before
    source/protocol tests, installed C11/C++17 consumers, Linux/Windows/macOS
    execution, Android/iOS SDK cross-build, symbol audit and exact-head CI.
@@ -82,10 +82,13 @@ reflection. Source/API renaming is not itself a reason to discard ABI tests.
 
 ## Current status
 
-**M0 completed, M1/M2 stacked candidate under qualification:** Core has a
-counted byte view, while standalone Platform and Concurrency expose source-
-compatible clock, secure random, synchronization, deadline queue, RCU, SPSC,
-Disruptor and ThreadPool. The migration branch is not a binary replacement,
-no old source was removed, and NativeIO/CNet, Unicode/IDNA, FS/Process and
-Crypto remain pending. Cross-platform exact-head CI is required.
+**Draft migration candidate under qualification:** the default graph includes
+Core, Platform, Concurrency, Coroutine, NativeIO, ASN1, local static Crypto,
+URI and production CNet. Optional module builds retain their independent
+source, platform and installed-consumer gates. The native TLS implementation
+is compiled from locked local sources and retains its GmSSL provenance;
+CNet resolves those functions through the sole Crypto archive. The migration
+branch is not a published binary replacement. The strict original source/API
+gate, exact-current-source platform CI, physical owner audits and release
+blockers remain authoritative for completion.
 

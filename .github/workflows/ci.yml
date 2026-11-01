@@ -7,6 +7,13 @@ on:
       - "platform/include/**"
       - "core/src/**"
       - "core/include/**"
+      - "core/parser/**"
+      - "asn1/src/**"
+      - "asn1/include/**"
+      - "crypto/src/**"
+      - "crypto/include/**"
+      - "crypto/native/gmssl/src/**"
+      - "crypto/native/gmssl/include/**"
       - "concurrency/src/**"
       - "concurrency/include/**"
       - "coroutine/src/**"
@@ -33,6 +40,17 @@ on:
       - "process/include/**"
       - "sctp/src/**"
       - "sctp/include/**"
+      - "simd/src/**"
+      - "simd/include/**"
+      - "usb/src/**"
+      - "usb/include/**"
+      - "playback/src/**"
+      - "playback/include/**"
+      - "capture/src/**"
+      - "capture/include/**"
+      - "salts_serial/*.c"
+      - "salts_serial/*.h"
+      - "verification/*.pml"
       - "vendor/cnet/**"
   push:
     branches: [master]
@@ -41,6 +59,13 @@ on:
       - "platform/include/**"
       - "core/src/**"
       - "core/include/**"
+      - "core/parser/**"
+      - "asn1/src/**"
+      - "asn1/include/**"
+      - "crypto/src/**"
+      - "crypto/include/**"
+      - "crypto/native/gmssl/src/**"
+      - "crypto/native/gmssl/include/**"
       - "concurrency/src/**"
       - "concurrency/include/**"
       - "coroutine/src/**"
@@ -67,6 +92,17 @@ on:
       - "process/include/**"
       - "sctp/src/**"
       - "sctp/include/**"
+      - "simd/src/**"
+      - "simd/include/**"
+      - "usb/src/**"
+      - "usb/include/**"
+      - "playback/src/**"
+      - "playback/include/**"
+      - "capture/src/**"
+      - "capture/include/**"
+      - "salts_serial/*.c"
+      - "salts_serial/*.h"
+      - "verification/*.pml"
       - "vendor/cnet/**"
   workflow_dispatch:
 
@@ -82,7 +118,7 @@ jobs:
   qualify:
     name: LLVM / ${{ matrix.rid }} / ${{ matrix.preset }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 75
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -104,14 +140,14 @@ jobs:
 
       - name: Set up native LLVM
         if: runner.os != 'Windows'
-        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-native@6cd4d04a63148d64b8d3b2d8cf73ee8f5979f1d3
+        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-native@529019437597fa71f7d8dcc561d26fc7b0603ae6
         with:
           build-type: toolchain-only
           obfuscator: "false"
 
       - name: Set up Windows LLVM-MinGW
         if: runner.os == 'Windows'
-        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@6cd4d04a63148d64b8d3b2d8cf73ee8f5979f1d3
+        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@529019437597fa71f7d8dcc561d26fc7b0603ae6
         with:
           target: ${{ matrix.target }}
           build-type: toolchain-only
@@ -119,15 +155,23 @@ jobs:
 
       - name: Set up shared dependency contract
         id: vcpkg
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@6cd4d04a63148d64b8d3b2d8cf73ee8f5979f1d3
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@529019437597fa71f7d8dcc561d26fc7b0603ae6
         with:
           mode: read
           token: ${{ github.token }}
 
       - name: Restore re2c and Unicode host data
-        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@6cd4d04a63148d64b8d3b2d8cf73ee8f5979f1d3
+        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@529019437597fa71f7d8dcc561d26fc7b0603ae6
         with:
           token: ${{ github.token }}
+
+      - name: Install Linux native capture SDK headers
+        if: runner.os == 'Linux' && matrix.preset != 'ci-android'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libudev-dev libpipewire-0.3-dev libx11-dev libxext-dev
 
       - name: Select preset toolchains
         shell: bash

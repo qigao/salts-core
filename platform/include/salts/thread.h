@@ -127,6 +127,11 @@ SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_sleep_ms(uint32_t ms
 SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_thread_yield(void);
 SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_cpu_count(void);
 
+/* Original Core synchronization policy and process identity surface. */
+SALTS_CORE_PLATFORM_API void SALTS_CORE_PLATFORM_CALL cmeta_sync_set_single_threaded(int enabled);
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_sync_is_single_threaded(void);
+SALTS_CORE_PLATFORM_API int SALTS_CORE_PLATFORM_CALL cmeta_getpid(void);
+
 #ifdef __cplusplus
 }
 #endif

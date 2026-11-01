@@ -37,7 +37,7 @@
       "inherits": "release-base",
       "cacheVariables": {
         "BUILD_TESTING": "ON",
-        "VCPKG_MANIFEST_FEATURES": "cnet",
+        "VCPKG_MANIFEST_FEATURES": "cnet;simd;usb;playback;capture;zstd",
         "SALTSCORE_BUILD_URI": "ON",
         "SALTSCORE_BUILD_CNET": "ON",
         "SALTSCORE_BUILD_WEBSOCKET_PARSER": "ON",
@@ -49,7 +49,13 @@
         "SALTSCORE_BUILD_FS": "ON",
         "SALTSCORE_BUILD_PROCESS": "ON",
         "SALTSCORE_CNET_OWNER_SOURCE_TESTS": "ON",
-        "SALTSCORE_BUILD_SCTP": "ON"
+        "SALTSCORE_BUILD_SCTP": "ON",
+        "SALTSCORE_BUILD_SIMD": "ON",
+        "SALTSCORE_BUILD_USB": "ON",
+        "SALTSCORE_BUILD_PLAYBACK": "ON",
+        "SALTSCORE_BUILD_SERIAL": "ON",
+        "SALTSCORE_BUILD_CAPTURE": "ON",
+        "SALTSCORE_BUILD_ZSTD": "ON"
       }
     },
     {
@@ -79,6 +85,7 @@
         "BUILD_TESTING": "OFF",
         "ANDROID_ABI": "$env{SALTSCORE_ANDROID_ABI}",
         "ANDROID_PLATFORM": "android-24",
+        "VCPKG_MANIFEST_FEATURES": "cnet;simd;usb;playback;capture;zstd",
         "SALTSCORE_BUILD_URI": "ON",
         "SALTSCORE_BUILD_WEBSOCKET_PARSER": "ON",
         "SALTSCORE_BUILD_CSERDE": "ON",
@@ -87,7 +94,13 @@
         "SALTSCORE_BUILD_IDNA": "ON",
         "SALTSCORE_BUILD_FS": "ON",
         "SALTSCORE_BUILD_PROCESS": "ON",
-        "SALTSCORE_BUILD_SCTP": "ON"
+        "SALTSCORE_BUILD_SCTP": "ON",
+        "SALTSCORE_BUILD_SIMD": "ON",
+        "SALTSCORE_BUILD_USB": "ON",
+        "SALTSCORE_BUILD_PLAYBACK": "ON",
+        "SALTSCORE_BUILD_SERIAL": "ON",
+        "SALTSCORE_BUILD_CAPTURE": "ON",
+        "SALTSCORE_BUILD_ZSTD": "ON"
       }
     }
   ]
