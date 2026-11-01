@@ -104,14 +104,14 @@ jobs:
 
       - name: Set up native LLVM
         if: runner.os != 'Windows'
-        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-native@22ab039b6505c06e7a2f03f723305050d775ecf3
+        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-native@6cd4d04a63148d64b8d3b2d8cf73ee8f5979f1d3
         with:
           build-type: toolchain-only
           obfuscator: "false"
 
       - name: Set up Windows LLVM-MinGW
         if: runner.os == 'Windows'
-        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@22ab039b6505c06e7a2f03f723305050d775ecf3
+        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@6cd4d04a63148d64b8d3b2d8cf73ee8f5979f1d3
         with:
           target: ${{ matrix.target }}
           build-type: toolchain-only
@@ -119,13 +119,13 @@ jobs:
 
       - name: Set up shared dependency contract
         id: vcpkg
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@22ab039b6505c06e7a2f03f723305050d775ecf3
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@6cd4d04a63148d64b8d3b2d8cf73ee8f5979f1d3
         with:
           mode: read
           token: ${{ github.token }}
 
       - name: Restore re2c and Unicode host data
-        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@22ab039b6505c06e7a2f03f723305050d775ecf3
+        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@6cd4d04a63148d64b8d3b2d8cf73ee8f5979f1d3
         with:
           token: ${{ github.token }}
 
