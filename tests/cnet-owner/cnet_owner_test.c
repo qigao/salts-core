@@ -203,6 +203,34 @@ static int cnet_owner_test_udp_peer(cnet_owner_test_socket *out_socket,
   return SALTS_OK;
 }
 
+#if defined(CNET_INTERNAL_TESTING)
+static void cnet_owner_test_requested_port_byte_order(void) {
+  const uint16_t requested_port = UINT16_C(50693);
+  struct sockaddr_in v4 = {0};
+  struct sockaddr_in6 v6 = {0};
+
+  v4.sin_family = AF_INET;
+  v4.sin_port = htons(UINT16_C(1478));
+  v6.sin6_family = AF_INET6;
+  v6.sin6_port = htons(UINT16_C(1478));
+
+  check_equal(cnet_resolver_test_apply_requested_port(
+                  &v4, sizeof(v4), AF_INET, requested_port), SALTS_OK);
+  check_equal(cnet_resolver_test_apply_requested_port(
+                  &v6, sizeof(v6), AF_INET6, requested_port), SALTS_OK);
+  check_equal(ntohs(v4.sin_port), requested_port);
+  check_equal(ntohs(v6.sin6_port), requested_port);
+  check_equal(cnet_resolver_test_apply_requested_port(
+                  &v4, sizeof(v4) - 1u, AF_INET, requested_port), SALTS_EINVAL);
+  check_equal(cnet_resolver_test_apply_requested_port(
+                  &v6, sizeof(v6) - 1u, AF_INET6, requested_port), SALTS_EINVAL);
+  check_equal(cnet_resolver_test_apply_requested_port(
+                  &v4, sizeof(v4), AF_UNSPEC, requested_port), SALTS_EAI_FAMILY);
+  check_equal(cnet_resolver_test_apply_requested_port(
+                  &v4, sizeof(v4), AF_INET, 0u), SALTS_EINVAL);
+}
+#endif
+
 static int cnet_owner_test_drive_to_state(cnet_owner *owner, cnet_session_table *sessions,
                                           cnet_session_handle handle, cnet_session_state expected) {
   const uint64_t deadline = cmeta_monotonic_ms() + CNET_OWNER_TEST_TIMEOUT_MS;
@@ -1724,6 +1752,12 @@ static void cnet_owner_test_init_cleanup_after_backend(
 }
 
 spec("CNet owner shard") {
+#if defined(CNET_INTERNAL_TESTING)
+  it("uses caller-owned network byte order for IPv4 and IPv6 resolver ports") {
+    cnet_owner_test_requested_port_byte_order();
+  }
+#endif
+
   it("cleans up an owned backend when later owner initialization fails") {
     native_io_backend_kind backends[CNET_OWNER_TEST_MAX_BACKENDS];
     const size_t count = cnet_owner_test_backends(backends);
