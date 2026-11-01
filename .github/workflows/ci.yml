@@ -12,8 +12,9 @@ on:
       - "asn1/include/**"
       - "crypto/src/**"
       - "crypto/include/**"
-      - "crypto/native/gmssl/src/**"
-      - "crypto/native/gmssl/include/**"
+      - "crypto/gmssl-extensions/**"
+      - "vcpkg.json"
+      - "vcpkg-configuration.json"
       - "concurrency/src/**"
       - "concurrency/include/**"
       - "coroutine/src/**"
@@ -65,8 +66,9 @@ on:
       - "asn1/include/**"
       - "crypto/src/**"
       - "crypto/include/**"
-      - "crypto/native/gmssl/src/**"
-      - "crypto/native/gmssl/include/**"
+      - "crypto/gmssl-extensions/**"
+      - "vcpkg.json"
+      - "vcpkg-configuration.json"
       - "concurrency/src/**"
       - "concurrency/include/**"
       - "coroutine/src/**"
@@ -156,7 +158,7 @@ jobs:
 
       - name: Set up shared dependency contract
         id: vcpkg
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@529019437597fa71f7d8dcc561d26fc7b0603ae6
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@bb0a9971dbdd59488a1b89079e4e1b6f46bb543b
         with:
           mode: read
           token: ${{ github.token }}

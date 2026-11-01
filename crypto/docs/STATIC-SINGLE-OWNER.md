@@ -14,8 +14,8 @@ CMeta, Core or Crypto is pulled in. The Crypto archive does not compile or
 reexport a second generic BER/DER implementation.
 
 The GmSSL-derived native implementation is locked under
-`crypto/native/gmssl/`; its source record also identifies the exact Core
-extension inputs under `crypto/gmssl-extensions/`. Private native and Ed448
+`crypto/gmssl-extensions/`; its source record also identifies the exact Core
+extension inputs under `crypto/gmssl-extensions/`. GmSSL's external vcpkg-native and local Ed448
 libecc OBJECT targets compile locally and enter `libsalts_crypto.a` / the
 Windows equivalent exactly once. There is no imported GmSSL archive,
 post-build archive merge, or separate installed native provider target.

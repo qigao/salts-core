@@ -67,10 +67,12 @@ See [architecture](docs/ARCHITECTURE.md) for ownership and migration gates.
 
 The default graph builds the whole CNet transport source tree, including the
 original IPC FIFO, peer index and native-path changes. Production CNet links
-the sole source-built static `Salts::Crypto` archive. Its private native TLS
-and algorithm sources are locked under `crypto/native/gmssl/`; Crypto's
-Ed448 objects remain under `crypto/vendor/libecc/`. No separately installed
-GmSSL archive or external Crypto prefix is consumed.
+the `Salts::Crypto` static C11 facade with the exact `GmSSL::GmSSL`
+vcpkg dependency. GmSSL TLS and algorithm implementation sources live in
+the pinned vcpkg package, not under `crypto/native/gmssl/`. The original
+extension inputs live under `crypto/gmssl-extensions/`, with a verified
+source lock; Crypto's Ed448 objects remain under `crypto/vendor/libecc/`.
+No second GmSSL implementation or fallback provider is built.
 
 Use CMake 3.21 or newer, a C11 compiler, and a C++17 compiler when testing.
 Provide the canonical pinned c-ares, KCP and SIMDe dependencies and an installed

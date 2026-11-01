@@ -13,16 +13,18 @@ CMake targets, C11 source and C++17-usable C headers.
 
 Use the repo root for the default ASN1/Crypto/CNet build or `cmake -S crypto`
 to compile just Crypto against a previously installed ASN1 module. The
-native implementation is compiled from the locked local sources in
-`native/gmssl/`, including the reviewed Core extension inputs under
-`gmssl-extensions/`. It does not import a provider archive or require
-an external Crypto SDK. The native TLS and algorithm objects are private and
-are folded directly into the one `Salts::Crypto` archive.
+native GmSSL implementation is provided by the pinned vcpkg package
+`gmssl 3.2.0#16` and imported through `GmSSL::GmSSL`. Its reviewed
+extension source inputs are retained under `gmssl-extensions/`, without
+a second local native GmSSL compilation. The original Crypto facade and
+Ed448 objects remain in one `Salts::Crypto` static target, which links
+the installed GmSSL static archive as a separate package dependency.
 Private Ed448 libecc objects live under `vendor/libecc/` in this module.
 No backwards-compatibility alias, fallback or duplicate BER/DER owner.
 
 Run `python3 crypto/tools/check_local_native_source.py` from the repository
-root to verify the locked input bytes before building. The retained
+root to verify the immutable extension bytes and exact vcpkg dependency
+identity before building. The retained
 GmSSL-derived implementation and its licenses remain explicit; local source
 ownership does not imply independent TLS reimplementation or completed
 platform/security qualification. Production CNet consumes this same archive.
