@@ -25,15 +25,13 @@ remain unqualified. No exactly-once/no-loss production claim is made.
 This directory is a self-contained C11 CMake project, not a subdirectory of the production Salts CMake graph. Its standalone package exports `CNetSctpPrototype::Wire` and the opaque `CNetSctpPrototype::Session`; neither is included in `SaltsTargets`. Association/DATA/DCEP implementation layouts, prototype targets and tests remain **private** and are not installed.
 
 ```sh
-cmake -S sctp -B build-cnet-sctp -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release
-cmake --build build-cnet-sctp --config Release
-ctest --test-dir build-cnet-sctp -C Release --output-on-failure
-cmake --install build-cnet-sctp --config Release --prefix "$PWD/sdk-cnet-sctp"
-cmake -S sctp/tests/installed -B build-cnet-sctp-consumer \
-  -DCMAKE_PREFIX_PATH="$PWD/sdk-cnet-sctp"
-cmake --build build-cnet-sctp-consumer --config Release
-ctest --test-dir build-cnet-sctp-consumer -C Release --output-on-failure
+cmake --preset native-release-user
+cmake --build --preset native-release-user
+ctest --preset native-release-user
 ```
+
+The root graph owns SCTP qualification. A second installed-consumer CMake
+project is intentionally not built or maintained.
 
 ## Independent RFC8260 Pion wire oracle (isolated test only)
 

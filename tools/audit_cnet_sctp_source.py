@@ -44,7 +44,7 @@ EXPECTED = {
   "sctp/tests/independent/pion_dtls_transport.h": "65c72d68dabfac155d86cd841a3abfc3470a3649",
   "sctp/tests/independent/pion_peer.c": "163b02f59034ac9c61f46017140c97590bb3449f",
   "sctp/tests/init_params_test.c": "43ee076d85a288778d3832209cc8c618475e3cfd",
-  "sctp/tests/installed/main.c": "8f63ee561c43bd854e6c30dc6b51d8c289f0ef05",
+  "sctp/tests/public_api_test.c": "8f63ee561c43bd854e6c30dc6b51d8c289f0ef05",
   "sctp/tests/interleaving_test.c": "c77f3481744f874ebc36211549163f48884c61eb",
   "sctp/tests/owner_thread_test.c": "af32dfdd6b365f21ba31b5547e7f53ccca9fe876",
   "sctp/tests/pr_sctp_test.c": "350dfaf9d797449264acb6dad595232b0a8adb4f",

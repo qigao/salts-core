@@ -82,8 +82,8 @@ ctest --test-dir build-cnet --output-on-failure
 ```
 
 The checked-in vcpkg manifest keeps CNet under an explicit feature; the
-pinned registry snapshot uses GmSSL 3.2.0#13. The scoped pinned-provider
-Linux workflow is in `.github/workflows/cnet-provider.yml`.
+pinned registry snapshot uses GmSSL 3.2.0#13. The unified LLVM workflow
+qualifies the complete native graph through the checked-in presets.
 
 An unavailable dependency fails configuration, without substituting another
 TLS provider or an implicit transport fallback. **No full CNet provider build,
@@ -91,18 +91,18 @@ TLS/CA/SAN, real network interop, sanitizer or ABI qualification has yet been
 established by the source-extraction change.** The original Salts CNet remains
 the production owner until the consumers cut over together.
 
-## Local M0 build
+## Local build
 
 ```sh
-cmake -S . -B build -DBUILD_TESTING=ON
-cmake --build build
-ctest --test-dir build --output-on-failure
-cmake --install build --prefix /tmp/saltscore-sdk
-cmake -S tests/installed -B build-installed -DCMAKE_PREFIX_PATH=/tmp/saltscore-sdk
-cmake --build build-installed
-ctest --test-dir build-installed --output-on-failure
-python3 tools/check_dependency_boundaries.py
+cmake --preset native-release-user
+cmake --build --preset native-release-user
+ctest --preset native-release-user
 ```
+
+The parent environment supplies the vcpkg and LLVM chainload toolchains,
+triplets and install prefix consumed by the preset. Missing inputs fail at
+configure time. Installed-consumer and smoke projects are intentionally not
+part of the build or CI contract.
 
 The standalone install exports `Salts::Core` through
 `find_package(SaltsCore CONFIG REQUIRED)`. Optional targets will be exported
@@ -110,10 +110,10 @@ only when their independent implementations and platform gates are qualified.
 
 ## Native LLVM thread and scheduler contract
 
-The core-contract workflow uses the shared vcpkg-cache compiler setup on
+The unified CI workflow uses the shared vcpkg-cache compiler setup on
 Linux/macOS x64 and ARM64 (runner-native Clang), and Windows x64 and ARM64
-(llvm-mingw/UCRT 20261020). It builds the original Core graph with TinyTest,
-runs its native tests, and installs the package. Existing public C11/C++17
+(llvm-mingw/UCRT 20261020). It builds the complete configured graph and runs
+its formal native CTest suite. Existing public C11/C++17
 assertions run inside that graph; the workflow no longer builds a second
 installed-consumer project or runs compiler/source preflight probes.
 

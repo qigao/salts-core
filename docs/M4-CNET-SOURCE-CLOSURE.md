@@ -89,15 +89,12 @@ registries from Salts, including GmSSL `3.2.0#13` at registry commit
 `b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01` and canonical vcpkg
 scripts revision is `04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4`.
 
-The scoped Linux provider workflow `.github/workflows/cnet-provider.yml`
-bootstraps that exact vcpkg tool via Git, uses a local **files-only** vcpkg
-binary cache (no NuGet or Mono), and builds with both
-`SALTSCORE_BUILD_URI=ON`, `SALTSCORE_BUILD_CNET=ON` and
-`VCPKG_MANIFEST_FEATURES=cnet`. It then compiles, links, runs CTest, and
-installs a real CNet DSO plus C11/C++17 CNet consumers. It must be **observed
-and fully successful**, with exact-head package/link evidence, before CNet can
-be called provider-qualified. Linux-only success still does not certify
-Windows/macOS provider closure or TLS peer interop.
+The unified LLVM workflow `.github/workflows/ci.yml` restores that manifest
+through the pinned curl-only vcpkg-cache action and selects the checked-in
+`ci-native` preset. It compiles the complete graph once and runs the formal
+CTest suite on Linux, macOS and Windows x64/ARM64. It does not create a second
+installed-consumer project. Exact-head success is still required before CNet
+can be called provider-qualified.
 
 ## Pinned GmSSL ABI and ShangMi provider-only test gate
 

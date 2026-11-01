@@ -1,0 +1,94 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_TOOLCHAIN_FILE": "$env{SALTSCORE_VCPKG_TOOLCHAIN_FILE}",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{SALTSCORE_CHAINLOAD_TOOLCHAIN_FILE}",
+        "VCPKG_TARGET_TRIPLET": "$env{SALTSCORE_VCPKG_TARGET_TRIPLET}",
+        "VCPKG_HOST_TRIPLET": "$env{SALTSCORE_VCPKG_HOST_TRIPLET}",
+        "CMAKE_INSTALL_PREFIX": "$env{SALTSCORE_INSTALL_PREFIX}"
+      }
+    },
+    {
+      "name": "release-base",
+      "hidden": true,
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SALTSCORE_ENABLE_ASAN": "OFF",
+        "SALTSCORE_ENABLE_UBSAN": "OFF",
+        "SALTSCORE_ENABLE_TSAN": "OFF"
+      }
+    },
+    {
+      "name": "full-native",
+      "hidden": true,
+      "inherits": "release-base",
+      "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "VCPKG_MANIFEST_FEATURES": "cnet",
+        "SALTSCORE_BUILD_URI": "ON",
+        "SALTSCORE_BUILD_CNET": "ON",
+        "SALTSCORE_BUILD_WEBSOCKET_PARSER": "ON",
+        "SALTSCORE_BUILD_CSERDE": "ON",
+        "SALTSCORE_BUILD_TINYTEST": "ON",
+        "SALTSCORE_BUILD_UNICODE": "ON",
+        "SALTSCORE_BUILD_IDNA": "ON",
+        "SALTSCORE_NATIVE_CPP_CONFORMANCE": "ON",
+        "SALTSCORE_BUILD_FS": "ON",
+        "SALTSCORE_BUILD_PROCESS": "ON",
+        "SALTSCORE_CNET_OWNER_SOURCE_TESTS": "ON",
+        "SALTSCORE_BUILD_SCTP": "ON"
+      }
+    },
+    {
+      "name": "full-native-asan-ubsan",
+      "hidden": true,
+      "inherits": "full-native",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "SALTSCORE_ENABLE_ASAN": "ON",
+        "SALTSCORE_ENABLE_UBSAN": "ON"
+      }
+    },
+    {
+      "name": "full-native-tsan",
+      "hidden": true,
+      "inherits": "full-native",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "SALTSCORE_ENABLE_TSAN": "ON"
+      }
+    },
+    {
+      "name": "android-release",
+      "hidden": true,
+      "inherits": "release-base",
+      "cacheVariables": {
+        "BUILD_TESTING": "OFF",
+        "ANDROID_ABI": "$env{SALTSCORE_ANDROID_ABI}",
+        "ANDROID_PLATFORM": "android-24",
+        "SALTSCORE_BUILD_URI": "ON",
+        "SALTSCORE_BUILD_WEBSOCKET_PARSER": "ON",
+        "SALTSCORE_BUILD_CSERDE": "ON",
+        "SALTSCORE_BUILD_TINYTEST": "ON",
+        "SALTSCORE_BUILD_UNICODE": "ON",
+        "SALTSCORE_BUILD_IDNA": "ON",
+        "SALTSCORE_BUILD_FS": "ON",
+        "SALTSCORE_BUILD_PROCESS": "ON",
+        "SALTSCORE_BUILD_SCTP": "ON"
+      }
+    }
+  ]
+}

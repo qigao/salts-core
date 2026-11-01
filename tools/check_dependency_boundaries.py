@@ -30,14 +30,6 @@ STATIC_CRYPTO_DENIED_TARGET_GUARD = (
     "Salts::TLS Salts::TLSCipherBIO Salts::CryptoProvider",
     "Crypto::TLS Crypto::TLSCipherBIO Crypto::Provider)",
 )
-MIGRATED_MODULE_NEGATIVE_GUARD_FILES = {
-    Path("asn1/tests/installed/CMakeLists.txt"),
-    Path("crypto/tests/mobile/CMakeLists.txt"),
-    Path("crypto/tests/owner/CMakeLists.txt"),
-    Path("crypto/tests/sdk/CMakeLists.txt"),
-}
-
-
 def check_repository(root: Path) -> list[str]:
     violations: list[str] = []
     for path in sorted(root.rglob("*")):
@@ -58,15 +50,6 @@ def check_repository(root: Path) -> list[str]:
                 if tuple(line.strip() for line in lines[offset:offset + 3]) == (
                         STATIC_CRYPTO_DENIED_TARGET_GUARD):
                     denied_guard_indices.update((offset + 1, offset + 2))
-        if relative in MIGRATED_MODULE_NEGATIVE_GUARD_FILES:
-            in_guard_items = False
-            for offset, line in enumerate(lines):
-                if re.search(r"foreach\(_(?:forbidden|split)\s+IN\s+ITEMS\b", line):
-                    in_guard_items = True
-                if in_guard_items:
-                    denied_guard_indices.add(offset)
-                    if ")" in line:
-                        in_guard_items = False
         for index, line in enumerate(lines):
             if index in denied_guard_indices:
                 continue
