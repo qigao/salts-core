@@ -1,6 +1,6 @@
 {
   "name": "salts-core",
-  "version-semver": "0.1.0",
+  "version-semver": "0.1.1",
   "builtin-baseline": "b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01",
   "features": {
     "capture": {
@@ -45,12 +45,6 @@
           "host": true
         },
         "libusb"
-      ]
-    },
-    "simd": {
-      "description": "Private SIMDe implementation headers for the independent SIMD module",
-      "dependencies": [
-        "simde"
       ]
     },
     "cnet": {
