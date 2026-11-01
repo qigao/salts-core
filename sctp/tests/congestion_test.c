@@ -11,13 +11,13 @@
  * runtime's payload counter and congestion-avoidance credit. */
 enum { Q = CNET_SCTP_DATA_MTU - 12u, LIMIT = 16u * CNET_SCTP_DATA_MTU };
 typedef struct packet { uint8_t bytes[1200]; size_t n; } packet;
-typedef struct link {
+typedef struct sctp_virtual_link {
   cnet_sctp_data a, b;
   int owner;
   uint64_t now;
-} link;
+} sctp_virtual_link;
 static int owns(void *p) { return *(const int *)p; }
-static void init(link *l, uint32_t tsn, uint32_t rwnd) {
+static void init(sctp_virtual_link *l, uint32_t tsn, uint32_t rwnd) {
   cnet_sctp_data_config c = {0};
   memset(l, 0, sizeof(*l)); l->owner = 1; l->now = 1u;
   c.local_port = 5000u; c.remote_port = 5001u;
@@ -34,23 +34,23 @@ static void init(link *l, uint32_t tsn, uint32_t rwnd) {
   c.peer_receive_window = 32768u;
   check(cnet_sctp_data_init(&l->b, &c, 0u) == CNET_SCTP_DATA_OK);
 }
-static cnet_sctp_data_status send(link *l, packet *p, size_t bytes) {
+static cnet_sctp_data_status send(sctp_virtual_link *l, packet *p, size_t bytes) {
   uint8_t body[1024];
   memset(body, (int)(l->a.next_tsn & 255u), sizeof(body));
   return cnet_sctp_data_send(&l->a, l->now++, 0u, 53u, 0,
       body, bytes, p->bytes, sizeof(p->bytes), &p->n);
 }
-static void receive(link *l, const packet *p, packet *sack) {
+static void receive(sctp_virtual_link *l, const packet *p, packet *sack) {
   check(cnet_sctp_data_input(&l->b, l->now++, p->bytes, p->n,
       sack->bytes, sizeof(sack->bytes), &sack->n) == CNET_SCTP_DATA_OK);
 }
-static void ack(link *l, const packet *sack) {
+static void ack(sctp_virtual_link *l, const packet *sack) {
   packet out;
   check(cnet_sctp_data_input(&l->a, l->now++, sack->bytes, sack->n,
       out.bytes, sizeof(out.bytes), &out.n) == CNET_SCTP_DATA_OK);
   check(out.n == 0u);
 }
-static void take(link *l, size_t expected) {
+static void take(sctp_virtual_link *l, size_t expected) {
   uint8_t out[1024]; size_t n;
   cnet_sctp_data_message m = {0};
   check(cnet_sctp_data_take(&l->b, &m, out, sizeof(out), &n) ==
@@ -58,11 +58,11 @@ static void take(link *l, size_t expected) {
   check(n == expected && m.size == expected && !m.unordered && m.ppid == 53u);
   check(out[0] == (uint8_t)m.tsn);
 }
-static void deliver(link *l, const packet *p) {
+static void deliver(sctp_virtual_link *l, const packet *p) {
   packet s;
   receive(l, p, &s); ack(l, &s); take(l, p->n - 28u); /* aligned tests */
 }
-static void stop(link *l) {
+static void stop(sctp_virtual_link *l) {
   check(cnet_sctp_data_stop(&l->a) == CNET_SCTP_DATA_OK);
   check(cnet_sctp_data_stop(&l->b) == CNET_SCTP_DATA_OK);
 }
@@ -73,7 +73,7 @@ static void put32(uint8_t *p, uint32_t n) {
   p[0] = (uint8_t)(n >> 24); p[1] = (uint8_t)(n >> 16);
   p[2] = (uint8_t)(n >> 8); p[3] = (uint8_t)n;
 }
-static packet peer_sack(link *l, uint32_t cumulative,
+static packet peer_sack(sctp_virtual_link *l, uint32_t cumulative,
                         uint16_t first, uint16_t last) {
   packet out; uint8_t v[16] = {0}; cnet_sctp_wire_chunk c = {0};
   put32(v, cumulative); put32(v + 4u, 32768u);
@@ -86,7 +86,7 @@ static packet peer_sack(link *l, uint32_t cumulative,
 }
 
 static void application_limited(void) {
-  link l; packet p, s; unsigned int i; uint32_t window;
+  sctp_virtual_link l; packet p, s; unsigned int i; uint32_t window;
   init(&l, 100u, 32768u); window = l.a.cwnd;
   for (i = 1u; i <= 32u; ++i) {
     check(send(&l, &p, i) == CNET_SCTP_DATA_OK);
@@ -97,7 +97,7 @@ static void application_limited(void) {
 }
 
 static void padded_admission(void) {
-  link l; packet p[16], out; cnet_sctp_data before;
+  sctp_virtual_link l; packet p[16], out; cnet_sctp_data before;
   size_t flight = 0u, count = 0u;
   init(&l, UINT32_C(0xfffffffd), 32768u);
   while (flight < l.a.cwnd) {
@@ -124,7 +124,7 @@ static void padded_admission(void) {
 static void full_window_growth(void) {
   unsigned int bundled;
   for (bundled = 1u; bundled <= 2u; ++bundled) {
-    link l; packet p[16], s; unsigned int count = 0u, i;
+    sctp_virtual_link l; packet p[16], s; unsigned int count = 0u, i;
     size_t flight = 0u; uint32_t window;
     init(&l, 100u, 32768u); window = l.a.cwnd;
     while (flight < window) {
@@ -142,7 +142,7 @@ static void full_window_growth(void) {
 
 /* A full-rate ring keeps an independent byte-credit/window model. */
 typedef struct stream {
-  link l;
+  sctp_virtual_link l;
   packet queued[16];
   unsigned int first, count;
   size_t flight;
@@ -215,7 +215,7 @@ static void idle_credit_reset(void) {
 }
 
 static void gap_restore_accounting(void) {
-  link l; packet p[16], s; unsigned int n = 0u, i;
+  sctp_virtual_link l; packet p[16], s; unsigned int n = 0u, i;
   size_t flight = 0u; const uint32_t first = UINT32_C(0xfffffffd);
   uint32_t window;
   init(&l, first, 32768u); window = l.a.cwnd;
@@ -261,7 +261,7 @@ static void refusal_atomicity(void) {
 }
 
 static void t3_single_packet(void) {
-  link l; packet first, later, rtx, s, out; cnet_sctp_data before;
+  sctp_virtual_link l; packet first, later, rtx, s, out; cnet_sctp_data before;
   init(&l, 100u, 32768u);
   check(send(&l, &first, 1u) == CNET_SCTP_DATA_OK);
   check(send(&l, &later, 1u) == CNET_SCTP_DATA_OK);
@@ -283,7 +283,7 @@ static void t3_single_packet(void) {
 /* A Gap ACK of the T3 retransmitted TSN is revocable; it must not
  * lift the one-packet post-timeout send gate before cumulative progress. */
 static void t3_gap_ack_keeps_gate(void) {
-  link l; packet first, later, sack, out;
+  sctp_virtual_link l; packet first, later, sack, out;
   cnet_sctp_data before;
   init(&l, 100u, 32768u);
   check(send(&l, &first, 1u) == CNET_SCTP_DATA_OK);
@@ -305,7 +305,7 @@ static void t3_gap_ack_keeps_gate(void) {
 }
 
 static void later_retransmit_window(void) {
-  link l; packet p[8], s, out, first; cnet_sctp_data before;
+  sctp_virtual_link l; packet p[8], s, out, first; cnet_sctp_data before;
   unsigned int i; uint32_t window;
   init(&l, 100u, 32768u);
   for (i = 0u; i < 7u; ++i)
@@ -333,7 +333,7 @@ static void later_retransmit_window(void) {
 /* Exercise a legitimate huge monotonic clock delta without unsigned
  * overflow in the fixed-point SRTT/RTO estimator. */
 static void huge_rtt_arithmetic(void) {
-  link l; packet p, sack;
+  sctp_virtual_link l; packet p, sack;
   const uint64_t late = UINT64_MAX / 2u;
   init(&l, 100u, 32768u);
   l.a.config.t3_max_ms = UINT64_MAX / 2u;
