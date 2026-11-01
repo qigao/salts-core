@@ -10,8 +10,8 @@ set_target_properties(saltscore_wsparser PROPERTIES
 target_include_directories(saltscore_wsparser PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/src/wsparser")
 
-# Production CNet retains its complete original TLS implementation. Only
-# the native implementation owner changes: one local static Salts::Crypto.
+# Production CNet retains its complete original TLS implementation. Its
+# private GmSSL C headers/library are imported from the pinned vcpkg package.
 # The narrower qualification facade is never substituted for production TLS.
 if(NOT TARGET Salts::URI OR NOT TARGET saltscore_wsparser)
   message(FATAL_ERROR "CNet requires native Core URI and WebSocket parser targets")
@@ -27,14 +27,14 @@ endif()
 get_target_property(_cnet_crypto_alias Salts::Crypto ALIASED_TARGET)
 get_target_property(_cnet_crypto_type salts_crypto TYPE)
 get_target_property(_cnet_crypto_imported salts_crypto IMPORTED)
-get_target_property(_cnet_native_include salts_crypto SALTS_CRYPTO_NATIVE_INCLUDE_DIR)
+get_target_property(_cnet_native_include GmSSL::GmSSL INTERFACE_INCLUDE_DIRECTORIES)
 if(NOT _cnet_crypto_alias STREQUAL "salts_crypto" OR
    NOT _cnet_crypto_type STREQUAL "STATIC_LIBRARY" OR _cnet_crypto_imported)
   message(FATAL_ERROR "CNet requires exactly one local non-imported STATIC Crypto owner")
 endif()
 if(NOT _cnet_native_include OR
    NOT EXISTS "${_cnet_native_include}/gmssl/tls.h")
-  message(FATAL_ERROR "Local Crypto native TLS headers are missing")
+  message(FATAL_ERROR "Pinned vcpkg GmSSL native TLS headers are missing")
 endif()
 
 # Never fold a second copy of any stateful runtime into CNet. Core/Platform/
@@ -143,6 +143,7 @@ target_link_libraries(saltscore_cnet
     c-ares::cares
     kcp::kcp
     Salts::Crypto
+    GmSSL::GmSSL
     $<$<PLATFORM_ID:Windows>:crypt32>)
 if(APPLE)
   find_library(SALTSCORE_CNET_COREFOUNDATION CoreFoundation REQUIRED)
