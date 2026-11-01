@@ -4,8 +4,8 @@
  * corpus. No TLS implementation/type is accessed directly in this file.
  */
 #include <cnet/cnet.h>
-#include <salts/clock.h>
-#include <salts/error_codes.h>
+#include <clock.h>
+#include <error_codes.h>
 #include <cmeta_buffer.h>
 
 #include <stdbool.h>

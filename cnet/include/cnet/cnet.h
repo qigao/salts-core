@@ -1,8 +1,8 @@
 #ifndef CNET_CNET_H
 #define CNET_CNET_H
 
-#include <salts/error_codes.h>
-#include <salts/native_io.h>
+#include <error_codes.h>
+#include <native_io.h>
 #include <cmeta_buffer.h>
 
 #include <stddef.h>

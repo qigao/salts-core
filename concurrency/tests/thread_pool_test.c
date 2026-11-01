@@ -3,8 +3,8 @@
  * @brief Thread pool unit tests
  */
 
-#include <salts/thread.h>
-#include <salts/thread_pool.h>
+#include <thread.h>
+#include <thread_pool.h>
 #include "tinytest.h"
 #include <stdio.h>
 #include <stdatomic.h>

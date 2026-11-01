@@ -30,7 +30,7 @@
 #include <tlog.h>
 
 #endif /* _WIN32 */
-#include "salts_capture.h"
+#include "capture.h"
 #include "capture_video_backend.h"
 
 #ifdef _WIN32

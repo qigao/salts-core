@@ -1,5 +1,5 @@
 #include <cmeta_error.h>
-#include <salts/thread.h>
+#include <thread.h>
 
 #include <limits.h>
 #include <stdio.h>

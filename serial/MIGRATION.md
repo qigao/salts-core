@@ -11,14 +11,14 @@ not been changed.
 
 | Original paths below `salts_serial/` | Treatment |
 | --- | --- |
-| `salts_serial.h` | Exact original public ABI |
+| `serial.h` | Exact original public ABI |
 | `salts_serial.c` | Remove unused umbrella/CSTL includes and unwrap the private status conversion |
 | `backend_posix.c` | Replace the private vector status type and constants with their existing Serial results |
 | `backend_win32.c` | Same status adaptation; explicitly zero-initialize the temporary metadata vector |
-| `salts_serial_internal.h` | Preserve storage ownership operations; replace the reflected private vector with one typed owned array |
+| `serial_internal.h` | Preserve storage ownership operations; replace the reflected private vector with one typed owned array |
 | `CMakeLists.txt`, `examples/CMakeLists.txt`, `test/CMakeLists.txt` | Native owner, install, dependency and test registration |
 | `test/test_salts_serial_mock.c` | Retain all original scenarios and assertions through the existing backend/thread injection hooks |
-| `test/salts_serial_test.h`, `test/test_salts_serial.c`, `test/test_salts_serial_public_abi.c`, `test/test_fixes.c` | Exact original bytes |
+| `test/serial_test.h`, `test/test_salts_serial.c`, `test/test_salts_serial_public_abi.c`, `test/test_fixes.c` | Exact original bytes |
 | `examples/await_events.c`, `examples/handle_errors.c`, `examples/list_ports.c`, `examples/port_config.c`, `examples/port_info.c`, `examples/send_receive.c`, `examples/README` | Exact original bytes |
 
 The eight adapted inputs have exact original copies under
@@ -100,7 +100,7 @@ peer-close error readiness, and resource teardown. The fixture explicitly
 sets its initial line discipline to raw mode; it does not invent a contract
 that the original configure function resets every inherited termios flag.
 
-The installed project uses only `<salts_serial.h>`, standard headers and
+The installed project uses only `<serial.h>`, standard headers and
 `Salts::Serial`. C11 and C++17 consumers check all 30 function signatures and
 actually call every symbol. They exercise metadata snapshot ownership,
 buffer wraparound and backpressure, exact bytes, rejected-call output values,

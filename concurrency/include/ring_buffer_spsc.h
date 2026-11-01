@@ -2,7 +2,7 @@
 #ifndef RING_BUFFER_SPSC_H
 #define RING_BUFFER_SPSC_H
 
-#include <salts/spsc_ring.h>
+#include <spsc_ring.h>
 
 #ifdef __cplusplus
 extern "C" {

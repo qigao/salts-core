@@ -3,8 +3,8 @@
 #include "cnet_module.h"
 #include "cnet_transport.h"
 
-#include <salts/clock.h>
-#include <salts/thread.h>
+#include <clock.h>
+#include <thread.h>
 
 #include <limits.h>
 #include <stdbool.h>

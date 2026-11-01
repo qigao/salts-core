@@ -1,4 +1,4 @@
-#include <salts/asn1.h>
+#include <asn1.h>
 
 #include <stdbool.h>
 #include <stdint.h>

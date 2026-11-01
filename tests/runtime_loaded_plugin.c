@@ -4,8 +4,8 @@
  */
 #include <cnet/cnet.h>
 #include <cmeta_buffer.h>
-#include <salts/thread.h>
-#include <salts/error_codes.h>
+#include <thread.h>
+#include <error_codes.h>
 
 #if defined(_WIN32)
 #  define PLUGIN_EXPORT __declspec(dllexport)

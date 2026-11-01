@@ -33,10 +33,25 @@ ORIGINAL_PATHS = frozenset({
     "test/test_salts_serial_mock.c", "test/test_salts_serial_public_abi.c",
     "test/test_salts_serial.c",
 })
+CURRENT_RENAMES = {
+    "salts_serial.h": "serial.h",
+    "salts_serial_internal.h": "serial_internal.h",
+    "test/salts_serial_test.h": "test/serial_test.h",
+}
 
 
 def git_blob(data: bytes) -> str:
     return hashlib.sha1(b"blob " + str(len(data)).encode("ascii") + b"\0" + data).hexdigest()
+
+
+def restore_original_header_names(data: bytes) -> bytes:
+    return (data
+            .replace(b'"serial_internal.h"', b'"salts_serial_internal.h"')
+            .replace(b'"test/serial_test.h"', b'"test/salts_serial_test.h"')
+            .replace(b'"serial.h"', b'"salts_serial.h"')
+            .replace(b'"thread.h"', b'"salts/thread.h"')
+            .replace(b'"clock.h"', b'"salts/clock.h"')
+            .replace(b'`serial.h`', b'`salts_serial.h`'))
 
 
 def original_path(relative: str) -> Path:
@@ -44,6 +59,11 @@ def original_path(relative: str) -> Path:
 
 
 def mechanical_native_source(original: str, relative: str) -> str:
+    original = (original
+                .replace('"salts_serial_internal.h"', '"serial_internal.h"')
+                .replace('"test/salts_serial_test.h"', '"test/serial_test.h"')
+                .replace('"salts/thread.h"', '"thread.h"')
+                .replace('"salts/clock.h"', '"clock.h"'))
     if relative == "salts_serial.c":
         result = original.replace('#include "platform.h"\n', "").replace('#include <cstl.h>\n', "")
         result = result.replace(
@@ -73,11 +93,14 @@ def verify_retention(module: Path, inventory: dict) -> None:
     if set(rows) != ORIGINAL_PATHS:
         raise ValueError("Serial original file coverage changed")
     for relative, row in rows.items():
-        path = module / original_path(relative)
+        path = module / (original_path(relative) if relative in ADAPTED
+                         else CURRENT_RENAMES.get(relative, relative))
         if not path.is_file():
             raise ValueError(f"Serial original file missing: {relative}")
         # Compare Git blob bytes independently of a Windows checkout's EOLs.
         data = path.read_bytes().replace(b"\r\n", b"\n")
+        if relative not in ADAPTED:
+            data = restore_original_header_names(data)
         if len(data) != row["size"] or git_blob(data) != row["git_blob"]:
             raise ValueError(f"Serial original bytes changed: {relative}")
     for relative in ("salts_serial.c", "backend_posix.c", "backend_win32.c"):
@@ -104,7 +127,7 @@ class SerialProvenance(unittest.TestCase):
         self.assertEqual(row["unparsed_declarations"], [])
         expected = set(row["explicit_functions"])
         self.assertEqual(len(expected), 30)
-        header = (MODULE / "salts_serial.h").read_text()
+        header = (MODULE / "serial.h").read_text()
         declared = set(re.findall(r"\b(salts_serial_\w+)\s*\(", header))
         self.assertEqual(declared, expected)
         implementation = (MODULE / "salts_serial.c").read_text()
@@ -114,7 +137,7 @@ class SerialProvenance(unittest.TestCase):
 
     def test_original_string_ownership_operations_are_unchanged(self) -> None:
         original = (MODULE / original_path("salts_serial_internal.h")).read_text()
-        native = (MODULE / "salts_serial_internal.h").read_text()
+        native = (MODULE / "serial_internal.h").read_text()
         begin = "static inline void salts_serial_port_info_storage_refresh_view"
         old_operations = original.split(begin, 1)[1].split("static const cmeta_type_traits", 1)[0]
         native_operations = native.split(begin, 1)[1].split("/* One module-private owned array", 1)[0]
@@ -137,7 +160,7 @@ class SerialProvenance(unittest.TestCase):
             self.assertIn(obligation, native)
 
     def test_source_change_and_missing_original_test_fail_closed(self) -> None:
-        for relative in ("salts_serial.h", "backend_posix.c", "test/test_salts_serial.c"):
+        for relative in ("serial.h", "backend_posix.c", "test/test_salts_serial.c"):
             with self.subTest(relative=relative), tempfile.TemporaryDirectory() as temporary:
                 candidate = Path(temporary) / "serial"
                 shutil.copytree(MODULE, candidate, ignore=shutil.ignore_patterns("__pycache__"))

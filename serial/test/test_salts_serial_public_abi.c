@@ -1,4 +1,4 @@
-#include "salts_serial.h"
+#include "serial.h"
 #include "tinytest.h"
 
 suite("salts_serial public ABI") {

@@ -3,7 +3,7 @@
  */
 
 #include "tinytest.h"
-#include "salts_serial.h"
+#include "serial.h"
 
 #include <string.h>
 

@@ -16,9 +16,10 @@ target_include_directories(salts_asn1 PUBLIC
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 install(TARGETS salts_asn1 EXPORT SaltsASN1Targets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(DIRECTORY include/salts/
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/salts
-  FILES_MATCHING PATTERN "asn1*.h")
+install(DIRECTORY include/
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  FILES_MATCHING PATTERN "asn1*.h"
+  PATTERN "salts" EXCLUDE)
 set(_package_dir "${CMAKE_INSTALL_LIBDIR}/cmake/ASN1")
 install(EXPORT SaltsASN1Targets FILE ASN1Targets.cmake
   NAMESPACE Salts:: DESTINATION "${_package_dir}")

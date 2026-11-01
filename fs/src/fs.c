@@ -6,7 +6,7 @@
  * No libuv. Just standard POSIX / Win32 syscalls.
  * Error codes: negative errno values (e.g. -EINVAL, -ENOMEM), mirroring POSIX convention.
  */
-#include <salts/fs.h>
+#include <fs.h>
 #ifdef _WIN32
 #include <windows.h>
 /* Native MSVC CRT has no POSIX ssize_t; use signed pointer width. */

@@ -1,6 +1,6 @@
 #include "thread_pool_lf.h"
-#include <salts/disruptor.h>
-#include <salts/thread.h>
+#include <disruptor.h>
+#include <thread.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdlib.h>

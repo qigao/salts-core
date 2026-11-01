@@ -7,7 +7,7 @@
 #import <Foundation/Foundation.h>
 #import <ReplayKit/ReplayKit.h>
 #import "capture_ios_guard.h"
-#include "salts_capture.h"
+#include "capture.h"
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>

@@ -3,9 +3,9 @@
 
 Historical authority is qigao/salts@13dbd7266e7aed7277daeb103fb40c4684c3a367,
 before native module extraction. Every surviving original include/src/parser
-file must retain its *original* relative path under Platform, Concurrency,
-Coroutine, NativeIO, CNet and URI. Base64's core/, fs/, process/ are the only
-user-approved destination naming exceptions.
+file remains accounted for under Platform, Concurrency, Coroutine, NativeIO,
+CNet and URI. The immutable inventory keeps donor path names; explicitly
+approved public-header flattening is translated separately below.
 
 The historical file manifest has an immutable Git blob identity, so removing
 a name from the list will not silently make a missing module source pass CI.
@@ -35,8 +35,25 @@ RETIRED_NONCORE_SURFACES = (
     "concurrency/src/cmeta_thread.h",  # Reflected/native legacy CMeta shim
     "concurrency/src/disruptor.h",  # Old duplicate private header
     "coroutine/include/cmeta/coroutine.h",  # Reflection facade stayed with Salts
-    "native-io/include/salts/native_io_ace_token.h",  # ACE token stayed in Salts
+    "native-io/include/native_io_ace_token.h",  # ACE token stayed in Salts
 )
+CURRENT_PATH_RENAMES = {
+    "concurrency/include/salts/atomic.h": "concurrency/include/atomic.h",
+    "concurrency/include/salts/deadline_queue.h": "concurrency/include/deadline_queue.h",
+    "concurrency/include/salts/disruptor.h": "concurrency/include/disruptor.h",
+    "concurrency/include/salts/rcu.h": "concurrency/include/rcu.h",
+    "concurrency/include/salts/spsc_ring.h": "concurrency/include/spsc_ring.h",
+    "concurrency/include/salts/thread_pool.h": "concurrency/include/thread_pool.h",
+    "native-io/include/salts/native_io.h": "native-io/include/native_io.h",
+    "native-io/include/salts/native_io_sharded.h": "native-io/include/native_io_sharded.h",
+    "native-io/include/salts/native_ipc.h": "native-io/include/native_ipc.h",
+    "platform/include/salts/clock.h": "platform/include/clock.h",
+    "platform/include/salts/error_codes.h": "platform/include/error_codes.h",
+    "platform/include/salts/fastpath.h": "platform/include/fastpath.h",
+    "platform/include/salts/random.h": "platform/include/random.h",
+    "platform/include/salts/readiness.h": "platform/include/readiness.h",
+    "platform/include/salts/thread.h": "platform/include/thread.h",
+}
 PATH_PATTERN = re.compile(
     r"(?:platform|concurrency|coroutine|native-io|cnet|uri)"
     r"/(?:include|src|parser)/[A-Za-z0-9_.+/-]+"
@@ -71,9 +88,12 @@ def read_original_paths(manifest: Path = MANIFEST) -> tuple[str, ...]:
 def validate(root: Path, names: tuple[str, ...]) -> None:
     root = root.resolve()
     for name in names:
-        path = root / name
+        path = root / CURRENT_PATH_RENAMES.get(name, name)
         if not path.is_file() or path.is_symlink():
-            raise ValueError(f"original Salts source/header path missing: {name}")
+            raise ValueError(
+                "original Salts source/header path missing after approved rename: "
+                + name
+            )
     for retired in RETIRED_NONCORE_SURFACES:
         if (root / retired).exists():
             raise ValueError(f"retired non-Core source reintroduced: {retired}")
@@ -87,8 +107,9 @@ def main() -> None:
     original = read_original_paths()
     validate(ROOT, original)
     print(
-        f"PASS: {len(original)} original Salts module path names retained; "
-        "Core/FS/Process exceptions and retired non-Core ABI enforced"
+        f"PASS: {len(original)} original Salts module files accounted for; "
+        "approved header renames, Core/FS/Process exceptions, and retired "
+        "non-Core ABI enforced"
     )
 
 

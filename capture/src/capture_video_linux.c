@@ -3,7 +3,7 @@
  *
  * Exact native camera modes through V4L2.
  */
-#include "salts_capture.h"
+#include "capture.h"
 #include "capture_video_backend.h"
 
 #if defined(__linux__) && !defined(__ANDROID__)

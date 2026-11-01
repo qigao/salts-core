@@ -17,15 +17,15 @@
 #include <string.h>
 #include <time.h>
 #include <limits.h>
-#include <salts/clock.h>
-#include <salts/thread.h>
+#include <clock.h>
+#include <thread.h>
 #include "tlog.h"
 #include "fmt.h"
 #include "log_pattern_lexer.h"
 #include "cmeta_buffer.h"
 #include <stdatomic.h>
-#include <salts/fs.h>
-#include <salts/disruptor.h>
+#include <fs.h>
+#include <disruptor.h>
 
 
 #ifdef _WIN32

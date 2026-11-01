@@ -4,7 +4,7 @@
   #include "cnet_test_internal.h"
 #endif
 
-#include <salts/error_codes.h>
+#include <error_codes.h>
 
 #include <gmssl/tls.h>
 #include <gmssl/digest.h>

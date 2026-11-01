@@ -35,10 +35,7 @@ install(TARGETS saltscore_concurrency EXPORT SaltsCoreTargets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(DIRECTORY include/salts
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} FILES_MATCHING PATTERN "*.h")
-# Original utils SPSC API belongs to the existing native Salts::Concurrency
-# owner; do not add an adapter DSO or a second ring implementation.
-install(FILES include/ring_buffer_spsc.h
-  include/bucket_priority_queue_spsc.h include/bucket_priority_queue_mpmc.h
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(DIRECTORY include/
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  FILES_MATCHING PATTERN "*.h"
+  PATTERN "salts" EXCLUDE)

@@ -1,6 +1,6 @@
 // re2c --lang c --utf8 --encoding-policy fail
-#include "salts_unicode.h"
-#include "salts_unicode_emoji.h"
+#include "unicode.h"
+#include "unicode_emoji.h"
 
 #include <stddef.h>
 #include <stdint.h>

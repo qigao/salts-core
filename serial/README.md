@@ -1,7 +1,7 @@
 # Native Serial owner
 
 `Salts::Serial` provides the original 30-function Serial C ABI through
-`<salts_serial.h>`. It owns port handles, metadata snapshots, event sets and the
+`<serial.h>`. It owns port handles, metadata snapshots, event sets and the
 per-handle receive/transmit queues. The implementation uses the POSIX or Windows
 backend selected at build time, plus the native Core, Platform and Concurrency
 owners. It does not require CMeta, CSTL, CFlow, TinyMock or libserialport.

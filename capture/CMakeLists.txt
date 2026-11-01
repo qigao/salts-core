@@ -156,7 +156,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   set(_salts_capture_ios_surface
       "${CMAKE_CURRENT_BINARY_DIR}/capture_api_ios.c")
   file(WRITE "${_salts_capture_ios_surface}" [=[
-#include "salts_capture.h"
+#include "capture.h"
 #include <string.h>
 
 int salts_capture_list_gpu_devices(salts_capture_device_t *devices, int max_count) {

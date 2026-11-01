@@ -6,7 +6,7 @@ URL 解析、缓存或后台线程，不依赖 ICU 或 SaltsUtils。开发事项
 
 ## 契约与使用
 
-包含 `<salts_idna.h>`，链接 `Salts::IDNA`。两个显式 profile 均固定
+包含 `<idna.h>`，链接 `Salts::IDNA`。两个显式 profile 均固定
 Unicode 17.0.0 / UTS #46 revision 35：
 nontransitional；开启 STD3、CheckHyphens、CheckBidi、CheckJoiners、VerifyDnsLength，
 拒绝无效 Punycode；另外执行 RFC 5892 ContextO。未知 profile 明确失败。
@@ -24,7 +24,7 @@ DNS profile 沿用同一函数签名、workspace 与错误码，不改变 STRICT
 使用包含它的同一套 SDK 头文件和库。
 
 ```c
-#include <salts_idna.h>
+#include <idna.h>
 
 char mapped[4096], normalized[4096], ascii[254];
 uint32_t scalars[4096];

@@ -1,4 +1,4 @@
-#include <salts/native_ipc.h>
+#include <native_ipc.h>
 
 #include <limits.h>
 #include <string.h>

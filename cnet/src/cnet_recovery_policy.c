@@ -1,6 +1,6 @@
 #include <cnet/recovery_policy.h>
-#include <salts/error_codes.h>
-#include <salts/thread.h>
+#include <error_codes.h>
+#include <thread.h>
 #include <stdatomic.h>
 #include <string.h>
 

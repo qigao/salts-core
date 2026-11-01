@@ -25,8 +25,8 @@ install(TARGETS saltscore_process EXPORT SaltsCoreTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES include/salts/process.h
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/salts)
+install(FILES include/process.h
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 if(BUILD_TESTING)
   add_executable(saltscore_process_test ${PROJECT_SOURCE_DIR}/tests/test_process.c)
   target_compile_features(saltscore_process_test PRIVATE c_std_11)

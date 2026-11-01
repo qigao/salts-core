@@ -6,9 +6,9 @@ Foundational Atomic/Threads and relative timing/TSS are already merged.
 ## Compiler-independent C11 source facade
 
 The experimental header is
-\`include/salts_core/c11/threads.h\`. Consumers explicitly opt in with
+\`include/c11/threads.h\`. Consumers explicitly opt in with
 \`SALTS_C11_THREADS_EXPERIMENTAL=1\` and add the
-\`<SaltsCore include>/salts_core/c11\` directory **before** compiler
+\`<SaltsCore include>/c11\` directory **before** compiler
 system include directories; \`#include <threads.h>\` resolves to this
 header. This never overwrites the compiler's global \`threads.h\`,
 does not define or undefine \`__STDC_NO_THREADS__\`, and does not claim

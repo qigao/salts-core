@@ -3,11 +3,11 @@
  * @brief Native Windows/POSIX child process management backend.
  */
 
-#include <salts/process.h>
+#include <process.h>
 
-#include <salts/error_codes.h>
-#include <salts/thread.h>
-#include <salts/clock.h>
+#include <error_codes.h>
+#include <thread.h>
+#include <clock.h>
 
 #include <errno.h>
 #include <limits.h>

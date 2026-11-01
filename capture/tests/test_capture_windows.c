@@ -1,4 +1,4 @@
-#include <salts_capture.h>
+#include <capture.h>
 #include <tinytest.h>
 
 #include <stddef.h>

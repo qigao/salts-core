@@ -1,6 +1,6 @@
 #include "native_io_internal.h"
 
-#include <salts/error_codes.h>
+#include <error_codes.h>
 #include <coro_pool.h>
 
 #include <limits.h>

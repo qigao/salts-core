@@ -2,10 +2,10 @@
  * Copyright (c) 2026 Salts Project
  */
 
-#include "salts_serial_internal.h"
+#include "serial_internal.h"
 #include "ring_buffer_spsc.h"
 #include "tstr.h"
-#include "salts/thread.h"
+#include "thread.h"
 
 #include <stdbool.h>
 #include <stdatomic.h>
@@ -43,7 +43,7 @@ typedef struct salts_serial_size_result {
 } salts_serial_size_result_t;
 
 #ifdef SALTS_SERIAL_TESTING
-#include "test/salts_serial_test.h"
+#include "test/serial_test.h"
 static const salts_serial_backend_ops_t *active_backend_ops = NULL;
 static salts_serial_test_thread_create_fn active_thread_create = cmeta_thread_create;
 

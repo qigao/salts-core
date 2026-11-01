@@ -1,9 +1,9 @@
-#include "salts_playback.h"
+#include "playback.h"
 
 #include "playback_buffer.h"
 
 #include <miniaudio.h>
-#include <salts/thread.h>
+#include <thread.h>
 
 #include <stdatomic.h>
 #include <stdio.h>

@@ -9,7 +9,7 @@ Original `qigao/salts` master commit:
 `d6d936a86087a7f9a982126157d154e905580f30`.
 
 Copied unchanged from `salts/platform`:
-- `platform/include/salts/{clock.h,random.h,thread.h,error_codes.h}`
+- `platform/include/{clock.h,random.h,thread.h,error_codes.h}`
 - `platform/src/{clock.c,random.c,thread_posix.c,thread_win32.c}`
 
 Copied unchanged from `salts/concurrency`:
@@ -17,7 +17,7 @@ Copied unchanged from `salts/concurrency`:
 - sources `{deadline_queue.c,rcu.c,spsc_ring.c,thread_pool.c,thread_pool_lf.c,thread_pool_lf.h}`.
 
 `disruptor.c` has **include-only** changes: it now includes
-`<salts/disruptor.h>` and `<salts/thread.h>` rather than legacy
+`<disruptor.h>` and `<thread.h>` rather than legacy
 `"disruptor.h"` and `"cmeta_thread.h"` from the old Core aggregate.
 It does not import CMeta types or scheduling objects.
 
@@ -26,7 +26,7 @@ It does not import CMeta types or scheduling objects.
 - Public `Salts::Core` remains dependency-free. `Salts::Platform`
   links only system Threads / Win32 BCrypt. `Salts::Concurrency` links
   `Salts::Platform` and has no Salts/CMeta/CFlow/CSTL dependency.
-- Public `<salts/*.h>` and historical `cmeta_*` symbols are **migration**
+- Public `<*.h>` and historical `cmeta_*` symbols are **migration**
   compatibility spellings. Do **not** link new and old copies of these symbols
   into the same image during qualification. No `Salts::` alias is exported.
 - Installed `find_package(SaltsCore CONFIG REQUIRED)` exports three targets.

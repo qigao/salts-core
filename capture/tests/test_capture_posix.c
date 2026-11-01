@@ -1,4 +1,4 @@
-#include <salts_capture.h>
+#include <capture.h>
 #include <tinytest.h>
 
 suite("POSIX capture integration") {

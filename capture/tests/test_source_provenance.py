@@ -52,8 +52,8 @@ class CaptureSourceProvenance(unittest.TestCase):
         def symbols(header):
             return re.findall(r"SALTS_CAPTURE_API\s+.*?\b(salts_[A-Za-z0-9_]+)\s*\(",
                               (ROOT / header).read_text(), re.S)
-        common = symbols("capture/include/salts_capture.h")
-        android = symbols("capture/include/salts_capture_android.h")
+        common = symbols("capture/include/capture.h")
+        android = symbols("capture/include/capture_android.h")
         self.assertEqual(len(common), 26)
         self.assertEqual(len(android), 3)
         apple = (ROOT / "capture/apple_exports.txt").read_text().splitlines()

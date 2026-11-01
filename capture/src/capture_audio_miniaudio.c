@@ -11,7 +11,7 @@
 
 #include "miniaudio.h"
 
-#include "salts_capture.h"
+#include "capture.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>

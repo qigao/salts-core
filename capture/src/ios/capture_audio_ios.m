@@ -7,7 +7,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <Foundation/Foundation.h>
 #import "capture_ios_guard.h"
-#include "salts_capture.h"
+#include "capture.h"
 #include <stdlib.h>
 
 typedef struct {

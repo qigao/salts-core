@@ -52,7 +52,7 @@ on:
       - "vendor/cnet/**"
   push:
     branches: [master]
-    tags: ["v0.1.001"]
+    tags: ["v0.1.002"]
     paths:
       - "platform/src/**"
       - "platform/include/**"
@@ -226,12 +226,12 @@ jobs:
         run: ctest --preset "${{ matrix.preset }}"
 
       - name: Install release SDK
-        if: matrix.package && github.ref == 'refs/tags/v0.1.001'
+        if: matrix.package && github.ref == 'refs/tags/v0.1.002'
         shell: bash
         run: cmake --build --preset "install-${{ matrix.preset }}"
 
       - name: Record immutable SDK provenance
-        if: matrix.package && github.ref == 'refs/tags/v0.1.001'
+        if: matrix.package && github.ref == 'refs/tags/v0.1.002'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -240,8 +240,8 @@ jobs:
             throw 'SaltsCore SDK installation is missing'
           }
           @(
-            'release=0.1.001'
-            'package=0.1.1'
+            'release=0.1.002'
+            'package=0.1.2'
             "commit=$env:GITHUB_SHA"
             'rid=${{ matrix.rid }}'
             'profile=release'
@@ -250,7 +250,7 @@ jobs:
           ) | Set-Content -Encoding utf8 "$prefix/saltscore-sdk-manifest.txt"
 
       - uses: actions/upload-artifact@v4
-        if: matrix.package && github.ref == 'refs/tags/v0.1.001'
+        if: matrix.package && github.ref == 'refs/tags/v0.1.002'
         with:
           name: saltscore-sdk-${{ matrix.rid }}
           path: package
@@ -258,8 +258,8 @@ jobs:
           retention-days: 14
 
   package:
-    name: Publish SaltsCore.Native 0.1.1
-    if: github.ref == 'refs/tags/v0.1.001'
+    name: Publish SaltsCore.Native 0.1.2
+    if: github.ref == 'refs/tags/v0.1.002'
     needs: qualify
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -284,13 +284,13 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-list -n 1 v0.1.001)" = "$GITHUB_SHA"
+          test "$(git rev-list -n 1 v0.1.002)" = "$GITHUB_SHA"
           test "$(find package/sdk -maxdepth 2 -name saltscore-sdk-manifest.txt | wc -l)" -eq 8
           dotnet pack packaging/nuget/SaltsCore.Native.csproj \
             --configuration Release --output dist \
-            -p:PackageVersion=0.1.1 \
+            -p:PackageVersion=0.1.2 \
             -p:PackageRoot="$GITHUB_WORKSPACE/package"
-          package=dist/SaltsCore.Native.0.1.1.nupkg
+          package=dist/SaltsCore.Native.0.1.2.nupkg
           test -f "$package"
           sha256sum "$package" > dist/SHA256SUMS
       - name: Refuse an existing release or normalized package version
@@ -299,8 +299,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh release view v0.1.001 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo 'GitHub Release v0.1.001 already exists' >&2
+          if gh release view v0.1.002 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'GitHub Release v0.1.002 already exists' >&2
             exit 1
           fi
           inventory="$RUNNER_TEMP/saltscore-packages.json"
@@ -308,8 +308,8 @@ jobs:
           if gh api --paginate '/users/qigao/packages/nuget/SaltsCore.Native/versions?per_page=100' > "$inventory" 2> "$error"; then
             python3 - "$inventory" <<'PY'
           import json, sys
-          if any(item.get('name', '').lower() == '0.1.1' for item in json.load(open(sys.argv[1]))):
-              raise SystemExit('SaltsCore.Native 0.1.1 already exists')
+          if any(item.get('name', '').lower() == '0.1.2' for item in json.load(open(sys.argv[1]))):
+              raise SystemExit('SaltsCore.Native 0.1.2 already exists')
           PY
           elif ! grep -Fq 'HTTP 404' "$error"; then
             cat "$error" >&2
@@ -327,12 +327,12 @@ jobs:
           dotnet nuget add source https://nuget.pkg.github.com/qigao/index.json \
             --name github --username qigao --password "$GITHUB_TOKEN" \
             --store-password-in-clear-text --configfile "$config"
-          dotnet nuget push dist/SaltsCore.Native.0.1.1.nupkg \
+          dotnet nuget push dist/SaltsCore.Native.0.1.2.nupkg \
             --api-key "$GITHUB_TOKEN" --source github --configfile "$config"
-          gh release create v0.1.001 \
-            dist/SaltsCore.Native.0.1.1.nupkg dist/SHA256SUMS \
+          gh release create v0.1.002 \
+            dist/SaltsCore.Native.0.1.2.nupkg dist/SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" --verify-tag --target "$GITHUB_SHA" \
-            --title 'SaltsCore 0.1.001' --generate-notes --latest
+            --title 'SaltsCore 0.1.002' --generate-notes --latest
 
   result:
     name: CI result
@@ -344,6 +344,6 @@ jobs:
         shell: bash
         run: |
           test '${{ needs.qualify.result }}' = success
-          if [[ '${{ github.ref }}' == refs/tags/v0.1.001 ]]; then
+          if [[ '${{ github.ref }}' == refs/tags/v0.1.002 ]]; then
             test '${{ needs.package.result }}' = success
           fi

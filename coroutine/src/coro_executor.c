@@ -5,11 +5,11 @@
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
-#include <salts/disruptor.h>
-#include <salts/clock.h>
-#include <salts/error_codes.h>
-#include <salts/thread.h>
-#include <salts/thread_pool.h>
+#include <disruptor.h>
+#include <clock.h>
+#include <error_codes.h>
+#include <thread.h>
+#include <thread_pool.h>
 
 typedef struct coro_executor_shard_s coro_executor_shard_t;
 

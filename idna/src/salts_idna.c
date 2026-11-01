@@ -1,4 +1,4 @@
-#include "salts_idna.h"
+#include "idna.h"
 #include <string.h>
 
 typedef struct { uint32_t first, last, offset; uint8_t length, status; } idna_mapping;

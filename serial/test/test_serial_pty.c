@@ -1,4 +1,4 @@
-#include <salts_serial.h>
+#include <serial.h>
 
 #include <errno.h>
 #include <poll.h>
