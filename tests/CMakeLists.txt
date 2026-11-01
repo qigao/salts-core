@@ -627,3 +627,12 @@ endif()
 
 # Regex/SIMD/Error source provenance also runs once in the Migration gate.
 # The release-only migration-receipt harness is intentionally not part of PR CI.
+
+# Downstream CMeta uses the pinned Core auditor to verify physical shared-image
+# ownership. Keep its cross-platform parser behavior in the formal CTest graph.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME saltscore.audit_runtime_owner_parser
+  COMMAND "${Python3_EXECUTABLE}" -B -m unittest discover
+    -s tests -p test_audit_runtime_owner.py)
+set_tests_properties(saltscore.audit_runtime_owner_parser PROPERTIES
+  WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}" TIMEOUT 30)

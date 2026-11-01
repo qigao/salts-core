@@ -98,3 +98,11 @@
   The tag run installs the already-qualified graph and packages those install
   trees; do not restore the removed standalone consumer/installer workflow or
   publish from a locally assembled SDK.
+
+## 2026-11-01 downstream physical-owner audit
+
+- `tools/audit_runtime_owner.py` is the Core-owned cross-platform parser used
+  by CMeta's installed physical-owner audit and is referenced by
+  `docs/M4-RUNTIME-ONE-OWNER.md`. Do not remove it as migration-only tooling;
+  keep `tests/test_audit_runtime_owner.py` registered in the formal CTest graph
+  so downstream source pins cannot lose the auditor silently.
