@@ -54,6 +54,16 @@ independent M5 static Crypto Owner TLS1.2/1.3 and M6 two-plugin shared DSO
 cases do **not** establish that production CNet has fully switched to
 Crypto TLS/TLCP. That is tracked separately in Issue #81.
 
+The opaque Crypto TLS v1.0 interface has no authenticated
+`peer_close_notify` observation. The test-only
+`cnet_tls_crypto_qualification.c` shutdown adapter uses the current
+three-output CNet contract but always reports the reciprocal peer-authenticated
+notification as **false** until a real Crypto API supplies verified evidence.
+A local alert, `CRYPTO_TLS_CLOSED`, and raw transport EOF are not substitutes
+for this. A green M5/M6 test-only configuration must **not** be promoted to
+production reciprocal TLS shutdown/close correctness without the independent
+#81 close/cancel/peer-alert gates.
+
 For real source-tree acceptance inside the **existing** native project,
 after setting the required vcpkg/LLVM environment used by the CI presets:
 
