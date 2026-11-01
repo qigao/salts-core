@@ -31,3 +31,14 @@
   product CI must use `setup-vcpkg-cache` in read mode so vcpkg can compile a
   cache miss from the pinned source graph without publishing from the product
   repository.
+
+## 2026-11-01 CNet numeric-host endpoint
+
+- A c-ares numeric-host result cannot be trusted to preserve the service port
+  byte order on every platform. `cnet_resolver_submit()` retains the caller's
+  host-order port and the callback writes `htons(requested_port)` into the
+  validated IPv4/IPv6 sockaddr before transport admission. Do not add retry,
+  provider fallback, or timeout relaxation for this failure.
+- Local configure/build/test requires the tracked root
+  `CMakeUserPresets.json`; do not qualify an older checkout that lacks the
+  versioned root presets.
