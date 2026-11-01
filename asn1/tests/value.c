@@ -1,5 +1,5 @@
 #include <salts/asn1_value.h>
-#include "test.h"
+#include <tinytest.h>
 
 #include <limits.h>
 #include <stdint.h>

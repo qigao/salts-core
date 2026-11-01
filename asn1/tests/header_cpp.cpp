@@ -1,6 +1,6 @@
 #include <salts/asn1.h>
 #include <salts/asn1_value.h>
-#include "test.h"
+#include <tinytest.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>

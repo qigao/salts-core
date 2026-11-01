@@ -1,7 +1,7 @@
 #include <salts/asn1.h>
 #include <salts/asn1_value.h>
 #include <crypto/asn1_crypto.h>
-#include "test.h"
+#include <tinytest.hpp>
 #include <cstdint>
 #include <cstddef>
 #include <type_traits>
