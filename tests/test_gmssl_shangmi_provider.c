@@ -1,7 +1,7 @@
 /*
  * Issue #1123: pinned GmSSL ShangMi provider-only contract.
  *
- * This binary deliberately links GmSSL::GmSSL, not the CNet transport or Core libraries. It is
+ * This binary links the local Salts::Crypto native implementation directly. It is
  * evidence about the pinned *private provider*; it does not claim that CNet
  * exposes SM2/SM3/SM4, or that a real RFC 8998/TLCP handshake has passed.
  */

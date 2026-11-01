@@ -18,31 +18,58 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(CTest)
 include(cmake/Sanitizers.cmake)
+# Crypto's C++17 header tests are siblings of the other Core source tests.
+# Enable the language at the package root so all test subdirectories see it.
+if(BUILD_TESTING)
+  enable_language(CXX)
+endif()
 find_package(Threads REQUIRED)
 
 # Package root assembles canonical modules; modules own sources and installs.
+# Original logging uses existing FS and Concurrency implementations;
+# compile those single owners first, without a second logger provider.
 add_subdirectory(platform)
-add_subdirectory(core)
 add_subdirectory(concurrency)
+add_subdirectory(fs)
+add_subdirectory(core)
 add_subdirectory(coroutine)
 add_subdirectory(native-io)
+# Original formal concurrency/ownership models, source-owned and retained.
+add_subdirectory(verification)
 
-if(SALTSCORE_BUILD_URI)
-  add_subdirectory(uri)
+# ASN1 is an always-assembled, first-party, provider-neutral codec.
+# Never import a second ASN1 implementation or an external source repository.
+if(TARGET Salts::ASN1)
+  message(FATAL_ERROR "Duplicate ASN1 owner: never import and build twice")
 endif()
-if(SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST AND NOT BUILD_TESTING)
-  message(FATAL_ERROR "Original static Crypto Owner qualification requires BUILD_TESTING")
+add_subdirectory(asn1)
+
+# ASN1, Crypto, URI and CNet are fixed local modules of the Core SDK.
+# Retired inputs are errors so an old OFF or foreign prefix cannot silently
+# select a different dependency graph.
+if(DEFINED SALTSCORE_BUILD_CNET AND NOT SALTSCORE_BUILD_CNET)
+  message(FATAL_ERROR "SALTSCORE_BUILD_CNET=OFF was removed; Core builds local Crypto and CNet unconditionally")
 endif()
-if(SALTSCORE_BUILD_CNET AND NOT TARGET Salts::URI)
-  message(FATAL_ERROR "Salts::CNet requires SALTSCORE_BUILD_URI=ON (real re2c at build time)")
+if(DEFINED CRYPTO_GMSSL_ROOT OR DEFINED SALTSCORE_CNET_STATIC_CRYPTO_ORIGINAL_OWNER_TEST)
+  message(FATAL_ERROR "External or test-only Crypto owner inputs were removed")
 endif()
-# The private CNet provider source helpers belong to vendor/, not cnet/.
-# Do not build vendored crypto or erasure archives in minimal/WS-only profiles.
-if(SALTSCORE_BUILD_CNET)
-  add_subdirectory(vendor)
+if(TARGET Salts::Crypto)
+  message(FATAL_ERROR "Duplicate Crypto owner: use exactly one static archive")
 endif()
-if(SALTSCORE_BUILD_WEBSOCKET_PARSER OR SALTSCORE_BUILD_CNET)
-  add_subdirectory(cnet)
+add_subdirectory(crypto)
+# Keep explicit URI=ON callers compatible; disabling a mandatory dependency
+# must fail rather than omit source or silently change parsing behavior.
+if(DEFINED SALTSCORE_BUILD_URI AND NOT SALTSCORE_BUILD_URI)
+  message(FATAL_ERROR "Core CNet requires its local URI parser")
+endif()
+add_subdirectory(uri)
+add_subdirectory(vendor)
+add_subdirectory(cnet)
+
+option(SALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION
+  "Run additional test-only Crypto facade and original Owner qualification" OFF)
+if(SALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION AND NOT BUILD_TESTING)
+  message(FATAL_ERROR "Crypto facade qualification requires BUILD_TESTING")
 endif()
 
 if(SALTSCORE_BUILD_CSERDE)
@@ -50,6 +77,21 @@ if(SALTSCORE_BUILD_CSERDE)
 endif()
 if(SALTSCORE_BUILD_TINYTEST)
   add_subdirectory(tinytest)
+endif()
+if(SALTSCORE_BUILD_SIMD)
+  add_subdirectory(simd)
+endif()
+if(SALTSCORE_BUILD_USB)
+  add_subdirectory(usb)
+endif()
+if(SALTSCORE_BUILD_PLAYBACK)
+  add_subdirectory(playback)
+endif()
+if(SALTSCORE_BUILD_SERIAL)
+  add_subdirectory(salts_serial)
+endif()
+if(SALTSCORE_BUILD_CAPTURE)
+  add_subdirectory(capture)
 endif()
 if(SALTSCORE_BUILD_IDNA AND NOT SALTSCORE_BUILD_UNICODE)
   message(FATAL_ERROR "Salts::IDNA requires explicit SALTSCORE_BUILD_UNICODE=ON")
@@ -60,8 +102,10 @@ endif()
 if(SALTSCORE_BUILD_IDNA)
   add_subdirectory(idna)
 endif()
-if(SALTSCORE_BUILD_FS)
-  add_subdirectory(fs)
+# Salts::FS is an unconditional Core logger dependency, not a fallback.
+# A caller cannot silently disable the real file sink while preserving TLog.
+if(DEFINED SALTSCORE_BUILD_FS AND NOT SALTSCORE_BUILD_FS)
+  message(FATAL_ERROR "Restored Core/TLog requires canonical Salts::FS")
 endif()
 if(SALTSCORE_BUILD_PROCESS)
   add_subdirectory(process)
@@ -97,6 +141,9 @@ install(EXPORT SaltsCoreTargets FILE SaltsCoreTargets.cmake
 
 if(BUILD_TESTING)
   add_subdirectory(tests)
+  if(TARGET Salts::TinyTest)
+    add_subdirectory(concurrency/tests)
+  endif()
   if(SALTSCORE_BUILD_UNICODE OR SALTSCORE_BUILD_IDNA OR
      SALTSCORE_BUILD_CSERDE OR SALTSCORE_BUILD_TINYTEST)
     if(NOT SALTSCORE_BUILD_TINYTEST)

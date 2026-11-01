@@ -8,6 +8,9 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(_WIN32) && defined(CNET_INTERNAL_TESTING)
+  #include <stdio.h>
+#endif
 
 #if defined(_WIN32)
   #include <winsock2.h>
@@ -53,6 +56,9 @@ typedef struct cnet_owner_session {
   bool tls_send_accepted;
   bool tls_close_after_send;
   bool tls_shutdown_after_flush;
+  /* Explicit locally initiated close waits for the authenticated peer alert.
+   * The TLS_READ lease/READ deadline still have a single NativeIO owner. */
+  bool tls_shutdown_wait_peer;
   /** Fatal TLS handshake alert must drain through the existing bounded
    * NativeIO write owner before the failed terminal event is published. */
   bool tls_fatal_alert_draining;
@@ -138,6 +144,53 @@ struct cnet_owner_impl {
   bool resolver_closed;
 };
 
+#if defined(_WIN32) && defined(CNET_INTERNAL_TESTING)
+/*
+ * Issue #64: test-only first-failure trace. This source is independently
+ * compiled into the original test owner with CNET_INTERNAL_TESTING.
+ * The real Salts::CNet DLL neither compiles nor exports this diagnostic.
+ * No retry, socket mutation, provider selection or ABI change.
+ */
+static void cnet_owner_issue64_trace_connect(
+    const char *phase, const cnet_owner_session *session,
+    const void *address, size_t address_length,
+    int status, int native_status, native_io_request request,
+    native_io_endpoint endpoint) {
+  struct sockaddr_in ipv4 = {0};
+  unsigned family = 0u;
+  unsigned port = 0u;
+  unsigned long ip = 0ul;
+  if (session == NULL || session->peer.scheme != CNET_URI_TCP ||
+      strcmp(session->peer.host, "127.0.0.1") != 0)
+    return;
+  if (address != NULL && address_length >= sizeof(ipv4)) {
+    memcpy(&ipv4, address, sizeof(ipv4));
+    family = (unsigned)ipv4.sin_family;
+    if (ipv4.sin_family == AF_INET) {
+      port = (unsigned)ntohs(ipv4.sin_port);
+      ip = (unsigned long)ntohl(ipv4.sin_addr.s_addr);
+    }
+  } else if (address != NULL && address_length >= sizeof(ADDRESS_FAMILY)) {
+    ADDRESS_FAMILY raw_family = 0;
+    memcpy(&raw_family, address, sizeof(raw_family));
+    family = (unsigned)raw_family;
+  }
+  fprintf(stderr,
+          "CNET_ISSUE64 phase=%s session=%u:%u query=%u:%u"
+          " request=%u:%u endpoint=%u:%u"
+          " family=%u addr_v4=%08lx port=%u wanted_port=%u"
+          " address_length=%zu status=%d native_status=%d\n",
+          phase, (unsigned)session->handle.slot,
+          (unsigned)session->handle.generation,
+          (unsigned)session->resolve_query.slot,
+          (unsigned)session->resolve_query.generation,
+          (unsigned)request.slot, (unsigned)request.generation,
+          (unsigned)endpoint.slot, (unsigned)endpoint.generation,
+          family, ip, port, (unsigned)session->peer.port,
+          address_length, status, native_status);
+}
+#endif
+
 static uint64_t cnet_owner_system_now(void *context) {
   (void)context;
   return cmeta_monotonic_ms();
@@ -168,6 +221,37 @@ static cnet_session_stage cnet_owner_request_stage(const cnet_owner_session *ses
                                            : CNET_SESSION_STAGE_HANDSHAKE;
   return CNET_SESSION_STAGE_CONNECT;
 }
+
+/*
+ * An outstanding NativeIO TLS_READ/WRITE may have been submitted while
+ * handshaking but complete after TLS has authenticated the connection.
+ * The completion/terminal stage reflects the state at completion, never
+ * the stage captured on submission. Preserve a real pre-auth failure as
+ * HANDSHAKE; do not relabel other request kinds or previous fatal status.
+ */
+static cnet_session_stage cnet_owner_completion_stage(
+    const cnet_owner_session *session, cnet_owner_request_role role,
+    cnet_session_stage admission_stage) {
+  if (session != NULL &&
+      cnet_tls_state_handshake_complete(&session->tls)) {
+    if (role == CNET_OWNER_REQUEST_TLS_READ) return CNET_SESSION_STAGE_READ;
+    if (role == CNET_OWNER_REQUEST_TLS_WRITE) return CNET_SESSION_STAGE_WRITE;
+  }
+  return admission_stage;
+}
+
+#if defined(CNET_INTERNAL_TESTING)
+cnet_session_stage cnet_owner_test_tls_completion_stage(
+    bool handshake_complete, bool write_request,
+    cnet_session_stage admission_stage) {
+  cnet_owner_session session = {0};
+  session.tls.handshake_complete = handshake_complete;
+  return cnet_owner_completion_stage(
+      &session, write_request ? CNET_OWNER_REQUEST_TLS_WRITE
+                              : CNET_OWNER_REQUEST_TLS_READ,
+      admission_stage);
+}
+#endif
 
 static uint32_t cnet_owner_request_timeout(const cnet_owner_session *session,
                                            cnet_owner_request_role role) {
@@ -514,6 +598,35 @@ static int cnet_owner_cancel_session_work(cnet_owner_impl *impl,
   return SALTS_OK;
 }
 
+/*
+ * TLS ciphertext and decrypted plaintext are owned by the private TLS
+ * engine, not the buffer leased to an outstanding NativeIO TLS_READ.
+ * An application receive admitted after CONNECTED must drive that buffered
+ * data even if an earlier handshake-era receive remains in flight.
+ *
+ * Plain TCP/IPC/VSOCK cannot issue a second receive on an active read lane.
+ * The TLS pump separately preserves the same rule when it arms NativeIO.
+ */
+static bool cnet_owner_can_progress_receive(
+    const cnet_owner_session *session) {
+  return session != NULL && session->receive_demand != 0u &&
+         !session->close_requested &&
+         (session->peer.scheme == CNET_URI_TLS || !session->read_active);
+}
+
+#if defined(CNET_INTERNAL_TESTING)
+bool cnet_owner_test_can_progress_receive(bool tls, bool read_active,
+                                          bool close_requested,
+                                          size_t receive_demand) {
+  cnet_owner_session session = {0};
+  session.peer.scheme = tls ? CNET_URI_TLS : CNET_URI_TCP;
+  session.read_active = read_active;
+  session.close_requested = close_requested;
+  session.receive_demand = receive_demand;
+  return cnet_owner_can_progress_receive(&session);
+}
+#endif
+
 static int cnet_owner_process_session_work(cnet_owner_impl *impl) {
   while (impl->session_work_count != 0u) {
     const cnet_session_handle handle = impl->session_work[impl->session_work_head];
@@ -546,7 +659,7 @@ static int cnet_owner_process_session_work(cnet_owner_impl *impl) {
       if (status != SALTS_OK) return status;
       continue;
     }
-    if (session->receive_demand == 0u || session->read_active) continue;
+    if (!cnet_owner_can_progress_receive(session)) continue;
     status = cnet_owner_arm_receive(impl, session);
     if (status != SALTS_OK) return status;
   }
@@ -560,6 +673,21 @@ static int cnet_owner_cancel_native_request(cnet_owner_impl *impl,
       !native_io_request_valid(request->native_request))
     return SALTS_EPROTO;
   status = native_io_backend_cancel(&impl->backend, request->native_request);
+  if (status == SALTS_OK || status == SALTS_EALREADY) {
+    /*
+     * NativeIO still owns this request until its matching terminal is
+     * observed, even when cancel reports EALREADY. But once cancellation
+     * was accepted (or the completion already won), the request's former
+     * READ/WRITE deadline must no longer race the deliberate close into
+     * a spurious FAILED terminal. Do not retire the lease or its buffer.
+     *
+     * The Owner remains the sole deadline-queue writer. A deadline already
+     * taken by process_deadlines was cleared before cancellation, so
+     * cancel_deadline is idempotent for that path.
+     */
+    const int deadline_status = cnet_owner_cancel_deadline(impl, &request->deadline);
+    if (deadline_status != SALTS_OK) return deadline_status;
+  }
 #if defined(CNET_INTERNAL_TESTING)
   if (impl->test_force_cancel_ealready_once &&
       (status == SALTS_OK || status == SALTS_EALREADY)) {
@@ -845,8 +973,7 @@ static int cnet_owner_arm_receive(cnet_owner_impl *impl, cnet_owner_session *ses
   native_io_operation_kind operation_kind;
   int status;
 
-  if (session->receive_demand == 0u || session->read_active || session->close_requested)
-    return SALTS_OK;
+  if (!cnet_owner_can_progress_receive(session)) return SALTS_OK;
   status = cnet_owner_ensure_receive_buffer(impl, session);
   if (status != SALTS_OK) return status;
   if (session->peer.scheme == CNET_URI_TLS) return cnet_owner_tls_pump(impl, session);
@@ -1074,6 +1201,14 @@ static int cnet_owner_start_request(cnet_owner_impl *impl, cnet_owner_session *s
     session->write_active = true;
   index = (size_t)(request - impl->request_records);
   status = cnet_owner_submit_request(impl, request, true);
+#if defined(_WIN32) && defined(CNET_INTERNAL_TESTING)
+  if (role == CNET_OWNER_REQUEST_CONNECT)
+    cnet_owner_issue64_trace_connect(
+        "connect_submit", session, request->operation.address,
+        request->operation.address_length, status,
+        status < SALTS_OK ? -status : 0, request->native_request,
+        request->operation.endpoint);
+#endif
   if (status != SALTS_OK) {
     result = cnet_owner_fail_started_request(request, status);
     goto finish;
@@ -1138,7 +1273,9 @@ static int cnet_owner_tls_start_write(cnet_owner_impl *impl, cnet_owner_session 
 static int cnet_owner_tls_start_read(cnet_owner_impl *impl, cnet_owner_session *session) {
   native_io_operation operation;
   size_t capacity;
-  if (session->read_active || session->close_requested) return SALTS_OK;
+  if (session->read_active ||
+      (session->close_requested && !session->tls_shutdown_wait_peer))
+    return SALTS_OK;
   capacity = cnet_tls_cipher_input_capacity(&session->tls);
   if (capacity == 0u) return SALTS_OK;
   if (capacity > cnet_tls_state_io_buffer_bytes(&session->tls)) capacity = cnet_tls_state_io_buffer_bytes(&session->tls);
@@ -1157,6 +1294,19 @@ static int cnet_owner_tls_begin_peer_close(cnet_owner_impl *impl,
   session->close_requested = true;
   session->receive_demand = 0u;
   session->tls_shutdown_after_flush = true;
+  /*
+   * An authenticated close_notify can already be in the private TLS ring
+   * while a newer NativeIO TLS_READ remains outstanding. The peer may keep
+   * TCP open until our close_notify arrives; therefore the old read lease
+   * cannot be left to wait for EOF or its READ deadline. Cancel ONLY that
+   * receive lease, preserve its generation until NativeIO completion, and
+   * keep the bounded ciphertext close-notify write independently owned.
+   */
+  {
+    const int cancel_status =
+        cnet_owner_cancel_receive_requests(impl, session->handle);
+    if (cancel_status != SALTS_OK) return cancel_status;
+  }
   if (status == SALTS_OK) {
     status = cnet_owner_queue_state_event(impl, session->handle, CNET_EVENT_STATE_CLOSING,
                                           SALTS_OK, CNET_SESSION_STAGE_NONE);
@@ -1164,6 +1314,28 @@ static int cnet_owner_tls_begin_peer_close(cnet_owner_impl *impl,
   }
   return cnet_owner_tls_pump(impl, session);
 }
+
+static bool cnet_owner_tls_control_probe_allowed(
+    const cnet_owner_session *session) {
+  return session != NULL &&
+         cnet_tls_state_handshake_complete(&session->tls) &&
+         !session->close_requested && session->receive_demand == 0u;
+}
+
+#if defined(CNET_INTERNAL_TESTING)
+/* Uses the same production admission predicate, never a duplicate TLS
+ * implementation; an active NativeIO read is intentionally allowed. */
+bool cnet_owner_test_tls_control_probe_allowed(
+    bool authenticated, bool read_active,
+    bool closing, size_t receive_demand) {
+  cnet_owner_session session = {0};
+  session.tls.handshake_complete = authenticated;
+  session.read_active = read_active;
+  session.close_requested = closing;
+  session.receive_demand = receive_demand;
+  return cnet_owner_tls_control_probe_allowed(&session);
+}
+#endif
 
 static int cnet_owner_tls_background_progress(cnet_owner_impl *impl,
                                               cnet_owner_session *session) {
@@ -1179,8 +1351,19 @@ static int cnet_owner_tls_background_progress(cnet_owner_impl *impl,
    * already owned by exactly one final terminal completion. */
   if (session->pending_status != SALTS_OK)
     return cnet_owner_finalize_session(impl, session);
-  if (session->close_requested || session->read_active || session->receive_demand != 0u)
-    return SALTS_OK;
+  /*
+   * NativeIO's in-flight TLS_READ buffer is separate from the bounded TLS
+   * ciphertext/control ring. A pending kernel receive is no reason to leave
+   * an already authenticated close_notify unprocessed. Only a new kernel
+   * receive must respect read_active (see the guard below/start_read).
+   */
+  /* The background control probe is post-authentication only. Without this
+   * boundary a pending handshake read can cause the Owner to call
+   * cnet_tls_probe_peer_close before Finished, returning ENOTCONN and
+   * terminating a perfectly valid TLS handshake. read_active does NOT
+   * inhibit a probe after authentication: provider ciphertext is separately
+   * owned from the leased NativeIO receive buffer. */
+  if (!cnet_owner_tls_control_probe_allowed(session)) return SALTS_OK;
 
   status = cnet_tls_probe_peer_close(&session->tls, &peer_closed, &plaintext_pending);
   if (status != SALTS_OK) {
@@ -1296,6 +1479,132 @@ static int cnet_owner_tls_drain_fatal_alert(cnet_owner_impl *impl,
   return cnet_owner_finalize_session(impl, session);
 }
 
+/*
+ * A TLS_READ/TLS_WRITE admitted during handshake deliberately has no
+ * request-level timeout: the handshake owns the bounded session deadline.
+ * Handshake completion cancels that session deadline, while a NativeIO
+ * receive/send request admitted earlier may still own its original lease.
+ * Re-arm its normal READ/WRITE deadline without cancelling, resubmitting,
+ * or changing the existing generation-owned NativeIO operation.
+ *
+ * Exactly one deadline may belong to each active request. Repeated calls
+ * cannot reset timeouts; stale/foreign requests and disabled timeouts are
+ * left untouched. Runs on the same owner thread as all other deadlines.
+ */
+static int cnet_owner_tls_promote_pending_deadlines(
+    cnet_owner_impl *impl, cnet_owner_session *session) {
+  size_t index;
+  if (impl == NULL || session == NULL ||
+      !cnet_tls_state_handshake_complete(&session->tls))
+    return SALTS_EINVAL;
+
+  for (index = 0u; index < impl->request_capacity; ++index) {
+    cnet_owner_request *request = &impl->request_records[index];
+    uint32_t timeout_ms;
+    int status;
+    if (!request->active ||
+        request->session.slot != session->handle.slot ||
+        request->session.generation != session->handle.generation ||
+        request->deadline != 0u ||
+        (request->role != CNET_OWNER_REQUEST_TLS_READ &&
+         request->role != CNET_OWNER_REQUEST_TLS_WRITE))
+      continue;
+    timeout_ms = cnet_owner_request_timeout(session, request->role);
+    if (timeout_ms == 0u) continue;
+    status = cmeta_deadline_queue_schedule(
+        &impl->deadlines, cnet_owner_deadline_after(impl, timeout_ms),
+        index + 1u, &request->deadline);
+    if (status != SALTS_OK) return status;
+  }
+  return SALTS_OK;
+}
+
+#if defined(CNET_INTERNAL_TESTING)
+static uint64_t cnet_owner_test_fixed_deadline_now(void *context) {
+  return *(const uint64_t *)context;
+}
+
+/* Run the *production* deadline-promotion path with a bounded fake request
+ * ledger and the real single-owner deadline queue. No mock NativeIO backend,
+ * second TLS implementation or extra CTest executable is involved. */
+int cnet_owner_test_tls_pending_deadline_rollover(void) {
+  cnet_owner_impl owner = {0};
+  cnet_owner_session session = {0};
+  cnet_owner_request requests[3] = {{0}};
+  cmeta_deadline_event event = {0};
+  uint64_t now = 1000u;
+  cmeta_deadline_id read_id, write_id;
+  int status;
+  int result = SALTS_EPROTO;
+
+  owner.request_records = requests;
+  owner.request_capacity = sizeof(requests) / sizeof(requests[0]);
+  owner.now_ms = cnet_owner_test_fixed_deadline_now;
+  owner.clock_context = (void *)&now;
+  session.handle = (cnet_session_handle){1u, 7u};
+  session.peer.read_timeout_ms = 37u;
+  session.peer.write_timeout_ms = 53u;
+  requests[0].active = true;
+  requests[0].session = session.handle;
+  requests[0].role = CNET_OWNER_REQUEST_TLS_READ;
+  requests[1].active = true;
+  requests[1].session = session.handle;
+  requests[1].role = CNET_OWNER_REQUEST_TLS_WRITE;
+  requests[2].active = true;
+  requests[2].session = (cnet_session_handle){1u, 8u};
+  requests[2].role = CNET_OWNER_REQUEST_TLS_READ;
+
+  status = cmeta_deadline_queue_init(&owner.deadlines, 3u);
+  if (status != SALTS_OK) return status;
+  if (cnet_owner_tls_promote_pending_deadlines(&owner, &session) != SALTS_EINVAL ||
+      cmeta_deadline_queue_size(&owner.deadlines) != 0u)
+    goto cleanup;
+
+  session.tls.handshake_complete = true;
+  if (cnet_owner_tls_promote_pending_deadlines(&owner, &session) != SALTS_OK)
+    goto cleanup;
+  read_id = requests[0].deadline;
+  write_id = requests[1].deadline;
+  if (read_id == 0u || write_id == 0u || read_id == write_id ||
+      requests[2].deadline != 0u ||
+      cmeta_deadline_queue_size(&owner.deadlines) != 2u)
+    goto cleanup;
+  /* Reentry cannot restart either timer. */
+  if (cnet_owner_tls_promote_pending_deadlines(&owner, &session) != SALTS_OK ||
+      requests[0].deadline != read_id ||
+      requests[1].deadline != write_id ||
+      cmeta_deadline_queue_size(&owner.deadlines) != 2u)
+    goto cleanup;
+
+  if (cmeta_deadline_queue_take_ready(&owner.deadlines, now + 36u,
+                                      &event) != SALTS_ETIMEDOUT ||
+      cmeta_deadline_queue_take_ready(&owner.deadlines, now + 37u,
+                                      &event) != SALTS_OK ||
+      event.id != read_id || event.token != 1u ||
+      event.deadline_ms != now + 37u ||
+      cmeta_deadline_queue_take_ready(&owner.deadlines, now + 53u,
+                                      &event) != SALTS_OK ||
+      event.id != write_id || event.token != 2u ||
+      event.deadline_ms != now + 53u ||
+      cmeta_deadline_queue_size(&owner.deadlines) != 0u)
+    goto cleanup;
+
+  /* Disabled READ timeout and a stale foreign generation must not acquire
+   * a request deadline or change any previously scheduled timeout. */
+  requests[0].deadline = 0u;
+  session.peer.read_timeout_ms = 0u;
+  if (cnet_owner_tls_promote_pending_deadlines(&owner, &session) != SALTS_OK ||
+      requests[0].deadline != 0u || requests[2].deadline != 0u ||
+      cmeta_deadline_queue_size(&owner.deadlines) != 0u)
+    goto cleanup;
+  result = SALTS_OK;
+
+cleanup:
+  status = cmeta_deadline_queue_destroy(&owner.deadlines);
+  return result == SALTS_OK ? status : result;
+}
+#endif
+
 static int cnet_owner_tls_pump_impl(cnet_owner_impl *impl, cnet_owner_session *session) {
   bool started = false;
   int status;
@@ -1340,6 +1649,10 @@ static int cnet_owner_tls_pump_impl(cnet_owner_impl *impl, cnet_owner_session *s
     status = cnet_owner_cancel_deadline(impl, &session->connect_deadline);
     if (status != SALTS_OK) return status;
     session->session_deadline_stage = CNET_SESSION_STAGE_NONE;
+    /* Handshake-local I/O requests may outlive the session deadline.
+     * Their normal post-auth deadlines must exist before CONNECTED. */
+    status = cnet_owner_tls_promote_pending_deadlines(impl, session);
+    if (status != SALTS_OK) return status;
     status = cnet_owner_queue_connected_event(impl, session);
     if (status != SALTS_OK) return status;
   }
@@ -1368,6 +1681,14 @@ static int cnet_owner_tls_pump_impl(cnet_owner_impl *impl, cnet_owner_session *s
       if (status != SALTS_OK && status != SALTS_EALREADY) return status;
       session->close_requested = true;
       session->receive_demand = 0u;
+      /*
+       * A final retained send is an explicitly local-initiated TLS close,
+       * just like cnet_close(). Publishing SEND only proves our application
+       * ciphertext drained. It does not authenticate the peer's reciprocal
+       * close_notify. Reuse the one bounded shutdown-only NativeIO TLS_READ
+       * after the old application receive lease is cancelled.
+       */
+      session->tls_shutdown_wait_peer = true;
       status = cnet_owner_cancel_receive_requests(impl, session->handle);
       if (status != SALTS_OK) return status;
       status = cnet_owner_queue_state_event(impl, session->handle, CNET_EVENT_STATE_CLOSING,
@@ -1452,13 +1773,32 @@ static int cnet_owner_tls_pump_impl(cnet_owner_impl *impl, cnet_owner_session *s
 
   if (session->close_requested && !cnet_write_handle_valid(session->tls_send_write.handle)) {
     bool notify_generated = false;
-    status = cnet_tls_shutdown(&session->tls, &notify_generated);
+    bool peer_notify_received = false;
+    status = cnet_tls_shutdown(
+        &session->tls, &notify_generated, &peer_notify_received);
     if (status != SALTS_OK) return status;
     if (notify_generated) session->tls_shutdown_after_flush = true;
     status = cnet_owner_tls_start_write(impl, session, &started);
     if (status != SALTS_OK) return status;
-    if (session->tls_shutdown_after_flush && !session->write_active && !started)
+    if (session->tls_shutdown_after_flush && !session->write_active && !started) {
+      if (session->tls_shutdown_wait_peer && !peer_notify_received) {
+        /* Sending local close_notify is not permission to destroy TCP while
+         * the peer still owes its own authenticated alert. Windows may emit
+         * RST if closesocket races unread close_notify, causing Python
+         * SSLSocket.unwrap() to fail even though our event said CLOSED.
+         * Reuse one bounded NativeIO TLS_READ (same owner, normal timeout). */
+        return cnet_owner_tls_start_read(impl, session);
+      }
+      if (session->tls_shutdown_wait_peer) {
+        /* A complete reciprocal shutdown may still have an earlier native
+         * read lease that lost the race. Cancel it, but never release its
+         * buffer until the matching NativeIO completion is routed. */
+        session->tls_shutdown_wait_peer = false;
+        status = cnet_owner_cancel_receive_requests(impl, session->handle);
+        if (status != SALTS_OK) return status;
+      }
       return cnet_owner_finalize_session(impl, session);
+    }
   }
   return SALTS_OK;
 }
@@ -1495,6 +1835,12 @@ static int cnet_owner_start_transport(cnet_owner_impl *impl, cnet_owner_session 
   bool connected_immediately = false;
   int status;
 
+#if defined(_WIN32) && defined(CNET_INTERNAL_TESTING)
+  cnet_owner_issue64_trace_connect(
+      "transport_prepare", session, session->peer.address,
+      session->peer.address_length, SALTS_OK, 0,
+      (native_io_request){0}, (native_io_endpoint){0});
+#endif
   switch (session->peer.scheme) {
   case CNET_URI_IPC:
     status = cnet_transport_ipc_prepare_connect(
@@ -1785,6 +2131,12 @@ static int cnet_owner_process_resolver(cnet_owner_impl *impl, size_t *out_proces
         session->resolve_query.slot != result.query.slot ||
         session->resolve_query.generation != result.query.generation)
       return SALTS_EPROTO;
+#if defined(_WIN32) && defined(CNET_INTERNAL_TESTING)
+    cnet_owner_issue64_trace_connect(
+        "resolver_result", session, result.address,
+        result.address_length, result.status, result.native_status,
+        (native_io_request){0}, (native_io_endpoint){0});
+#endif
     session->resolve_active = false;
     memset(&session->resolve_query, 0, sizeof(session->resolve_query));
     if (session->close_requested) {
@@ -1919,6 +2271,12 @@ static int cnet_owner_progress_close(cnet_owner_impl *impl, cnet_owner_session *
     return SALTS_OK;
   }
   if (session->peer.scheme == CNET_URI_TLS && cnet_tls_state_handshake_complete(&session->tls)) {
+    /* Explicit local close must not convert a peer's later close_notify
+     * into a TCP RST. Cancel the old application read lease first, then
+     * accept a new shutdown-only TLS_READ after our local alert has flushed.
+     * A peer-initiated close has already authenticated that alert and need
+     * not wait here. */
+    session->tls_shutdown_wait_peer = true;
     status = cnet_owner_cancel_receive_requests(impl, session->handle);
     if (status != SALTS_OK)
       return cnet_owner_fail_session(impl, session, status, CNET_SESSION_STAGE_SHUTDOWN);
@@ -1977,9 +2335,17 @@ static int cnet_owner_complete(cnet_owner_impl *impl, cnet_owner_request *reques
   if (session == NULL || session->active_requests == 0u || impl->active_requests == 0u)
     return SALTS_EPROTO;
   role = request->role;
-  request_stage = request->stage;
+  request_stage = cnet_owner_completion_stage(session, role, request->stage);
   requested_size = request->requested_size;
   close_after_send = request->close_after_send;
+#if defined(_WIN32) && defined(CNET_INTERNAL_TESTING)
+  if (role == CNET_OWNER_REQUEST_CONNECT)
+    cnet_owner_issue64_trace_connect(
+        "connect_complete", session, request->operation.address,
+        request->operation.address_length, completion->status,
+        (int)completion->native_status, request->native_request,
+        request->operation.endpoint);
+#endif
   status = cnet_owner_release_request(request);
   if (status != SALTS_OK) return status;
   if (session->pending_status != SALTS_OK) {
@@ -2400,7 +2766,9 @@ static int cnet_owner_process_deadlines(cnet_owner_impl *impl) {
       request->deadline = 0u;
       session = cnet_owner_find_session(impl, request->session);
       if (session == NULL) return SALTS_EPROTO;
-      cnet_owner_record_failure(session, SALTS_ETIMEDOUT, request->stage);
+      cnet_owner_record_failure(
+          session, SALTS_ETIMEDOUT,
+          cnet_owner_completion_stage(session, request->role, request->stage));
       status = cnet_owner_cancel_session_requests(impl, session->handle);
       if (status != SALTS_OK) return status;
     }
@@ -2822,6 +3190,32 @@ int cnet_owner_send_buffer_close_direct(cnet_owner *owner,
   return cnet_owner_finish_write_admission(impl, session, handle);
 }
 
+/*
+ * Direct receive admission is distinct from the later Owner work-loop gate.
+ * TLS may have decrypted/application bytes retained in its private provider
+ * ring even while a pre-existing NativeIO ciphertext TLS_READ is active.
+ * The first plaintext receive demand must therefore queue an Owner pump
+ * regardless of that socket read lease. For plain streams, keep the
+ * single-read rule: an in-flight native receive already supplies progress.
+ */
+static bool cnet_owner_receive_direct_should_rearm(
+    const cnet_owner_session *session) {
+  return session != NULL && session->receive_demand == 0u &&
+         (session->peer.scheme == CNET_URI_TLS || !session->read_active);
+}
+
+#if defined(CNET_INTERNAL_TESTING)
+bool cnet_owner_test_receive_direct_should_rearm(bool tls,
+                                                 bool native_read_active,
+                                                 size_t previous_demand) {
+  cnet_owner_session session = {0};
+  session.peer.scheme = tls ? CNET_URI_TLS : CNET_URI_TCP;
+  session.read_active = native_read_active;
+  session.receive_demand = previous_demand;
+  return cnet_owner_receive_direct_should_rearm(&session);
+}
+#endif
+
 int cnet_owner_receive_direct(cnet_owner *owner, cnet_session_handle session_handle,
                               size_t demand) {
   cnet_owner_impl *impl = cnet_owner_get(owner);
@@ -2843,7 +3237,7 @@ int cnet_owner_receive_direct(cnet_owner *owner, cnet_session_handle session_han
     return SALTS_ESHUTDOWN;
   if (demand > SIZE_MAX - session->receive_demand) return SALTS_ERANGE;
 
-  queue_rearm = !session->read_active && session->receive_demand == 0u;
+  queue_rearm = cnet_owner_receive_direct_should_rearm(session);
   session->receive_demand += demand;
   if (!queue_rearm) return SALTS_OK;
 
@@ -3112,6 +3506,28 @@ bool cnet_owner_test_backend_stats(const cnet_owner *owner,
   if (impl == NULL || out_native == NULL || out_coroutine == NULL) return false;
   return native_io_backend_get_stats(&impl->backend, out_native) &&
          native_io_backend_get_coroutine_stats(&impl->backend, out_coroutine);
+}
+
+int cnet_owner_test_copy_peer_sockaddr(const cnet_owner *owner,
+                                       cnet_session_handle session_handle,
+                                       void *out_address, size_t address_capacity,
+                                       size_t *out_address_length) {
+  cnet_owner_impl *impl =
+      owner != NULL ? (cnet_owner_impl *)owner->impl : NULL;
+  cnet_owner_session *session;
+  size_t length;
+  if (out_address_length == NULL) return SALTS_EINVAL;
+  *out_address_length = 0u;
+  if (impl == NULL) return SALTS_EINVAL;
+  session = cnet_owner_find_session(impl, session_handle);
+  if (session == NULL) return SALTS_ENOENT;
+  length = session->peer.address_length;
+  if (length == 0u || length > sizeof(session->peer.address))
+    return SALTS_EBUSY;
+  *out_address_length = length;
+  if (out_address == NULL || address_capacity < length) return SALTS_ENOBUFS;
+  memcpy(out_address, session->peer.address, length);
+  return SALTS_OK;
 }
 
 bool cnet_owner_test_get_request_snapshot(const cnet_owner *owner, size_t request_index,

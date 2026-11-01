@@ -39,8 +39,8 @@ typedef struct cnet_resolver_slot {
   uint32_t generation;
   uintptr_t user_data;
   int socket_type;
-  /* The caller owns the transport port. The resolver only selects an
-   * address and must not be allowed to change the requested endpoint. */
+  /* Connection caller's authoritative host-order port. c-ares is only
+   * responsible for resolving the address, never selecting the port. */
   uint16_t requested_port;
   bool cancelled;
   bool dropped;
@@ -113,11 +113,20 @@ static int cnet_resolver_map_status(int status) {
   }
 }
 
+/*
+ * CNet owns its requested transport port. c-ares may deliver a sockaddr
+ * whose sin_port/sin6_port is in host byte order (Windows numeric-host first
+ * RED: requested 0xC605 / 50693; received 0x05C6 / 1478). Never carry
+ * a provider's service-port bytes through to ConnectEx or TLS transport.
+ *
+ * Patch only the well-defined family-specific field with htons(port).
+ * Byte copy avoids misaligned sockaddr aliases in the result byte array.
+ * This is one canonical endpoint, not a retry or alternate DNS provider.
+ */
 static int cnet_resolver_apply_requested_port(void *address, size_t address_length,
                                                int family, uint16_t port) {
   size_t offset;
   const uint16_t network_port = htons(port);
-
   if (address == NULL || port == 0u) return SALTS_EINVAL;
   if (family == AF_INET) {
     if (address_length < sizeof(struct sockaddr_in)) return SALTS_EINVAL;
@@ -128,12 +137,12 @@ static int cnet_resolver_apply_requested_port(void *address, size_t address_leng
   } else {
     return SALTS_EAI_FAMILY;
   }
-
   memcpy((unsigned char *)address + offset, &network_port, sizeof(network_port));
   return SALTS_OK;
 }
 
 #if defined(CNET_INTERNAL_TESTING)
+/* Test binary only, absent from the installed CNet ABI. */
 int cnet_resolver_test_apply_requested_port(void *address, size_t address_length,
                                             int family, uint16_t port) {
   return cnet_resolver_apply_requested_port(address, address_length, family, port);
@@ -210,6 +219,8 @@ static void cnet_resolver_callback(void *argument, int status, int timeouts,
       int port_status;
       slot->result.address_length = (size_t)node->ai_addrlen;
       memcpy(slot->result.address, node->ai_addr, slot->result.address_length);
+      /* The query's original port is authoritative, irrespective of the
+       * platform/provider's intermittent service-byte-order behavior. */
       port_status = cnet_resolver_apply_requested_port(
           slot->result.address, slot->result.address_length,
           node->ai_family, slot->requested_port);

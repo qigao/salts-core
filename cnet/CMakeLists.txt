@@ -1,28 +1,40 @@
 # Original CNet transport target is owned here; SCTP is independent.
-# Provider-free C11 WebSocket frame parser. This is a private CNet build
-# component, not a public SDK target. Minimal Core never links it.
-if(SALTSCORE_BUILD_WEBSOCKET_PARSER OR SALTSCORE_BUILD_CNET)
-  add_library(saltscore_wsparser OBJECT
-    src/wsparser/websocket_frame_parser.c)
-  target_compile_features(saltscore_wsparser PUBLIC c_std_11)
-  set_target_properties(saltscore_wsparser PROPERTIES
-    C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
-    POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
-  target_include_directories(saltscore_wsparser PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/wsparser")
-endif()
+# Provider-free C11 WebSocket frame parser. This is a private component of
+# the always-assembled CNet owner, not a separately exported SDK target.
+add_library(saltscore_wsparser OBJECT
+  src/wsparser/websocket_frame_parser.c)
+target_compile_features(saltscore_wsparser PUBLIC c_std_11)
+set_target_properties(saltscore_wsparser PROPERTIES
+  C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
+  POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
+target_include_directories(saltscore_wsparser PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/wsparser")
 
-if(SALTSCORE_BUILD_CNET)
-# Core CNet: explicit provider-backed network transport. No fallback and
-# no target/source import from the historical Salts or SaltsUtils packages.
+# Production CNet retains its complete original TLS implementation. Only
+# the native implementation owner changes: one local static Salts::Crypto.
+# The narrower qualification facade is never substituted for production TLS.
 if(NOT TARGET Salts::URI OR NOT TARGET saltscore_wsparser)
   message(FATAL_ERROR "CNet requires native Core URI and WebSocket parser targets")
 endif()
 find_package(c-ares CONFIG REQUIRED)
 find_package(kcp CONFIG REQUIRED)
-find_package(GmSSL CONFIG REQUIRED)
-if(NOT TARGET c-ares::cares OR NOT TARGET kcp::kcp OR NOT TARGET GmSSL::GmSSL)
-  message(FATAL_ERROR "CNet requires c-ares::cares, kcp::kcp and GmSSL::GmSSL")
+if(NOT TARGET c-ares::cares OR NOT TARGET kcp::kcp)
+  message(FATAL_ERROR "CNet requires c-ares::cares and kcp::kcp")
+endif()
+if(NOT TARGET salts_crypto OR NOT TARGET Salts::Crypto)
+  message(FATAL_ERROR "CNet requires the local Salts::Crypto owner")
+endif()
+get_target_property(_cnet_crypto_alias Salts::Crypto ALIASED_TARGET)
+get_target_property(_cnet_crypto_type salts_crypto TYPE)
+get_target_property(_cnet_crypto_imported salts_crypto IMPORTED)
+get_target_property(_cnet_native_include salts_crypto SALTS_CRYPTO_NATIVE_INCLUDE_DIR)
+if(NOT _cnet_crypto_alias STREQUAL "salts_crypto" OR
+   NOT _cnet_crypto_type STREQUAL "STATIC_LIBRARY" OR _cnet_crypto_imported)
+  message(FATAL_ERROR "CNet requires exactly one local non-imported STATIC Crypto owner")
+endif()
+if(NOT _cnet_native_include OR
+   NOT EXISTS "${_cnet_native_include}/gmssl/tls.h")
+  message(FATAL_ERROR "Local Crypto native TLS headers are missing")
 endif()
 
 # Never fold a second copy of any stateful runtime into CNet. Core/Platform/
@@ -95,6 +107,10 @@ endforeach()
 add_library(saltscore_cnet SHARED ${_saltscore_cnet_local_sources})
 add_library(Salts::CNet ALIAS saltscore_cnet)
 target_compile_features(saltscore_cnet PUBLIC c_std_11)
+# These native header switches previously came from the imported provider.
+# They remain private, but must match the local Crypto object ABI exactly.
+target_compile_definitions(saltscore_cnet PRIVATE
+  ENABLE_TLS ENABLE_SECP256R1 ENABLE_SECP384R1 ENABLE_SHA1 ENABLE_SHA2 ENABLE_AES)
 set_target_properties(saltscore_cnet PROPERTIES
   VERSION "${PROJECT_VERSION}" SOVERSION "${SALTSCORE_NATIVE_SOVERSION}"
   EXPORT_NAME CNet C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
@@ -112,7 +128,8 @@ target_include_directories(saltscore_cnet
     "${CMAKE_CURRENT_SOURCE_DIR}/src/wsparser"
     "${PROJECT_SOURCE_DIR}/native-io/src"
     "${PROJECT_SOURCE_DIR}/vendor/cnet/monocypher"
-    "${PROJECT_SOURCE_DIR}/vendor/cnet/reed")
+    "${PROJECT_SOURCE_DIR}/vendor/cnet/reed"
+    "${_cnet_native_include}")
 target_link_libraries(saltscore_cnet
   PUBLIC
     Salts::Core
@@ -125,7 +142,7 @@ target_link_libraries(saltscore_cnet
     saltscore_cnet_reed
     c-ares::cares
     kcp::kcp
-    GmSSL::GmSSL
+    Salts::Crypto
     $<$<PLATFORM_ID:Windows>:crypt32>)
 if(APPLE)
   find_library(SALTSCORE_CNET_COREFOUNDATION CoreFoundation REQUIRED)
@@ -142,4 +159,65 @@ install(TARGETS saltscore_cnet EXPORT SaltsCoreTargets
 install(DIRECTORY include/cnet
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.h")
+
+if(BUILD_TESTING)
+  # Link maps retain the physical archive member even when native symbols
+  # are hidden or stripped from a PE export table. They are test evidence,
+  # never an additional library or an installed SDK artifact.
+  function(saltscore_cnet_owner_link_map target)
+    file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/cnet-owner-maps")
+    set(_map "${PROJECT_BINARY_DIR}/cnet-owner-maps/${target}-$<CONFIG>.map")
+    if(MSVC)
+      target_link_options(${target} PRIVATE "/MAP:${_map}")
+    elseif(APPLE)
+      target_link_options(${target} PRIVATE "LINKER:-map,${_map}")
+    else()
+      target_link_options(${target} PRIVATE "LINKER:-Map,${_map}")
+    endif()
+  endfunction()
+  saltscore_cnet_owner_link_map(saltscore_cnet)
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  set(_cnet_owner_symbol_reader "${CMAKE_NM}")
+  set(_cnet_owner_object_reader "${CMAKE_READELF}")
+  if(MSVC)
+    get_filename_component(_cnet_owner_linker_dir "${CMAKE_LINKER}" DIRECTORY)
+    if(NOT IS_ABSOLUTE "${CMAKE_LINKER}" OR NOT EXISTS "${CMAKE_LINKER}")
+      message(FATAL_ERROR "CNet native owner audit requires the configured MSVC linker path")
+    endif()
+    if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+      find_program(_cnet_owner_symbol_reader NAMES llvm-nm.exe llvm-nm
+        PATHS "${_cnet_owner_linker_dir}"
+        NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH REQUIRED)
+      find_program(_cnet_owner_object_reader NAMES llvm-readobj.exe llvm-readobj
+        PATHS "${_cnet_owner_linker_dir}"
+        NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH REQUIRED)
+    else()
+      # A Visual Studio generator can build without a developer-shell PATH.
+      # Use dumpbin from the configured linker toolset, never a PATH fallback.
+      find_program(_cnet_owner_symbol_reader NAMES dumpbin.exe dumpbin
+        PATHS "${_cnet_owner_linker_dir}"
+        NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH REQUIRED)
+      set(_cnet_owner_object_reader "${_cnet_owner_symbol_reader}")
+    endif()
+  endif()
+  add_test(NAME saltscore.cnet_native_crypto_owner
+    COMMAND "${Python3_EXECUTABLE}" -B
+      "${PROJECT_SOURCE_DIR}/tests/cnet-owner/audit_native_crypto_owner.py"
+      --archive "$<TARGET_FILE:salts_crypto>"
+      --runtime "$<TARGET_FILE:saltscore_cnet>"
+      --map "${PROJECT_BINARY_DIR}/cnet-owner-maps/saltscore_cnet-$<CONFIG>.map"
+      --system "${CMAKE_SYSTEM_NAME}"
+      --nm "${_cnet_owner_symbol_reader}" --readelf "${CMAKE_READELF}"
+      --readobj "${_cnet_owner_object_reader}"
+      --peer "$<TARGET_FILE:saltscore_runtime_plugin_a>"
+      --peer "$<TARGET_FILE:saltscore_runtime_plugin_b>"
+      --peer "$<TARGET_FILE:saltscore_two_plugins_test>"
+      --peer-map "${PROJECT_BINARY_DIR}/cnet-owner-maps/saltscore_runtime_plugin_a-$<CONFIG>.map"
+      --peer-map "${PROJECT_BINARY_DIR}/cnet-owner-maps/saltscore_runtime_plugin_b-$<CONFIG>.map"
+      --peer-map "${PROJECT_BINARY_DIR}/cnet-owner-maps/saltscore_two_plugins_test-$<CONFIG>.map")
+  set_tests_properties(saltscore.cnet_native_crypto_owner PROPERTIES TIMEOUT 60)
+  add_test(NAME saltscore.cnet_native_crypto_owner_negative
+    COMMAND "${Python3_EXECUTABLE}" -B -m unittest discover
+      -s "${PROJECT_SOURCE_DIR}/tests/cnet-owner"
+      -p test_native_crypto_owner_audit.py -v)
 endif()

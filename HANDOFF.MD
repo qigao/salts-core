@@ -42,3 +42,55 @@
 - Local configure/build/test requires the tracked root
   `CMakeUserPresets.json`; do not qualify an older checkout that lacks the
   versioned root presets.
+
+## 2026-11-01 Windows LLVM-MinGW qualification
+
+- Windows CI uses the pinned `vcpkg-cache/setup-llvm-mingw` action for both
+  x64 and ARM64. Its `QIGAO_COMPILER_TOOLCHAIN_FILE`, overlay triplets and
+  `qigao-*-windows-llvm-mingw` identities are the contract; a local clang-cl
+  build is useful for diagnosis but is not equivalent CI evidence.
+- LLVM-MinGW 20261020 with CMake 4 exposed a zstd overlay bug: a C-only
+  project must guard C++ flag probes with `CMAKE_CXX_COMPILER_LOADED`, not the
+  mere presence of `CMAKE_CXX_COMPILER`. This is fixed in vcpkg-cache PR 262,
+  merge commit `529019437597fa71f7d8dcc561d26fc7b0603ae6`.
+- MinGW's libusb provider may be a static `.a` archive. Stage a runtime DLL
+  only when the discovered provider is an MSVC `.lib` or MinGW `.dll.a`
+  import library; do not require or invent a DLL for a static archive.
+- MinGW DLL import libraries require explicit public API export annotations.
+  Do not rely on `WINDOWS_EXPORT_ALL_SYMBOLS` to recover legacy Platform
+  functions.
+- LLVM-MinGW LLD map files use `Address Size Align Out In Symbol`, unlike
+  MSVC maps. Native-Crypto ownership auditing must combine the LLD input
+  member with `llvm-nm` archive-member definitions and use `llvm-readobj` for
+  PE imports; unsupported linker diagnostics are not a substitute.
+- Use `SALTS_THREAD_LOCAL` for shared Core TLS declarations. Selecting
+  `__declspec(thread)` from `_WIN32` alone makes LLVM-MinGW ignore the
+  attribute and silently turns logger caches into process globals.
+- After adding source checkout rules to `.gitattributes`, rematerialize the
+  locked source tree with `core.autocrlf=false`; otherwise the index contract
+  and the working bytes can disagree.
+- The TLS close fix from PR 129 depends on the reciprocal shutdown machinery;
+  do not cherry-pick the close-only change onto an older owner state machine.
+- The exact LLVM-MinGW TLS 1.3 `send_buffer_and_close` scenario from PR 129
+  passes when invoked directly. Do not globally enable
+  `SALTSCORE_CNET_PRODUCTION_REQUIRED_MTLS_TEST` yet: its pre-existing TLS 1.2
+  invalid-EKU negative case leaves the Python peer waiting for alert/EOF until
+  its socket timeout, while the native server waits for the peer to close
+  before its IOCP receive becomes terminal. CancelIoEx, graceful shutdown and
+  abortive-close experiments did not establish a safe fix and were reverted;
+  keep this as a separate fail-closed handshake-termination issue.
+- `setup-re2c-tools` uses `actions/setup-python`, which narrows
+  `PKG_CONFIG_PATH` to the hosted Python prefix. On Linux this hides native
+  multiarch `.pc` files from vcpkg's `pkgconf`, even after the SDK packages
+  are installed. Append `/usr/lib/$(dpkg-architecture
+  -qDEB_HOST_MULTIARCH)/pkgconfig`, `/usr/lib/pkgconfig` and
+  `/usr/share/pkgconfig` after the action, and probe the required PipeWire
+  module before configure.
+- The full Android preset must use `ANDROID_PLATFORM=android-26`. Capture's
+  retained MediaProjection ABI calls `ANativeWindow_toSurface`, and its
+  compiler guard intentionally rejects API 24; do not weaken that guard or
+  add a lower-API fallback.
+- The Intel macOS runner can provide `autoreconf` without Automake's
+  `aclocal`. Install Homebrew `automake` and `libtool` before vcpkg configures
+  libusb; otherwise a cleared binary cache fails before the Salts graph is
+  generated.
