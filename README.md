@@ -86,6 +86,25 @@ cmake --build build-cnet --parallel
 ctest --test-dir build-cnet --output-on-failure
 ```
 
+### Mandatory native unit test framework
+
+When `BUILD_TESTING=ON`, the source graph requires
+`SALTSCORE_BUILD_TINYTEST=ON` and fails configuration if it is disabled.
+C11 native test suites include `tinytest.h`; C++17 suites include
+`tinytest.hpp`; their executables link `Salts::TinyTest` and register
+real `spec/it/check` cases. CTest remains the sole runner for timeouts,
+sanitizers and platform test selection. No private `spec/it` facade or
+separate unit-test harness is permitted; empty suites and missing case
+filters must return failure.
+
+The existing Linux native and TSan LLVM jobs enable
+`CNET_SCTP_TEST_OWNER_THREADS=ON` to run the actual POSIX Owner,
+Provider DSO and opaque Session DSO lifecycle tests. Worker-thread
+fatal invariants remain process-fail-closed; TinyTest checks joined
+owner/post-unload state from the main test thread. These are not
+synthetic consumer or installer projects. With `BUILD_TESTING=OFF`,
+production-only consumers may explicitly disable the TinyTest library.
+
 The checked-in vcpkg manifest keeps CNet under an explicit feature; the
 pinned registry snapshot uses GmSSL 3.2.0#13. The unified LLVM workflow
 qualifies the complete native graph through the checked-in presets.
