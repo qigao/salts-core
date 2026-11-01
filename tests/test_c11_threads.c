@@ -1,7 +1,7 @@
 /* Source-compatible, EXPLICITLY OPT-IN C11 threads.h client.
-#include <tinytest.h>
  * Compiles with TinyCC/MSVC/Clang and makes no native _Atomic assumptions.
  */
+#include <tinytest.h>
 #include <threads.h>
 #include <stdint.h>
 #include <stdio.h>

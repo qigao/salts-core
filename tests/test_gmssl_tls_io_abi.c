@@ -1,7 +1,7 @@
 /* Provider-only ABI / external I/O contract.
-#include <tinytest.h>
  * This is not a network handshake, peer auth or CNet runtime conformance.
  * The test links the actual pinned GmSSL provider from the CNet feature. */
+#include <tinytest.h>
 #include <gmssl/tls.h>
 #include <stdint.h>
 #include <stddef.h>

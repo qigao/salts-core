@@ -1,8 +1,8 @@
 /* True OS poll callback versus close/shutdown races. A blocked callback
-#include <tinytest.h>
  * holds borrowed stack state; the original shared Readiness implementation
  * MUST drain its callback before either owner may be reclaimed.
  */
+#include <tinytest.h>
 #include <salts/error_codes.h>
 #include <salts/readiness.h>
 #include "../platform/src/readiness_internal.h"
