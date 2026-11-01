@@ -7,7 +7,7 @@ endif()
 if(UNIX)
   add_executable(saltscore_readiness_race_test test_readiness_race.c)
   target_compile_features(saltscore_readiness_race_test PRIVATE c_std_11)
-  target_link_libraries(saltscore_readiness_race_test PRIVATE Salts::Platform)
+  target_link_libraries(saltscore_readiness_race_test PRIVATE Salts::Platform Salts::TinyTest)
   set_target_properties(saltscore_readiness_race_test PROPERTIES
     C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
   add_test(NAME saltscore.readiness_close_race COMMAND saltscore_readiness_race_test)
@@ -77,7 +77,7 @@ add_test(NAME saltscore.bytes COMMAND saltscore_bytes_test)
 # The native contract includes INT_MIN decoding and concurrent registration.
 add_executable(saltscore_error_contract error_native_contract.c)
 target_compile_features(saltscore_error_contract PRIVATE c_std_11)
-target_link_libraries(saltscore_error_contract PRIVATE Salts::Core)
+target_link_libraries(saltscore_error_contract PRIVATE Salts::Core Salts::TinyTest)
 set_target_properties(saltscore_error_contract PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.error_native_contract COMMAND saltscore_error_contract)
@@ -96,7 +96,7 @@ set_target_properties(saltscore_fastpath_test PROPERTIES
 add_test(NAME saltscore.fastpath COMMAND saltscore_fastpath_test)
 
 add_executable(saltscore_platform_test test_platform.c)
-target_link_libraries(saltscore_platform_test PRIVATE Salts::Platform)
+target_link_libraries(saltscore_platform_test PRIVATE Salts::Platform Salts::TinyTest)
 set_target_properties(saltscore_platform_test PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.platform COMMAND saltscore_platform_test)
@@ -112,13 +112,13 @@ set_tests_properties(saltscore.platform saltscore.original_platform_cpp17
   PROPERTIES TIMEOUT 30)
 
 add_executable(saltscore_concurrency_test test_concurrency.c)
-target_link_libraries(saltscore_concurrency_test PRIVATE Salts::Concurrency)
+target_link_libraries(saltscore_concurrency_test PRIVATE Salts::Concurrency Salts::TinyTest)
 set_target_properties(saltscore_concurrency_test PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.concurrency COMMAND saltscore_concurrency_test)
 
 add_executable(saltscore_coroutine_test test_coroutine.c)
-target_link_libraries(saltscore_coroutine_test PRIVATE Salts::Coroutine)
+target_link_libraries(saltscore_coroutine_test PRIVATE Salts::Coroutine Salts::TinyTest)
 set_target_properties(saltscore_coroutine_test PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 add_test(NAME saltscore.coroutine COMMAND saltscore_coroutine_test)
@@ -245,7 +245,7 @@ if(TARGET Salts::CNet)
   target_compile_features(saltscore_gmssl_tls_io_abi_test PRIVATE c_std_11)
   set_target_properties(saltscore_gmssl_tls_io_abi_test PROPERTIES
     C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
-  target_link_libraries(saltscore_gmssl_tls_io_abi_test PRIVATE Salts::Crypto)
+  target_link_libraries(saltscore_gmssl_tls_io_abi_test PRIVATE Salts::Crypto Salts::TinyTest)
   target_include_directories(saltscore_gmssl_tls_io_abi_test PRIVATE
     "$<TARGET_PROPERTY:salts_crypto,SALTS_CRYPTO_NATIVE_INCLUDE_DIR>")
   target_compile_definitions(saltscore_gmssl_tls_io_abi_test PRIVATE
@@ -346,21 +346,21 @@ add_executable(saltscore_portable_concurrency_test test_portable_concurrency.c)
 target_compile_features(saltscore_portable_concurrency_test PRIVATE c_std_11)
 set_target_properties(saltscore_portable_concurrency_test PROPERTIES
   C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
-target_link_libraries(saltscore_portable_concurrency_test PRIVATE Salts::Platform)
+target_link_libraries(saltscore_portable_concurrency_test PRIVATE Salts::Platform Salts::TinyTest)
 add_test(NAME saltscore.portable_concurrency COMMAND saltscore_portable_concurrency_test)
 set_tests_properties(saltscore.portable_concurrency PROPERTIES TIMEOUT 45)
 
 # M1: relative monotonic timed wait / sleep, same C ABI across compilers.
 add_executable(saltscore_portable_timing_test test_portable_timing.c)
 target_compile_features(saltscore_portable_timing_test PRIVATE c_std_11)
-target_link_libraries(saltscore_portable_timing_test PRIVATE Salts::Platform)
+target_link_libraries(saltscore_portable_timing_test PRIVATE Salts::Platform Salts::TinyTest)
 add_test(NAME saltscore.portable_timing COMMAND saltscore_portable_timing_test)
 set_tests_properties(saltscore.portable_timing PROPERTIES TIMEOUT 30)
 
 # M1: provider-owned thread-specific keys and destructor lifetime barriers.
 add_executable(saltscore_portable_tss_test test_portable_tss.c)
 target_compile_features(saltscore_portable_tss_test PRIVATE c_std_11)
-target_link_libraries(saltscore_portable_tss_test PRIVATE Salts::Platform)
+target_link_libraries(saltscore_portable_tss_test PRIVATE Salts::Platform Salts::TinyTest)
 add_test(NAME saltscore.portable_tss COMMAND saltscore_portable_tss_test)
 set_tests_properties(saltscore.portable_tss PROPERTIES TIMEOUT 30)
 
@@ -368,7 +368,7 @@ set_tests_properties(saltscore.portable_tss PROPERTIES TIMEOUT 30)
 # Monotonic relative timed mutex (MSVC / Clang / TinyCC C ABI).
 add_executable(saltscore_portable_timed_mutex_test test_portable_timed_mutex.c)
 target_compile_features(saltscore_portable_timed_mutex_test PRIVATE c_std_11)
-target_link_libraries(saltscore_portable_timed_mutex_test PRIVATE Salts::Platform)
+target_link_libraries(saltscore_portable_timed_mutex_test PRIVATE Salts::Platform Salts::TinyTest)
 add_test(NAME saltscore.portable_timed_mutex COMMAND saltscore_portable_timed_mutex_test)
 set_tests_properties(saltscore.portable_timed_mutex PROPERTIES TIMEOUT 35)
 
@@ -381,7 +381,7 @@ target_compile_definitions(saltscore_c11_threads_test PRIVATE
   SALTS_C11_THREADS_EXPERIMENTAL=1)
 set_target_properties(saltscore_c11_threads_test PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
-target_link_libraries(saltscore_c11_threads_test PRIVATE Salts::Platform)
+target_link_libraries(saltscore_c11_threads_test PRIVATE Salts::Platform Salts::TinyTest)
 add_test(NAME saltscore.c11_threads_facade COMMAND saltscore_c11_threads_test)
 set_tests_properties(saltscore.c11_threads_facade PROPERTIES TIMEOUT 35)
 
@@ -389,7 +389,7 @@ set_tests_properties(saltscore.c11_threads_facade PROPERTIES TIMEOUT 35)
 # Regression for Windows cmeta_hrtime once-atomic QPC frequency publication.
 add_executable(saltscore_clock_atomic_owner_test test_clock_atomic_owner.c)
 target_compile_features(saltscore_clock_atomic_owner_test PRIVATE c_std_11)
-target_link_libraries(saltscore_clock_atomic_owner_test PRIVATE Salts::Platform)
+target_link_libraries(saltscore_clock_atomic_owner_test PRIVATE Salts::Platform Salts::TinyTest)
 add_test(NAME saltscore.clock_atomic_owner COMMAND saltscore_clock_atomic_owner_test)
 set_tests_properties(saltscore.clock_atomic_owner PROPERTIES TIMEOUT 30)
 
