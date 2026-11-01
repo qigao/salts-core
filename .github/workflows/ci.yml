@@ -231,8 +231,17 @@ jobs:
         run: |
           # Qualify real Owner handoff and genuine dlopen/dlclose in the
           # existing Linux native + TSan lanes, never an extra probe job.
-          if [[ "${{ matrix.rid }}" == "linux-x64" ||
-                "${{ matrix.rid }}" == "linux-x64-tsan" ]]; then
+          if [[ "${{ matrix.rid }}" == "linux-x64" ]]; then
+            # Reuse the existing full-native lane for the actual opt-in
+            # original TLS Owner and shared-DSO plugin lifecycle.
+            # The pinned certificate files are already source-owned; no
+            # additional installer, consumer, probe workflow or test project.
+            cmake --preset "${{ matrix.preset }}" \
+              -DCNET_SCTP_TEST_OWNER_THREADS=ON \
+              -DSALTSCORE_TEST_CNET_CRYPTO_QUALIFICATION=ON \
+              -DSALTSCORE_CNET_M6_SHARED_DSO_TEST=ON \
+              "-DSALTSCORE_CRYPTO_TEST_FIXTURES=${GITHUB_WORKSPACE}/crypto/tests/fixtures"
+          elif [[ "${{ matrix.rid }}" == "linux-x64-tsan" ]]; then
             cmake --preset "${{ matrix.preset }}" -DCNET_SCTP_TEST_OWNER_THREADS=ON
           else
             cmake --preset "${{ matrix.preset }}"
