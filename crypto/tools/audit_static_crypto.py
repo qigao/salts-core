@@ -29,6 +29,11 @@ CRYPTO_SYMBOLS = (
     "crypto_x509_der_inspect", "crypto_x509_der_chain_next",
     "crypto_x509_der_common_name", "crypto_x509_der_get_public_key_kind",
 )
+GMSSL_SYMBOLS = (
+    "sm3_init", "sm3_update", "sm3_finish",
+    "sha256_init", "sha256_update", "sha256_finish",
+)
+FACADE_CRYPTO_SYMBOLS = tuple(x for x in CRYPTO_SYMBOLS if x not in GMSSL_SYMBOLS)
 ASN1_SYMBOLS = (
     "salts_asn1_reader_init", "salts_asn1_reader_next",
     "salts_asn1_validate", "salts_asn1_encode_tlv",
@@ -75,18 +80,26 @@ def _check_archive_inventory(prefix: Path, allowed: list[Path]) -> None:
         if path.is_file() and re.search(r"\.so\.[0-9]+", path.name):
             raise ValueError("versioned shared library forbidden: " + str(path))
 
-def inspect(prefix: Path, asn1_prefix: Path | None = None) -> dict:
+def inspect(prefix: Path, asn1_prefix: Path | None = None,
+            gmssl_prefix: Path | None = None) -> dict:
+    if gmssl_prefix is None:
+        raise ValueError("the installed vcpkg GmSSL prefix is mandatory")
     prefix = prefix.resolve(strict=True)
     asn1_prefix = (asn1_prefix or prefix).resolve(strict=True)
+    gmssl_prefix = gmssl_prefix.resolve(strict=True)
     ext = ".lib" if sys.platform == "win32" else ".a"
     crypto_name = "salts_crypto.lib" if ext == ".lib" else "libsalts_crypto.a"
     asn1_name = "salts_asn1.lib" if ext == ".lib" else "libsalts_asn1.a"
     crypto_archive = prefix / "lib" / crypto_name
     asn1_archive = asn1_prefix / "lib" / asn1_name
-    if not crypto_archive.is_file() or not asn1_archive.is_file():
-        raise ValueError("missing one of the required independent native static archives")
+    gmssl_archive = gmssl_prefix / "lib" / (
+        "gmssl.lib" if ext == ".lib" else "libgmssl.a")
+    if not crypto_archive.is_file() or not asn1_archive.is_file() or (
+        not gmssl_archive.is_file()):
+        raise ValueError("missing native Crypto, ASN1, or pinned GmSSL static archive")
     _check_archive_inventory(prefix, [
-        crypto_archive, *([asn1_archive] if asn1_prefix == prefix else [])
+        crypto_archive, *([asn1_archive] if asn1_prefix == prefix else []),
+        *([gmssl_archive] if gmssl_prefix == prefix else []),
     ])
     if asn1_prefix != prefix:
         _check_archive_inventory(asn1_prefix, [asn1_archive])
@@ -105,8 +118,9 @@ def inspect(prefix: Path, asn1_prefix: Path | None = None) -> dict:
         raise ValueError("legacy salts/crypto.h found")
     if (prefix / "include" / "crypto" / "provider.h").exists():
         raise ValueError("provider compatibility header found")
-    if not (prefix / "include" / "gmssl" / "sm3.h").is_file():
-        raise ValueError("canonical installed GmSSL sm3.h missing")
+    if not (gmssl_prefix / "include" / "gmssl" / "sm3.h").is_file() or (
+        not (gmssl_prefix / "share" / "gmssl" / "GmSSLConfig.cmake").is_file()):
+        raise ValueError("installed vcpkg GmSSL headers/config missing")
 
     targets = prefix / "lib" / "cmake" / "Crypto" / "CryptoTargets.cmake"
     asn1targets = asn1_prefix / "lib" / "cmake" / "ASN1" / "ASN1Targets.cmake"
@@ -121,13 +135,15 @@ def inspect(prefix: Path, asn1_prefix: Path | None = None) -> dict:
         raise ValueError("ASN1 must export one imported static target")
     if "Salts::ASN1" not in crypto_value or "find_dependency(ASN1" not in cfg.read_text(encoding="utf-8"):
         raise ValueError("Crypto must explicitly depend on exactly one ASN1 package")
-    if "GmSSL::" in crypto_value or "PrivateGmSSL" in crypto_value:
-        raise ValueError("Crypto must not export a GmSSL/Provider target")
+    if ("GmSSL::GmSSL" not in crypto_value or
+        "find_dependency(GmSSL CONFIG REQUIRED)" not in cfg.read_text(encoding="utf-8")):
+        raise ValueError("Crypto SDK must import the pinned GmSSL static dependency")
     report = {
         "ok": True,
         "crypto_archive": str(crypto_archive),
         "asn1_archive": str(asn1_archive),
-        "native_modules": ["Salts::ASN1", "Salts::Crypto"],
+        "native_modules": ["Salts::ASN1", "Salts::Crypto", "GmSSL::GmSSL"],
+        "gmssl_archive": str(gmssl_archive),
         "symbols_checked": False,
     }
     if sys.platform == "win32":
@@ -136,16 +152,21 @@ def inspect(prefix: Path, asn1_prefix: Path | None = None) -> dict:
         return report
 
     crypto_symbols = _defined_symbols(crypto_archive)
+    gmssl_symbols = _defined_symbols(gmssl_archive)
     asn1_symbols = _defined_symbols(asn1_archive)
     for label, table, required in (
-        ("Crypto", crypto_symbols, CRYPTO_SYMBOLS),
+        ("Crypto", crypto_symbols, FACADE_CRYPTO_SYMBOLS),
+        ("GmSSL", gmssl_symbols, GMSSL_SYMBOLS),
         ("ASN1", asn1_symbols, ASN1_SYMBOLS),
     ):
         invalid = {s: table[s] for s in required if table[s] != 1}
         if invalid:
             raise ValueError(label + " missing or nonunique exported symbols: " + str(invalid))
-    duplicates = [s for s in ASN1_SYMBOLS if crypto_symbols[s]]
-    duplicates += [s for s in CRYPTO_SYMBOLS if asn1_symbols[s]]
+    duplicates = [name for name in ASN1_SYMBOLS if crypto_symbols[name] or gmssl_symbols[name]]
+    duplicates += [name for name in FACADE_CRYPTO_SYMBOLS
+                   if asn1_symbols[name] or gmssl_symbols[name]]
+    duplicates += [name for name in GMSSL_SYMBOLS
+                   if asn1_symbols[name] or crypto_symbols[name]]
     if duplicates:
         raise ValueError("cross-module duplicate native definitions: " + str(duplicates))
     forbidden = [s for s in crypto_symbols if
@@ -157,6 +178,7 @@ def inspect(prefix: Path, asn1_prefix: Path | None = None) -> dict:
     report["symbols_checked"] = True
     report["crypto_symbol_count"] = len(crypto_symbols)
     report["asn1_symbol_count"] = len(asn1_symbols)
+    report["gmssl_symbol_count"] = len(gmssl_symbols)
     return report
 
 def main() -> int:
@@ -164,10 +186,12 @@ def main() -> int:
     parser.add_argument("--prefix", type=Path, required=True)
     parser.add_argument("--asn1-prefix", type=Path,
                         help="use only if ASN1 is installed at a separate prefix")
+    parser.add_argument("--gmssl-prefix", type=Path, required=True,
+                        help="exact installed vcpkg GmSSL target triplet prefix")
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     try:
-        result = inspect(args.prefix, args.asn1_prefix)
+        result = inspect(args.prefix, args.asn1_prefix, args.gmssl_prefix)
     except (OSError, ValueError) as exc:
         result = {"ok": False, "reason": str(exc)}
     args.report.parent.mkdir(parents=True, exist_ok=True)
