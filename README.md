@@ -67,10 +67,12 @@ See [architecture](docs/ARCHITECTURE.md) for ownership and migration gates.
 
 The default graph builds the whole CNet transport source tree, including the
 original IPC FIFO, peer index and native-path changes. Production CNet links
-the sole source-built static `Salts::Crypto` archive. Its private native TLS
-and algorithm sources are provided by pinned vcpkg GmSSL 3.2.0#16; Crypto's
-Ed448 objects remain under `crypto/vendor/libecc/`. No separately installed
-GmSSL archive or external Crypto prefix is consumed.
+the first-party static `Salts::Crypto` facade and the **separately installed**
+vcpkg `GmSSL::GmSSL` static library (GmSSL 3.2.0#17). No local native GmSSL
+source mirror is compiled into `Salts::Crypto`; Ed448 remains first-party
+under `crypto/vendor/libecc/`. CNet is the single production DSO owner of the
+linked native TLS implementation; two independently loaded plugins must import
+CNet instead of copying GmSSL/Crypto static archives.
 
 Use CMake 3.21 or newer, a C11 compiler, and a C++17 compiler when testing.
 Provide the canonical pinned c-ares, KCP and SIMDe dependencies and an installed
@@ -86,9 +88,10 @@ cmake --build build-cnet --parallel
 ctest --test-dir build-cnet --output-on-failure
 ```
 
-The checked-in vcpkg manifest keeps CNet under an explicit feature; the
-pinned registry snapshot uses GmSSL 3.2.0#13. The unified LLVM workflow
-qualifies the complete native graph through the checked-in presets.
+The checked-in vcpkg manifest declares GmSSL and CNet dependencies directly.
+The pinned registry snapshot and shared action source use GmSSL 3.2.0#17.
+The unified LLVM workflow builds and tests the native graph; the migration
+remains Draft until the **same exact HEAD** passes its complete checks.
 
 An unavailable dependency fails configuration, without substituting another
 TLS provider or an implicit transport fallback. Local source ownership does

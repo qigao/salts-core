@@ -5,7 +5,7 @@ project(SaltsCrypto VERSION 0.1.0 LANGUAGES C)
 # GmSSL native C/H sources belong to the external package, not a local mirror.
 # Original Ed448 libecc sources remain private first-party objects.
 if(DEFINED CRYPTO_GMSSL_ROOT)
-  message(FATAL_ERROR "CRYPTO_GMSSL_ROOT was removed; Crypto builds its local implementation")
+  message(FATAL_ERROR "CRYPTO_GMSSL_ROOT was removed; Crypto imports pinned vcpkg GmSSL::GmSSL")
 endif()
 if(TARGET gmssl OR TARGET salts_crypto)
   message(FATAL_ERROR "Duplicate in-tree Crypto/GmSSL implementation")

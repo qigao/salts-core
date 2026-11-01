@@ -1,4 +1,14 @@
-# Default local Crypto and CNet build
+# Historical local Crypto and CNet build (2026-10-29)
+
+> **Historical snapshot only, NOT the current vcpkg migration architecture or
+> current CI qualification evidence.** The archived measurements below were
+> made while GmSSL native sources were locally compiled into Crypto.
+> Current PR #149 instead imports a separate **GmSSL 3.2.0#17** static archive,
+> retains first-party `Salts::Crypto`, and audits both physical archives and
+> production CNet plugin/DSO ownership. See
+> [current ownership contract](../crypto/docs/STATIC-SINGLE-OWNER.md).
+>
+> Do not reuse any success figures below to qualify the current HEAD.
 
 Date: 2026-10-29. Status: Draft source/build repair, not release admission.
 
