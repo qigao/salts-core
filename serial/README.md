@@ -41,14 +41,6 @@ Platform thread implementation. The public header contains only its own types
 and standard C declarations, and retains its original C++ linkage and export
 macro. Do not define `SALTS_SERIAL_EXPORTS` in an application.
 
-The independent installed-consumer project can be configured with
-`cmake -S salts_serial/test/installed -B build-serial-installed
--DCMAKE_PREFIX_PATH=<installed-sdk>`. It compiles both C11 and C++17 clients,
-checks all 30 signatures and actually calls every symbol. The shared libraries
-must be available to the loader: use the SDK's `bin` directory in `PATH` on
-Windows, or its `lib` directory in the appropriate Unix loader path. A package
-without `Salts::Serial` is a configuration failure.
-
 ## Ownership and byte behavior
 
 Create a handle with `salts_serial_create`, open/configure it with

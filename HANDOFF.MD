@@ -106,3 +106,19 @@
   `docs/M4-RUNTIME-ONE-OWNER.md`. Do not remove it as migration-only tooling;
   keep `tests/test_audit_runtime_owner.py` registered in the formal CTest graph
   so downstream source pins cannot lose the auditor silently.
+
+## 2026-11-01 SIMD owner migration
+
+- `Salts::SIMD` moved to SaltsUtils following qigao/salts-utils#732. SaltsCore
+  0.1.1 must not build, install or export a second SIMD target. SIMDe remains a
+  private base dependency because CNet Reed still uses its SSE2 facade.
+- The next immutable package/tag is `SaltsCore.Native 0.1.1` / `v0.1.001`.
+  Downstreams that own `Salts::SIMD` must reject the previous 0.1.0 package,
+  which still exports that target.
+
+## 2026-11-01 Serial module directory
+
+- The active native Serial owner lives at `serial/`; `salts_serial/` is only
+  the historical donor path recorded in frozen migration inventories and must
+  not return as a root source directory. Public `salts_serial_*` ABI names and
+  `<salts_serial.h>` remain unchanged.

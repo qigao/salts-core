@@ -74,8 +74,12 @@ class DependencyGateTest(unittest.TestCase):
 
     def test_owned_native_extra_targets_allowed_without_old_aliases(self):
         content = ("add_library(Salts::Unicode ALIAS saltscore_unicode)\n"
-                   "target_link_libraries(app PRIVATE Salts::IDNA Salts::CSerde Salts::TinyTest Salts::SIMD)\n")
+                   "target_link_libraries(app PRIVATE Salts::IDNA Salts::CSerde Salts::TinyTest)\n")
         self.assertEqual(self.check_text(content, ".cmake"), [])
+
+    def test_migrated_simd_target_is_denied(self):
+        self.assertEqual(len(self.check_text(
+            "target_link_libraries(app PRIVATE Salts::SIMD)\n", ".cmake")), 1)
 
     def test_canonical_crypto_is_allowed_but_split_tls_is_not(self):
         self.assertEqual(

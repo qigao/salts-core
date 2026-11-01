@@ -61,9 +61,7 @@ cmake --build INSTALLED_BUILD --parallel 2
 
 The explicit `SaltsCore_DIR` is needed for the tested NDK find-root behavior;
 supplying only `CMAKE_PREFIX_PATH` did not locate the target SDK. This uses the
-target installation without allowing arbitrary host package discovery. The
-Serial installed consumer is built with the same arguments from
-`salts_serial/test/installed`.
+target installation without allowing arbitrary host package discovery.
 
 Nested ASN1/Crypto discovery also needs an exact SDK owner. Four actual NDK
 configuration probes used the installed ASN1 archive: the original direct

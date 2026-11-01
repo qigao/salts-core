@@ -1,6 +1,6 @@
-# SaltsCore 0.1.000 release
+# SaltsCore 0.1.001 release
 
-The immutable tag `v0.1.000` maps to CMake and NuGet version `0.1.0` and the
+The immutable tag `v0.1.001` maps to CMake and NuGet version `0.1.1` and the
 package identity `SaltsCore.Native`.
 
 The existing LLVM CI is the only release producer. Its tag run configures and
@@ -16,10 +16,10 @@ Sanitizer rows qualify the same source but are not packaged. Android rows are
 cross-build evidence and do not claim device execution. Compiler obfuscation
 remains disabled through the pinned `vcpkg-cache` setup actions.
 
-Publication is authorized only by pushing `v0.1.000` at the reviewed master
+Publication is authorized only by pushing `v0.1.001` at the reviewed master
 commit. The release job refuses an existing GitHub release or normalized NuGet
 version, packages the eight install prefixes without a consumer/installer CI
-project, and uploads `SaltsCore.Native.0.1.0.nupkg` plus `SHA256SUMS`.
+project, and uploads `SaltsCore.Native.0.1.1.nupkg` plus `SHA256SUMS`.
 
 Do not move the tag, overwrite an existing package, skip failed matrix rows, or
 publish from a locally assembled SDK.

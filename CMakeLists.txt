@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 include(CMakeOptions.cmake)
-project(SaltsCore VERSION 0.1.0 LANGUAGES C)
+project(SaltsCore VERSION 0.1.1 LANGUAGES C)
 # Pre-stable ABI epoch: 0.2 must not silently satisfy an installed 0.1 DLL/DSO.
 set(SALTSCORE_NATIVE_SOVERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
 
@@ -25,12 +25,10 @@ if(BUILD_TESTING)
 endif()
 find_package(Threads REQUIRED)
 
-# TinyTest is the only native C11/C++17 runtime test framework. Build its
-# standalone target before any source module declares native tests.
-# Production-only profiles may explicitly omit it with BUILD_TESTING=OFF.
+# TinyTest is the canonical native C11/C++17 test framework.
+# Make it available before source-owned module test declarations.
 if(BUILD_TESTING AND NOT SALTSCORE_BUILD_TINYTEST)
-  message(FATAL_ERROR
-    "BUILD_TESTING=ON requires SALTSCORE_BUILD_TINYTEST=ON")
+  message(FATAL_ERROR "BUILD_TESTING=ON requires SALTSCORE_BUILD_TINYTEST=ON")
 endif()
 if(SALTSCORE_BUILD_TINYTEST)
   add_subdirectory(tinytest)
@@ -86,9 +84,6 @@ endif()
 if(SALTSCORE_BUILD_CSERDE)
   add_subdirectory(cserde)
 endif()
-if(SALTSCORE_BUILD_SIMD)
-  add_subdirectory(simd)
-endif()
 if(SALTSCORE_BUILD_USB)
   add_subdirectory(usb)
 endif()
@@ -96,7 +91,7 @@ if(SALTSCORE_BUILD_PLAYBACK)
   add_subdirectory(playback)
 endif()
 if(SALTSCORE_BUILD_SERIAL)
-  add_subdirectory(salts_serial)
+  add_subdirectory(serial)
 endif()
 if(SALTSCORE_BUILD_CAPTURE)
   add_subdirectory(capture)
