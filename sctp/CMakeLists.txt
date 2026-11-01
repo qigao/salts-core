@@ -327,7 +327,7 @@ if(BUILD_TESTING)
   # Public opaque Session behavior remains a source-tree formal test. It is
   # deliberately not configured as a second installed-consumer project.
   add_executable(cnet_sctp_public_api_test tests/public_api_test.c)
-  target_link_libraries(cnet_sctp_public_api_test PRIVATE Salts::SCTP)
+  target_link_libraries(cnet_sctp_public_api_test PRIVATE Salts::SCTP Salts::TinyTest)
   set_target_properties(cnet_sctp_public_api_test PROPERTIES
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
   if(MSVC)
@@ -355,7 +355,7 @@ if(CNET_SCTP_TEST_OWNER_THREADS)
   add_executable(cnet_sctp_owner_thread_test tests/owner_thread_test.c)
   target_include_directories(cnet_sctp_owner_thread_test PRIVATE src)
   target_link_libraries(cnet_sctp_owner_thread_test PRIVATE
-    cnet_sctp_assoc_proto Threads::Threads)
+    cnet_sctp_assoc_proto Threads::Threads Salts::TinyTest)
   set_target_properties(cnet_sctp_owner_thread_test PROPERTIES
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
   target_compile_options(cnet_sctp_owner_thread_test PRIVATE
@@ -377,7 +377,7 @@ if(CNET_SCTP_TEST_OWNER_THREADS)
   add_executable(cnet_sctp_provider_dso_test tests/provider_dso_test.c)
   target_include_directories(cnet_sctp_provider_dso_test PRIVATE src tests)
   target_link_libraries(cnet_sctp_provider_dso_test PRIVATE
-    cnet_sctp_assoc_proto Threads::Threads ${CMAKE_DL_LIBS})
+    cnet_sctp_assoc_proto Threads::Threads ${CMAKE_DL_LIBS} Salts::TinyTest)
   set_target_properties(cnet_sctp_provider_dso_test PROPERTIES
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
   target_compile_options(cnet_sctp_provider_dso_test PRIVATE
@@ -395,7 +395,7 @@ if(CNET_SCTP_TEST_OWNER_THREADS)
   target_include_directories(cnet_sctp_session_provider_dso_test
     PRIVATE tests)
   target_link_libraries(cnet_sctp_session_provider_dso_test PRIVATE
-    Salts::SCTP Threads::Threads ${CMAKE_DL_LIBS})
+    Salts::SCTP Threads::Threads ${CMAKE_DL_LIBS} Salts::TinyTest)
   set_target_properties(cnet_sctp_session_provider_dso_test PROPERTIES
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
   target_compile_options(cnet_sctp_session_provider_dso_test PRIVATE

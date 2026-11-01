@@ -4,6 +4,7 @@
 #undef NDEBUG
 #endif
 #include <assert.h>
+#include <tinytest.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -318,21 +319,22 @@ static void test_cancel_while_provider_callback_in_flight(void) {
   }
 }
 
-int main(void) {
+spec("SCTP real POSIX Owner handoff") {
+  it("transfers two real-thread owners, drains and destroys exactly once") {
   owner_fixture f = {0};
   worker_arg a = {&f, 0u}, b = {&f, 1u};
   pthread_t worker_a, worker_b;
-  assert(pthread_mutex_init(&f.mutex, NULL) == 0);
-  assert(pthread_cond_init(&f.turn_changed, NULL) == 0);
-  assert(pthread_create(&worker_a, NULL, worker, &a) == 0);
-  assert(pthread_create(&worker_b, NULL, worker, &b) == 0);
-  assert(pthread_join(worker_a, NULL) == 0);
-  assert(pthread_join(worker_b, NULL) == 0);
-  assert(f.turn == (size_t)HANDOFF_ROUNDS * OPERATIONS_PER_ROUND);
-  assert(f.assoc.magic == 0u);
-  assert(pthread_cond_destroy(&f.turn_changed) == 0);
-  assert(pthread_mutex_destroy(&f.mutex) == 0);
+  check(pthread_mutex_init(&f.mutex, NULL) == 0);
+  check(pthread_cond_init(&f.turn_changed, NULL) == 0);
+  check(pthread_create(&worker_a, NULL, worker, &a) == 0);
+  check(pthread_create(&worker_b, NULL, worker, &b) == 0);
+  check(pthread_join(worker_a, NULL) == 0);
+  check(pthread_join(worker_b, NULL) == 0);
+  check(f.turn == (size_t)HANDOFF_ROUNDS * OPERATIONS_PER_ROUND);
+  check(f.assoc.magic == 0u);
+  check(pthread_cond_destroy(&f.turn_changed) == 0);
+  check(pthread_mutex_destroy(&f.mutex) == 0);
   test_cancel_while_provider_callback_in_flight();
   puts("CNet SCTP Owner-thread handoff/stop/event/drain/destroy: PASS");
-  return 0;
+  }
 }

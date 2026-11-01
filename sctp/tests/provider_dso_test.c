@@ -5,6 +5,8 @@
 #undef NDEBUG
 #endif
 #include <assert.h>
+#define TINYTEST_NO_MAIN
+#include <tinytest.h>
 #include <dlfcn.h>
 #include <pthread.h>
 #include <stdint.h>
@@ -253,11 +255,26 @@ static void exercise_generation(const char *dso_path, uint32_t generation) {
   assert(pthread_cond_destroy(&g.changed) == 0);
   assert(pthread_mutex_destroy(&g.mutex) == 0);
 }
+static const char *sctp_test_provider_path;
+
+spec("SCTP real DSO Provider callback generation") {
+  for (uint32_t generation = 1u; generation <= TEST_DSO_GENERATIONS; ++generation) {
+    it("real DSO generation %u", (unsigned)generation) {
+      exercise_generation(sctp_test_provider_path, generation);
+    }
+  }
+}
+
+/* CTest must still supply the built provider DSO path. An invalid host
+ * invocation never becomes an empty or falsely successful TinyTest run. */
 int main(int argc, char **argv) {
-  uint32_t generation;
-  assert(argc == 2 && argv[1] != NULL);
-  for (generation = 1u; generation <= TEST_DSO_GENERATIONS; ++generation)
-    exercise_generation(argv[1], generation);
-  puts("CNet SCTP real DSO callback/Generation drain/dlclose: PASS");
-  return 0;
+  if (argc != 2 || argv[1] == NULL || argv[1][0] == '\0') {
+    fprintf(stderr, "expected one real SCTP Provider DSO path\n");
+    return 2;
+  }
+  sctp_test_provider_path = argv[1];
+  char *native_argv[] = {argv[0]};
+  return ttest_main__(1, native_argv, TTEST_INVOKE_SPEC_ADAPTER__,
+                      TT_USE_COLOR != 0, TT_USE_TAP != 0,
+                      TTEST_IS_ATTY__() != 0, TTEST_PRINT_TRACE_DEFAULT__);
 }
