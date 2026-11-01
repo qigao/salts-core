@@ -143,13 +143,9 @@ install(EXPORT SaltsCoreTargets FILE SaltsCoreTargets.cmake
   NAMESPACE Salts:: DESTINATION "${_saltscore_package_dir}")
 
 if(BUILD_TESTING)
+  # TinyTest is already required at the package root; never silently omit
+  # real native modules or framework regression coverage.
   add_subdirectory(tests)
   add_subdirectory(concurrency/tests)
-  if(SALTSCORE_BUILD_UNICODE OR SALTSCORE_BUILD_IDNA OR
-     SALTSCORE_BUILD_CSERDE OR SALTSCORE_BUILD_TINYTEST)
-    if(NOT SALTSCORE_BUILD_TINYTEST)
-      message(FATAL_ERROR "Native conformance requires SALTSCORE_BUILD_TINYTEST=ON")
-    endif()
-    add_subdirectory(tests/native-modules)
-  endif()
+  add_subdirectory(tests/native-modules)
 endif()
