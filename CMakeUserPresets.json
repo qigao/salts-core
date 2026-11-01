@@ -1,0 +1,116 @@
+{
+  "version": 6,
+  "include": [
+    "CMakePresets.json"
+  ],
+  "configurePresets": [
+    {
+      "name": "native-release-user",
+      "displayName": "Native LLVM Release",
+      "inherits": "full-native"
+    },
+    {
+      "name": "ci-native",
+      "displayName": "CI native LLVM full graph",
+      "inherits": "full-native"
+    },
+    {
+      "name": "ci-asan-ubsan",
+      "displayName": "CI Linux LLVM ASan+UBSan",
+      "inherits": "full-native-asan-ubsan"
+    },
+    {
+      "name": "ci-tsan",
+      "displayName": "CI Linux LLVM TSan",
+      "inherits": "full-native-tsan"
+    },
+    {
+      "name": "ci-android",
+      "displayName": "CI Android LLVM",
+      "inherits": "android-release"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "native-release-user",
+      "configurePreset": "native-release-user",
+      "jobs": 2
+    },
+    {
+      "name": "install-native-release-user",
+      "configurePreset": "native-release-user",
+      "targets": ["install"],
+      "jobs": 2
+    },
+    {
+      "name": "ci-native",
+      "configurePreset": "ci-native",
+      "jobs": 2
+    },
+    {
+      "name": "install-ci-native",
+      "configurePreset": "ci-native",
+      "targets": ["install"],
+      "jobs": 2
+    },
+    {
+      "name": "ci-asan-ubsan",
+      "configurePreset": "ci-asan-ubsan",
+      "jobs": 2
+    },
+    {
+      "name": "install-ci-asan-ubsan",
+      "configurePreset": "ci-asan-ubsan",
+      "targets": ["install"],
+      "jobs": 2
+    },
+    {
+      "name": "ci-tsan",
+      "configurePreset": "ci-tsan",
+      "jobs": 2
+    },
+    {
+      "name": "install-ci-tsan",
+      "configurePreset": "ci-tsan",
+      "targets": ["install"],
+      "jobs": 2
+    },
+    {
+      "name": "ci-android",
+      "configurePreset": "ci-android",
+      "jobs": 2
+    },
+    {
+      "name": "install-ci-android",
+      "configurePreset": "ci-android",
+      "targets": ["install"],
+      "jobs": 2
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "native-release-user",
+      "configurePreset": "native-release-user",
+      "output": {"outputOnFailure": true},
+      "execution": {"noTestsAction": "error", "stopOnFailure": false}
+    },
+    {
+      "name": "ci-native",
+      "configurePreset": "ci-native",
+      "output": {"outputOnFailure": true},
+      "execution": {"noTestsAction": "error", "stopOnFailure": false}
+    },
+    {
+      "name": "ci-asan-ubsan",
+      "configurePreset": "ci-asan-ubsan",
+      "output": {"outputOnFailure": true},
+      "execution": {"noTestsAction": "error", "stopOnFailure": false}
+    },
+    {
+      "name": "ci-tsan",
+      "configurePreset": "ci-tsan",
+      "output": {"outputOnFailure": true},
+      "execution": {"noTestsAction": "error", "stopOnFailure": false}
+    }
+  ]
+}

@@ -1,0 +1,180 @@
+name: SaltsCore LLVM CI
+
+on:
+  pull_request:
+    paths:
+      - "platform/src/**"
+      - "platform/include/**"
+      - "core/src/**"
+      - "core/include/**"
+      - "concurrency/src/**"
+      - "concurrency/include/**"
+      - "coroutine/src/**"
+      - "coroutine/include/**"
+      - "native-io/src/**"
+      - "native-io/include/**"
+      - "uri/src/**"
+      - "uri/include/**"
+      - "uri/parser/**"
+      - "cnet/src/**"
+      - "cnet/include/**"
+      - "cserde/src/**"
+      - "cserde/include/**"
+      - "tinytest/src/**"
+      - "tinytest/include/**"
+      - "unicode/src/**"
+      - "unicode/include/**"
+      - "unicode/data/**"
+      - "idna/src/**"
+      - "idna/include/**"
+      - "fs/src/**"
+      - "fs/include/**"
+      - "process/src/**"
+      - "process/include/**"
+      - "sctp/src/**"
+      - "sctp/include/**"
+      - "vendor/cnet/**"
+  push:
+    branches: [master]
+    paths:
+      - "platform/src/**"
+      - "platform/include/**"
+      - "core/src/**"
+      - "core/include/**"
+      - "concurrency/src/**"
+      - "concurrency/include/**"
+      - "coroutine/src/**"
+      - "coroutine/include/**"
+      - "native-io/src/**"
+      - "native-io/include/**"
+      - "uri/src/**"
+      - "uri/include/**"
+      - "uri/parser/**"
+      - "cnet/src/**"
+      - "cnet/include/**"
+      - "cserde/src/**"
+      - "cserde/include/**"
+      - "tinytest/src/**"
+      - "tinytest/include/**"
+      - "unicode/src/**"
+      - "unicode/include/**"
+      - "unicode/data/**"
+      - "idna/src/**"
+      - "idna/include/**"
+      - "fs/src/**"
+      - "fs/include/**"
+      - "process/src/**"
+      - "process/include/**"
+      - "sctp/src/**"
+      - "sctp/include/**"
+      - "vendor/cnet/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: saltscore-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify:
+    name: LLVM / ${{ matrix.rid }} / ${{ matrix.preset }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {rid: linux-x64, runner: ubuntu-24.04, target: x64, triplet: x64-linux, host: x64-linux, preset: ci-native, android_abi: ""}
+          - {rid: linux-arm64, runner: ubuntu-24.04-arm, target: arm64, triplet: arm64-linux, host: arm64-linux, preset: ci-native, android_abi: ""}
+          - {rid: macos-x64, runner: macos-15-intel, target: x64, triplet: x64-osx, host: x64-osx, preset: ci-native, android_abi: ""}
+          - {rid: macos-arm64, runner: macos-15, target: arm64, triplet: arm64-osx, host: arm64-osx, preset: ci-native, android_abi: ""}
+          - {rid: windows-x64, runner: windows-2025, target: x64, triplet: qigao-x64-windows-llvm-mingw, host: qigao-x64-windows-llvm-mingw, preset: ci-native, android_abi: ""}
+          - {rid: windows-arm64, runner: windows-11-arm, target: arm64, triplet: qigao-arm64-windows-llvm-mingw, host: qigao-arm64-windows-llvm-mingw, preset: ci-native, android_abi: ""}
+          - {rid: linux-x64-asan-ubsan, runner: ubuntu-24.04, target: x64, triplet: x64-linux, host: x64-linux, preset: ci-asan-ubsan, android_abi: ""}
+          - {rid: linux-x64-tsan, runner: ubuntu-24.04, target: x64, triplet: x64-linux, host: x64-linux, preset: ci-tsan, android_abi: ""}
+          - {rid: android-x64, runner: ubuntu-24.04, target: x64, triplet: x64-android, host: x64-linux, preset: ci-android, android_abi: x86_64}
+          - {rid: android-arm64, runner: ubuntu-24.04, target: arm64, triplet: arm64-android, host: x64-linux, preset: ci-android, android_abi: arm64-v8a}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up native LLVM
+        if: runner.os != 'Windows'
+        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-native@6cd4d04a63148d64b8d3b2d8cf73ee8f5979f1d3
+        with:
+          build-type: toolchain-only
+          obfuscator: "false"
+
+      - name: Set up Windows LLVM-MinGW
+        if: runner.os == 'Windows'
+        uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@6cd4d04a63148d64b8d3b2d8cf73ee8f5979f1d3
+        with:
+          target: ${{ matrix.target }}
+          build-type: toolchain-only
+          obfuscator: "false"
+
+      - name: Set up shared dependency contract
+        id: vcpkg
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@6cd4d04a63148d64b8d3b2d8cf73ee8f5979f1d3
+        with:
+          mode: read
+          token: ${{ github.token }}
+
+      - name: Restore re2c and Unicode host data
+        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@6cd4d04a63148d64b8d3b2d8cf73ee8f5979f1d3
+        with:
+          token: ${{ github.token }}
+
+      - name: Select preset toolchains
+        shell: bash
+        env:
+          VCPKG_TOOLCHAIN: ${{ steps.vcpkg.outputs.toolchain_file }}
+          RID: ${{ matrix.rid }}
+          TARGET_TRIPLET: ${{ matrix.triplet }}
+          HOST_TRIPLET: ${{ matrix.host }}
+          ANDROID_ABI: ${{ matrix.android_abi }}
+        run: |
+          set -euo pipefail
+          test -n "$VCPKG_TOOLCHAIN"
+          if [[ "$RID" == android-* ]]; then
+            chainload="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
+            test -f "$chainload"
+          else
+            chainload="$QIGAO_COMPILER_TOOLCHAIN_FILE"
+            test -f "$chainload"
+          fi
+          {
+            echo "SALTSCORE_VCPKG_TOOLCHAIN_FILE=$VCPKG_TOOLCHAIN"
+            echo "SALTSCORE_CHAINLOAD_TOOLCHAIN_FILE=$chainload"
+            echo "SALTSCORE_VCPKG_TARGET_TRIPLET=$TARGET_TRIPLET"
+            echo "SALTSCORE_VCPKG_HOST_TRIPLET=$HOST_TRIPLET"
+            echo "SALTSCORE_ANDROID_ABI=$ANDROID_ABI"
+            echo "SALTSCORE_INSTALL_PREFIX=$RUNNER_TEMP/saltscore-$RID"
+          } >> "$GITHUB_ENV"
+
+      - name: Configure full graph
+        shell: bash
+        run: cmake --preset "${{ matrix.preset }}"
+
+      - name: Build full graph
+        shell: bash
+        run: cmake --build --preset "${{ matrix.preset }}"
+
+      - name: Run formal CTest suite
+        if: matrix.preset != 'ci-android'
+        shell: bash
+        run: ctest --preset "${{ matrix.preset }}"
+
+  result:
+    name: CI result
+    if: ${{ always() }}
+    needs: qualify
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every LLVM qualification job
+        shell: bash
+        run: test '${{ needs.qualify.result }}' = success

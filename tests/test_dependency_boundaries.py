@@ -79,7 +79,7 @@ class DependencyGateTest(unittest.TestCase):
                               "set(_forbidden"), encoding="utf-8")
             self.assertEqual(len(module.check_repository(root)), 1)
 
-    def test_migrated_module_negative_guard_is_not_a_dependency(self):
+    def test_deleted_consumer_guard_path_has_no_special_exemption(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             cmake = root / "crypto" / "tests" / "mobile"
@@ -91,12 +91,12 @@ class DependencyGateTest(unittest.TestCase):
                 "    message(FATAL_ERROR \"split target present\")\n"
                 "  endif()\n"
                 "endforeach()\n", encoding="utf-8")
-            self.assertEqual(module.check_repository(root), [])
+            self.assertEqual(len(module.check_repository(root)), 1)
             guard_file.write_text(
                 guard_file.read_text(encoding="utf-8")
                 + "target_link_libraries(app PRIVATE Crypto::Crypto)\n",
                 encoding="utf-8")
-            self.assertEqual(len(module.check_repository(root)), 1)
+            self.assertEqual(len(module.check_repository(root)), 2)
 
     def test_canonical_asn1_target_is_allowed(self):
         self.assertEqual(

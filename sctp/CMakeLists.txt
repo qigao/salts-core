@@ -324,6 +324,19 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME cnet_sctp_session_test COMMAND cnet_sctp_session_test)
 
+  # Public opaque Session behavior remains a source-tree formal test. It is
+  # deliberately not configured as a second installed-consumer project.
+  add_executable(cnet_sctp_public_api_test tests/public_api_test.c)
+  target_link_libraries(cnet_sctp_public_api_test PRIVATE Salts::SCTP)
+  set_target_properties(cnet_sctp_public_api_test PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+  if(MSVC)
+    target_compile_options(cnet_sctp_public_api_test PRIVATE /W4 /WX)
+  else()
+    target_compile_options(cnet_sctp_public_api_test PRIVATE
+      -Wall -Wextra -Wpedantic -Werror)
+  endif()
+  add_test(NAME cnet_sctp_public_api_test COMMAND cnet_sctp_public_api_test)
 
 endif()
 

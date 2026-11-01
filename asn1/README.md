@@ -24,8 +24,8 @@ ctest --test-dir build-asn1 --output-on-failure
 cmake --install build-asn1 --prefix "$PWD/asn1-sdk"
 ```
 
-Test the installed C11/C++17 SDK separately with
-`cmake -S asn1/tests/installed` and `CMAKE_PREFIX_PATH=<asn1-sdk>`.
+No separate installed-consumer project is maintained. Public C11/C++17
+headers and behavior are covered by the module's formal source-tree tests.
 No old `crypto_asn1_reader_*`, `SaltsCore::ASN1` or dynamically exported
 `Salts::ASN1` compatibility facade is retained. The original strict
 parser implementation is transferred from the qualified independent
